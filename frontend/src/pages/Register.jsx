@@ -15,6 +15,7 @@ function Register() {
     agree: false
   })
   const [errors, setErrors] = useState({})
+  const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [serverError, setServerError] = useState('')
 
@@ -43,7 +44,6 @@ function Register() {
     const v = validate()
     setErrors(v)
     if (Object.keys(v).length > 0) return
-
     setSubmitting(true)
     setServerError('')
     try {
@@ -61,87 +61,177 @@ function Register() {
     }
   }
 
-  const inputBase = 'w-full px-3 py-2 text-sm rounded-md border bg-white focus:outline-none focus:ring-2 transition'
-  const inputOk = 'border-gray-300 focus:ring-indigo-200 focus:border-indigo-400'
-  const inputErr = 'border-red-300 focus:ring-red-200 focus:border-red-400'
+  const inputBase = 'w-full px-3 py-2.5 text-sm rounded-lg border focus:outline-none focus:ring-2 transition'
+  const inputOk   = 'border-gray-200 focus:ring-indigo-200 focus:border-indigo-400'
+  const inputErr  = 'border-red-300 focus:ring-red-200 focus:border-red-400'
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-10">
-      <div className="w-full max-w-md bg-white rounded-xl border border-gray-200 shadow-sm p-8">
-        <div className="flex items-center gap-2 mb-6">
-          <div className="w-8 h-8 rounded-md bg-indigo-600 flex items-center justify-center">
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h10M4 18h7" />
+    <div className="min-h-screen flex bg-[#f0f0ff]">
+      {/* ── Left branding panel ── */}
+      <div className="hidden lg:flex flex-col justify-between w-1/2 px-14 py-12 bg-[#f0f0ff]">
+        {/* Logo */}
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shadow">
+            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
             </svg>
           </div>
-          <span className="font-semibold text-gray-900">NetFlow</span>
+          <div>
+            <span className="font-bold text-gray-900 text-lg leading-none">NetFlow</span>
+            <p className="text-[10px] text-gray-400 leading-none mt-0.5">Automate. Orchestrate. Scale.</p>
+          </div>
         </div>
 
-        <h1 className="text-xl font-bold text-gray-900">Create your account</h1>
-        <p className="text-sm text-gray-500 mt-1 mb-6">Start building approval workflows today</p>
+        {/* Hero text */}
+        <div className="mb-10">
+          <h2 className="text-4xl font-extrabold text-gray-900 leading-tight mb-3">
+            Join your team.<br />
+            <span className="text-indigo-600">Build workflows.</span><br />
+            Move faster.
+          </h2>
+          <p className="text-gray-500 text-sm max-w-xs leading-relaxed">
+            Create your account and start collaborating on automated approval workflows with your organization today.
+          </p>
 
-        {serverError && (
-          <div className="mb-4 p-3 rounded-md bg-red-50 border border-red-200 text-red-700 text-sm">
-            {serverError}
+          {/* Feature pills */}
+          <div className="mt-8 space-y-3">
+            {[
+              { icon: '⚡', text: 'Automated approval routing' },
+              { icon: '🔔', text: 'Real-time task notifications' },
+              { icon: '📊', text: 'Analytics & SLA tracking' },
+            ].map(({ icon, text }) => (
+              <div key={text} className="flex items-center gap-3 bg-white/70 rounded-xl px-4 py-3 shadow-sm w-fit">
+                <span className="text-lg">{icon}</span>
+                <span className="text-sm font-medium text-gray-700">{text}</span>
+              </div>
+            ))}
           </div>
-        )}
+        </div>
+      </div>
 
-        <form onSubmit={handleSubmit} noValidate className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-1">First name</label>
-              <input id="firstName" name="firstName" type="text" autoComplete="given-name" value={form.firstName} onChange={handleChange} placeholder="Arjun" className={`${inputBase} ${errors.firstName ? inputErr : inputOk}`} />
-              {errors.firstName && <p className="mt-1 text-xs text-red-600">{errors.firstName}</p>}
+      {/* ── Right form panel ── */}
+      <div className="flex flex-1 items-center justify-center px-6 py-12 bg-white lg:rounded-l-3xl shadow-2xl overflow-y-auto">
+        <div className="w-full max-w-sm">
+          {/* Mobile logo */}
+          <div className="flex items-center gap-2 mb-6 lg:hidden">
+            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
+              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+              </svg>
             </div>
-            <div>
-              <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-1">Last name</label>
-              <input id="lastName" name="lastName" type="text" autoComplete="family-name" value={form.lastName} onChange={handleChange} placeholder="Kumar" className={`${inputBase} ${errors.lastName ? inputErr : inputOk}`} />
-              {errors.lastName && <p className="mt-1 text-xs text-red-600">{errors.lastName}</p>}
+            <span className="font-bold text-gray-900">NetFlow</span>
+          </div>
+
+          <h1 className="text-2xl font-bold text-gray-900">Create your account 🚀</h1>
+          <p className="text-sm text-gray-500 mt-1 mb-7">Start building approval workflows today.</p>
+
+          {serverError && (
+            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+              {serverError}
             </div>
+          )}
+
+          <form onSubmit={handleSubmit} noValidate className="space-y-4">
+            {/* Name row */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-1.5">First name</label>
+                <input id="firstName" name="firstName" type="text" autoComplete="given-name"
+                  value={form.firstName} onChange={handleChange} placeholder="Arjun"
+                  className={`${inputBase} ${errors.firstName ? inputErr : inputOk}`} />
+                {errors.firstName && <p className="mt-1 text-xs text-red-600">{errors.firstName}</p>}
+              </div>
+              <div>
+                <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-1.5">Last name</label>
+                <input id="lastName" name="lastName" type="text" autoComplete="family-name"
+                  value={form.lastName} onChange={handleChange} placeholder="Kumar"
+                  className={`${inputBase} ${errors.lastName ? inputErr : inputOk}`} />
+                {errors.lastName && <p className="mt-1 text-xs text-red-600">{errors.lastName}</p>}
+              </div>
+            </div>
+
+            {/* Email */}
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">Work email</label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                </span>
+                <input id="email" name="email" type="email" autoComplete="email"
+                  value={form.email} onChange={handleChange} placeholder="you@company.com"
+                  className={`${inputBase} pl-9 ${errors.email ? inputErr : inputOk}`} />
+              </div>
+              {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
+            </div>
+
+            {/* Department */}
+            <div>
+              <label htmlFor="department" className="block text-sm font-medium text-gray-700 mb-1.5">Department</label>
+              <select id="department" name="department" value={form.department} onChange={handleChange}
+                className={`${inputBase} ${inputOk} bg-white`}>
+                {DEPARTMENTS.map((d) => <option key={d}>{d}</option>)}
+              </select>
+            </div>
+
+            {/* Password */}
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                </span>
+                <input id="password" name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  value={form.password} onChange={handleChange} placeholder="Min 6 characters"
+                  className={`${inputBase} pl-9 pr-14 ${errors.password ? inputErr : inputOk}`} />
+                <button type="button" onClick={() => setShowPassword((s) => !s)}
+                  className="absolute inset-y-0 right-3 text-xs font-semibold text-indigo-600 hover:text-indigo-800">
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              {errors.password && <p className="mt-1 text-xs text-red-600">{errors.password}</p>}
+            </div>
+
+            {/* Terms */}
+            <div>
+              <label className="flex items-start gap-2 text-sm text-gray-600 select-none cursor-pointer">
+                <input type="checkbox" name="agree" checked={form.agree} onChange={handleChange}
+                  className="w-4 h-4 mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-400 flex-shrink-0" />
+                <span>
+                  I agree to the{' '}
+                  <a href="#" className="text-indigo-600 hover:text-indigo-800 font-medium">Terms of Service</a>
+                  {' '}and{' '}
+                  <a href="#" className="text-indigo-600 hover:text-indigo-800 font-medium">Privacy Policy</a>
+                </span>
+              </label>
+              {errors.agree && <p className="mt-1 text-xs text-red-600">{errors.agree}</p>}
+            </div>
+
+            <button type="submit" disabled={submitting}
+              className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-semibold shadow transition">
+              {submitting ? 'Creating account…' : 'Create account'}
+            </button>
+          </form>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3 my-5">
+            <hr className="flex-1 border-gray-200" />
+            <span className="text-xs text-gray-400">or</span>
+            <hr className="flex-1 border-gray-200" />
           </div>
 
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Work email</label>
-            <input id="email" name="email" type="email" autoComplete="email" value={form.email} onChange={handleChange} placeholder="you@company.com" className={`${inputBase} ${errors.email ? inputErr : inputOk}`} />
-            {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
-          </div>
+ 
 
-          <div>
-            <label htmlFor="department" className="block text-sm font-medium text-gray-700 mb-1">Department</label>
-            <select id="department" name="department" value={form.department} onChange={handleChange} className={`${inputBase} ${inputOk}`}>
-              {DEPARTMENTS.map((d) => <option key={d}>{d}</option>)}
-            </select>
-          </div>
-
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-            <input id="password" name="password" type="password" autoComplete="new-password" value={form.password} onChange={handleChange} placeholder="Min 6 characters" className={`${inputBase} ${errors.password ? inputErr : inputOk}`} />
-            {errors.password && <p className="mt-1 text-xs text-red-600">{errors.password}</p>}
-          </div>
-
-          <div>
-            <label className="flex items-start gap-2 text-sm text-gray-600 select-none">
-              <input type="checkbox" name="agree" checked={form.agree} onChange={handleChange} className="w-4 h-4 mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-400" />
-              <span>
-                I agree to the <a href="#" className="text-indigo-600 hover:text-indigo-800 font-medium">Terms of Service</a> and <a href="#" className="text-indigo-600 hover:text-indigo-800 font-medium">Privacy Policy</a>
-              </span>
-            </label>
-            {errors.agree && <p className="mt-1 text-xs text-red-600">{errors.agree}</p>}
-          </div>
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full py-2.5 rounded-md bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-semibold shadow-sm transition"
-          >
-            {submitting ? 'Creating account...' : 'Create account'}
-          </button>
-        </form>
-
-        <p className="text-center text-sm text-gray-600 mt-5">
-          Already have an account?{' '}
-          <Link to="/login" className="text-indigo-600 hover:text-indigo-800 font-semibold">Sign in</Link>
-        </p>
+          <p className="text-center text-sm text-gray-500 mt-6">
+            Already have an account?{' '}
+            <Link to="/login" className="text-indigo-600 hover:text-indigo-800 font-semibold">Sign in</Link>
+          </p>
+        </div>
       </div>
     </div>
   )
