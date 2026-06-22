@@ -1,0 +1,31 @@
+// M3 - Phase 2 - utils/createNotification.js
+// Fire-and-forget notification writer. NEVER throws — notification failure
+// must not break the action that triggered it.
+
+const Notification = require('../models/Notification')
+
+const createNotification = async ({
+  userId,
+  title,
+  message,
+  type,
+  taskId,
+  triggeredBy
+}) => {
+  try {
+    if (!userId) return null
+    return await Notification.create({
+      userId,
+      title,
+      message,
+      type,
+      taskId,
+      triggeredBy
+    })
+  } catch (err) {
+    console.error('createNotification error:', err.message)
+    return null
+  }
+}
+
+module.exports = { createNotification }
