@@ -9,7 +9,10 @@
     "seed": "node seeds/seed.js",
     "seed:doa": "node seeds/seedDoa.js",
     "seed:ceo": "node seeds/seedCeo.js",
-    "clean-demo": "node seeds/cleanDemo.js"
+    "clean-demo": "node seeds/cleanDemo.js",
+    "seed:demo": "node seeds/seedDemo.js",
+    "seed:exec": "node seeds/seedExecutions.js",
+    "seed:real": "node seeds/seedRealistic.js"
   },
   "keywords": [
     "flowsphere",

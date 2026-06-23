@@ -312,7 +312,7 @@ router.get('/activity', async (req, res, next) => {
       const d = new Date(nowUtc + IST_OFFSET_MS)
       d.setDate(d.getDate() - i)
       const key = d.toISOString().slice(0, 10)
-      dayMap.set(key, { isoDate: key, completed: 0, inProgress: 0, onHold: 0 })
+      dayMap.set(key, { isoDate: key, completed: 0, inProgress: 0, onHold: 0, failed: 0 })
     }
 
     // Fill in historical counts from the aggregation.
@@ -323,6 +323,7 @@ router.get('/activity', async (req, res, next) => {
       if (status === 'completed')    entry.completed  += row.count
       else if (status === 'running') entry.inProgress += row.count
       else if (status === 'paused')  entry.onHold     += row.count
+      else if (status === 'failed')  entry.failed     += row.count
     }
 
     // Overwrite today's live values with real-time counts so executions that
