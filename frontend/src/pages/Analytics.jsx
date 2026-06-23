@@ -4,12 +4,17 @@ import React, { useEffect, useMemo, useState } from 'react'
 import AppShell from '../components/AppShell'
 import { api } from '../utils/api'
 
+// `days` drives the from/to window for the summary / approval / department
+// endpoints; `months` and `weeks` set the granularity for the two time-series
+// endpoints (which take their own params).
 const RANGES = [
-  { label: 'Last 7 days',  days: 7 },
-  { label: 'Last 30 days', days: 30 },
-  { label: 'Last 90 days', days: 90 },
-  { label: 'This year',    days: 365 }
+  { label: 'Last 7 days',  days: 7,   months: 1,  weeks: 1  },
+  { label: 'Last 30 days', days: 30,  months: 1,  weeks: 4  },
+  { label: 'Last 90 days', days: 90,  months: 3,  weeks: 13 },
+  { label: 'This year',    days: 365, months: 12, weeks: 52 }
 ]
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 const PALETTE = [
   'bg-blue-500', 'bg-green-500', 'bg-orange-400', 'bg-red-500',
@@ -20,8 +25,12 @@ const OUTCOME_COLOURS = {
   approved:  '#22c55e',
   rejected:  '#ef4444',
   escalated: '#f97316',
-  pending:   '#94a3b8'
+  pending:   '#94a3b8',
+  completed: '#0ea5e9'
 }
+
+// Stable, sensible ordering for the outcome donut + legend.
+const STATUS_ORDER = { approved: 0, completed: 1, pending: 2, escalated: 3, rejected: 4 }
 
 function KpiCard({ label, value, valueClass, loading }) {
   return (
@@ -196,47 +205,72 @@ function Analytics() {
     let cancelled = false
     setLoading(true)
     setError('')
+
+    // Date window for the endpoints that accept from/to (createdAt-based).
+    const iso = (d) => d.toISOString().slice(0, 10)
+    const fromDate = new Date(Date.now() - Math.max(0, range.days - 1) * 86400000)
+    const win = `from=${iso(fromDate)}&to=${iso(new Date())}`
+
     Promise.allSettled([
-      api.get('/api/analytics/summary'),
-      api.get(`/api/analytics/completion-time?days=${range.days}`),
-      api.get('/api/analytics/approval-rate'),
-      api.get('/api/analytics/department-kpis'),
-      api.get(`/api/analytics/sla-breaches?days=${range.days}`)
+      api.get(`/api/analytics/summary?${win}`),
+      api.get(`/api/analytics/completion-time?months=${range.months}`),
+      api.get(`/api/analytics/approval-rate?${win}`),
+      api.get(`/api/analytics/department-kpis?${win}`),
+      api.get(`/api/analytics/sla-breaches?weeks=${range.weeks}`)
     ]).then((results) => {
       if (cancelled) return
       const [s, c, a, d, sla] = results
 
       if (s.status === 'fulfilled') setSummary(s.value.summary || s.value)
+
+      // completion-time → { series: [{ year, month, label, avgDays, totalCompleted }] }
       if (c.status === 'fulfilled') {
-        const list = c.value.completionTime || c.value.data || []
+        const list = c.value.series || c.value.completionTime || c.value.data || []
         setCompletion(list.map((row) => ({
-          month: row.month || row._id || 'n/a',
-          hours: row.avgHours ?? row.hours ?? 0
+          month: (row.year && row.month) ? `${MONTHS[row.month - 1]} ${row.year}` : (row.label || row._id || 'n/a'),
+          hours: row.avgDays != null ? row.avgDays * 24 : (row.avgHours ?? row.hours ?? 0)
         })))
       }
+
+      // approval-rate → { distribution: [{ status, label, count, color }] }; turn counts into %.
       if (a.status === 'fulfilled') {
-        const breakdown = a.value.approvalRate || a.value.breakdown || a.value.data || []
-        setOutcomes(breakdown.map((row) => ({
-          label: (row.status || row._id || 'unknown').replace(/\b\w/g, (ch) => ch.toUpperCase()),
-          pct: row.percentage ?? row.pct ?? 0,
-          color: OUTCOME_COLOURS[(row.status || row._id || '').toLowerCase()] || '#94a3b8'
-        })))
+        const breakdown = a.value.distribution || a.value.approvalRate || a.value.breakdown || a.value.data || []
+        const totalCount = breakdown.reduce((sum, r) => sum + (r.count ?? 0), 0) || 1
+        const mapped = breakdown.map((row) => {
+          const key = (row.status || row._id || 'unknown').toLowerCase()
+          return {
+            label: row.label || key.replace(/\b\w/g, (ch) => ch.toUpperCase()),
+            pct: row.percentage ?? row.pct ?? ((row.count ?? 0) / totalCount) * 100,
+            color: row.color || OUTCOME_COLOURS[key] || '#94a3b8',
+            order: STATUS_ORDER[key] ?? 99
+          }
+        })
+        mapped.sort((x, y) => x.order - y.order)
+        setOutcomes(mapped)
       }
+
+      // department-kpis → { kpis: [{ department, totalRequests, approved, ... }] }; derive approval rate.
       if (d.status === 'fulfilled') {
-        const dept = d.value.departmentKpis || d.value.departments || d.value.data || []
-        setDepartments(dept.map((row) => ({
-          name: row.department || row._id || 'Other',
-          pct: row.approvalRate ?? row.pct ?? 0,
-          totalTasks: row.totalTasks ?? row.total ?? 0
-        })))
+        const dept = d.value.kpis || d.value.departmentKpis || d.value.departments || d.value.data || []
+        setDepartments(dept.map((row) => {
+          const total = row.totalRequests ?? row.totalTasks ?? row.total ?? 0
+          return {
+            name: row.department || row._id || 'Other',
+            pct: row.approvalRate ?? (total > 0 ? ((row.approved ?? 0) / total) * 100 : 0),
+            totalTasks: total
+          }
+        }))
       }
+
+      // sla-breaches → { series: [{ year, week, label, breaches, target }] }
       if (sla.status === 'fulfilled') {
-        const list = sla.value.slaBreaches || sla.value.data || []
+        const list = sla.value.series || sla.value.slaBreaches || sla.value.data || []
         setSlaTrend(list.map((row) => ({
-          week: row.week || row._id || 'n/a',
-          value: row.count ?? row.value ?? 0
+          week: row.week != null ? `W${row.week}` : (row.label ? row.label.split('-').pop() : (row._id || 'n/a')),
+          value: row.breaches ?? row.count ?? row.value ?? 0
         })))
       }
+
       const firstReject = results.find((r) => r.status === 'rejected')
       if (firstReject) {
         const e = firstReject.reason
@@ -255,11 +289,12 @@ function Analytics() {
     const completionAvg = completion.length
       ? (completion.reduce((s, c) => s + c.hours, 0) / completion.length).toFixed(1) + 'h'
       : '—'
-    const approvalPct = outcomes.find((o) => o.label.toLowerCase() === 'approved')?.pct
+    // Prefer the canonical approved/(approved+rejected) rate from /summary.
+    const approvalPct = summary?.approvalRate ?? outcomes.find((o) => o.label.toLowerCase() === 'approved')?.pct
     const slaTotal = slaTrend.reduce((s, x) => s + x.value, 0)
     return [
       { label: 'AVG COMPLETION TIME', value: completionAvg, valueClass: 'text-gray-800' },
-      { label: 'APPROVAL RATE',       value: approvalPct != null ? `${approvalPct.toFixed(0)}%` : '—', valueClass: 'text-green-600' },
+      { label: 'APPROVAL RATE',       value: approvalPct != null ? `${Number(approvalPct).toFixed(0)}%` : '—', valueClass: 'text-green-600' },
       { label: 'SLA BREACHES',        value: summary?.slaBreaches ?? slaTotal, valueClass: 'text-red-500' }
     ]
   }, [completion, outcomes, slaTrend, summary])

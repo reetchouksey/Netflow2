@@ -1,7 +1,7 @@
 // M1 - Phase 2 - Login.jsx - Wired to POST /api/auth/login
 
 import React, { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { authStore } from '../utils/auth'
 
 // ── Left panel decoration ──────────────────────────────────────────────────
@@ -143,7 +143,7 @@ function Login() {
             <span className="font-bold text-gray-900">NetFlow</span>
           </div>
 
-          <h1 className="text-2xl font-bold text-gray-900">Welcome back 👋</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Welcome back</h1>
           <p className="text-sm text-gray-500 mt-1 mb-8">Sign in to your NetFlow admin account.</p>
 
           {serverError && (
@@ -168,9 +168,8 @@ function Login() {
                   id="email" name="email" type="email" autoComplete="email"
                   value={form.email} onChange={handleChange}
                   placeholder="Enter your email"
-                  className={`w-full pl-9 pr-4 py-2.5 rounded-lg border text-sm focus:outline-none focus:ring-2 transition ${
-                    errors.email ? 'border-red-400 focus:ring-red-200' : 'border-gray-200 focus:ring-indigo-200 focus:border-indigo-400'
-                  }`}
+                  className={`w-full pl-9 pr-4 py-2.5 rounded-lg border text-sm focus:outline-none focus:ring-2 transition ${errors.email ? 'border-red-400 focus:ring-red-200' : 'border-gray-200 focus:ring-indigo-200 focus:border-indigo-400'
+                    }`}
                 />
               </div>
               {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
@@ -193,9 +192,8 @@ function Login() {
                   autoComplete="current-password"
                   value={form.password} onChange={handleChange}
                   placeholder="Enter your password"
-                  className={`w-full pl-9 pr-14 py-2.5 rounded-lg border text-sm focus:outline-none focus:ring-2 transition ${
-                    errors.password ? 'border-red-400 focus:ring-red-200' : 'border-gray-200 focus:ring-indigo-200 focus:border-indigo-400'
-                  }`}
+                  className={`w-full pl-9 pr-14 py-2.5 rounded-lg border text-sm focus:outline-none focus:ring-2 transition ${errors.password ? 'border-red-400 focus:ring-red-200' : 'border-gray-200 focus:ring-indigo-200 focus:border-indigo-400'
+                    }`}
                 />
                 <button
                   type="button"
@@ -209,7 +207,7 @@ function Login() {
             </div>
 
             {/* Remember + Forgot */}
-            <div className="flex items-center justify-between text-sm">
+            {/* <div className="flex items-center justify-between text-sm">
               <label className="flex items-center gap-2 text-gray-600 cursor-pointer select-none">
                 <input
                   type="checkbox" name="remember" checked={form.remember} onChange={handleChange}
@@ -218,7 +216,7 @@ function Login() {
                 Remember me
               </label>
               <a href="#" className="text-indigo-600 hover:text-indigo-800 font-medium">Forgot password?</a>
-            </div>
+            </div> */}
 
             {/* Sign in */}
             <button
@@ -230,16 +228,15 @@ function Login() {
           </form>
 
           {/* Divider */}
-          <div className="flex items-center gap-3 my-5">
+          {/* <div className="flex items-center gap-3 my-5">
             <hr className="flex-1 border-gray-200" />
             <span className="text-xs text-gray-400">or</span>
             <hr className="flex-1 border-gray-200" />
-          </div>
+          </div> */}
 
 
           <p className="text-center text-xs text-gray-400 mt-6">
-            Don't have an account?{' '}
-            <Link to="/register" className="text-indigo-600 hover:text-indigo-800 font-medium">Register</Link>
+            Contact your administrator to get an account.
           </p>
         </div>
       </div>

@@ -88,7 +88,7 @@ function MultiLineChart({ series }) {
     )
   }
 
-  const allValues = series.flatMap((row) => [row.completed, row.inProgress, row.onHold])
+  const allValues = series.flatMap((row) => [row.completed ?? 0, row.inProgress ?? 0, row.onHold ?? 0, row.failed ?? 0])
   const maxVal = Math.max(...allValues, 10)
   const xs = series.map((_, i) => padL + (i / Math.max(series.length - 1, 1)) * (W - padL - padR))
   const y = (v) => padT + (1 - v / maxVal) * (H - padT - padB)
@@ -103,6 +103,7 @@ function MultiLineChart({ series }) {
     { key: 'completed',  color: '#22c55e', fill: 'rgba(34,197,94,0.10)',  label: 'Completed'   },
     { key: 'inProgress', color: '#3b82f6', fill: 'rgba(59,130,246,0.08)', label: 'In Progress' },
     { key: 'onHold',     color: '#f59e0b', fill: 'rgba(245,158,11,0.08)', label: 'On Hold'     },
+    { key: 'failed',     color: '#ef4444', fill: 'rgba(239,68,68,0.08)',  label: 'Failed'      },
   ]
 
   const yTicks = [0, Math.round(maxVal * 0.5), maxVal].map((v) => ({ v, y: y(v) }))
@@ -435,9 +436,9 @@ function IconPause(p) { return <svg {...p} xmlns="http://www.w3.org/2000/svg" fi
 function IconShield(p) { return <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg> }
 function IconLayers(p) { return <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg> }
 
-// ---------- page ----------------------------------------------------------
+// ---------- builder (admin/manager) dashboard -----------------------------
 
-function Dashboard() {
+function BuilderDashboard() {
   const user = useUser()
   const workflows = useWorkflows()
   const tasks = useTasks()
@@ -482,9 +483,10 @@ function Dashboard() {
   const activitySeries = useMemo(
     () => activityRaw.map((row) => ({
       label:      fmtDayLabel(row.isoDate),
-      completed:  row.completed,
-      inProgress: row.inProgress,
-      onHold:     row.onHold,
+      completed:  row.completed  ?? 0,
+      inProgress: row.inProgress ?? 0,
+      onHold:     row.onHold     ?? 0,
+      failed:     row.failed     ?? 0,
     })),
     [activityRaw]
   )
@@ -542,6 +544,421 @@ function Dashboard() {
       </div>
     </AppShell>
   )
+}
+
+// ---------- employee dashboard --------------------------------------------
+
+// A single workflow run (one "request") produces one Task per approval step,
+// all sharing a workflowExecutionId. Group them so each request counts once and
+// derives one overall status + progress.
+function groupRequests(tasks, myId) {
+  const mine = tasks.filter((t) => (myId ? t.submittedById === myId : true))
+  const byExec = new Map()
+  for (const t of mine) {
+    const key = t._raw?.workflowExecutionId ? String(t._raw.workflowExecutionId) : t.id
+    if (!byExec.has(key)) byExec.set(key, [])
+    byExec.get(key).push(t)
+  }
+
+  const requests = []
+  for (const [key, group] of byExec) {
+    const sorted = [...group].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
+    const first = sorted[0]
+    const last = sorted[sorted.length - 1]
+
+    // The /my-tasks endpoint attaches the same execution-wide approval chain to
+    // every task in the group, so any non-empty one describes the whole request.
+    const chain = sorted.find((t) => (t.approvalChain || []).length > 0)?.approvalChain || []
+
+    let status
+    let progress
+    if (chain.length > 0) {
+      const approved = chain.filter((s) => s.status === 'approved').length
+      if (chain.some((s) => s.status === 'rejected')) { status = 'Rejected'; progress = 100 }
+      else if (approved === chain.length)             { status = 'Approved'; progress = 100 }
+      else if (approved > 0)                          { status = 'In Review'; progress = Math.round((approved / chain.length) * 100) }
+      else                                            { status = 'Pending';   progress = 0 }
+    } else {
+      const statuses = sorted.map((t) => t.status)
+      const approvedCount = statuses.filter((s) => s === 'Approved').length
+      if (statuses.includes('Rejected')) status = 'Rejected'
+      else if (statuses.includes('Pending') || statuses.includes('Escalated')) status = approvedCount > 0 ? 'In Review' : 'Pending'
+      else if (approvedCount > 0) status = 'Approved'
+      else status = 'Pending'
+      progress = status === 'Approved' ? 100 : status === 'Rejected' ? 100 : status === 'In Review' ? 60 : 25
+    }
+
+    const isExec = !!first._raw?.workflowExecutionId
+    const refId = `${isExec ? 'EX' : 'REQ'}-${String(key).slice(-6).toUpperCase()}`
+
+    requests.push({
+      key,
+      title: (first.title || 'Request').replace(/\s*—\s*Approval Required\s*$/i, ''),
+      category: first.department || first.workflow || 'Request',
+      createdAt: first.createdAt,
+      latestAt: last.createdAt || first.createdAt,
+      status,
+      progress,
+      chain,
+      refId,
+      latestTaskId: last.id,
+    })
+  }
+  return requests.sort((a, b) => new Date(b.latestAt || 0) - new Date(a.latestAt || 0))
+}
+
+const barColor = (status) => ({
+  Approved: 'bg-emerald-500',
+  'In Review': 'bg-blue-500',
+  Pending: 'bg-amber-400',
+  Rejected: 'bg-rose-500',
+}[status] || 'bg-gray-300')
+
+const ACTIVITY_VERB = {
+  Approved: 'was approved',
+  Rejected: 'was rejected',
+  'In Review': 'is under review',
+  Pending: 'was submitted',
+}
+
+// Top 5 stat cards for an employee — all from their own requests.
+function EmployeeStats({ requests, needsAttention }) {
+  const now = new Date()
+  const isThisMonth = (iso) => {
+    if (!iso) return false
+    const d = new Date(iso)
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+  }
+  const total       = requests.length
+  const submitted   = requests.filter((r) => isThisMonth(r.createdAt)).length
+  const pending     = requests.filter((r) => r.status === 'Pending' || r.status === 'In Review').length
+  const approved    = requests.filter((r) => r.status === 'Approved').length
+
+  const cards = [
+    { label: 'My Requests',     value: total,          icon: IconDoc,   iconBg: 'bg-indigo-50',  iconColor: 'text-indigo-600'  },
+    { label: 'Submitted (mo.)', value: submitted,      icon: IconSend,  iconBg: 'bg-sky-50',     iconColor: 'text-sky-600'     },
+    { label: 'Pending',         value: pending,        icon: IconClock, iconBg: 'bg-amber-50',   iconColor: 'text-amber-500'   },
+    { label: 'Approved',        value: approved,       icon: IconCheck, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600' },
+    { label: 'Needs Attention', value: needsAttention, icon: IconAlert, iconBg: 'bg-rose-50',    iconColor: 'text-rose-600'    },
+  ]
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+      {cards.map((c) => <StatCard5 key={c.label} {...c} />)}
+    </div>
+  )
+}
+
+function MyRequestsList({ requests }) {
+  const navigate = useNavigate()
+  const rows = requests.slice(0, 6)
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl flex flex-col">
+      <div className="px-5 py-4 flex items-center justify-between border-b border-gray-100">
+        <h2 className="text-sm font-semibold text-gray-800">My Requests</h2>
+        <Link to="/tasks" className="text-xs font-medium text-indigo-600 hover:text-indigo-700">View all</Link>
+      </div>
+      {rows.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center py-12 text-xs text-gray-400">No requests yet</div>
+      ) : (
+        <ul className="divide-y divide-gray-50">
+          {rows.map((r) => {
+            const styles = STATUS_STYLES[r.status] || STATUS_STYLES.default
+            return (
+              <li key={r.key}>
+                <button onClick={() => navigate(`/tasks/${r.latestTaskId}`)}
+                  className="w-full text-left px-5 py-3 hover:bg-gray-50 transition flex items-center gap-3">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${styles.dot}`} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-gray-800 truncate">{r.title}</p>
+                    <p className="text-[10px] text-gray-400 truncate mt-0.5">{r.refId} · {timeAgo(r.createdAt)}</p>
+                  </div>
+                  <span className={`shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded border ${styles.badge}`}>{r.status}</span>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function MyProgressCard({ requests }) {
+  const rows = requests.slice(0, 5)
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-5">
+      <h2 className="text-sm font-semibold text-gray-800 mb-4">My Request Progress</h2>
+      {rows.length === 0 ? (
+        <div className="flex items-center justify-center py-10 text-xs text-gray-400">Nothing in progress</div>
+      ) : (
+        <ul className="space-y-3.5">
+          {rows.map((r) => {
+            const styles = STATUS_STYLES[r.status] || STATUS_STYLES.default
+            return (
+              <li key={r.key}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-medium text-gray-700 truncate pr-2">{r.title}</span>
+                  <span className={`shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded border ${styles.badge}`}>{r.status}</span>
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
+                  <div className={`h-full rounded-full ${barColor(r.status)}`} style={{ width: `${r.progress}%` }} />
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+// Visual treatment for a single approval-chain node's status.
+function statusVisual(s) {
+  switch (s) {
+    case 'approved':  return { ring: 'bg-emerald-500 border-emerald-500 text-white', icon: 'check' }
+    case 'rejected':  return { ring: 'bg-rose-500 border-rose-500 text-white',       icon: 'x' }
+    case 'escalated': return { ring: 'bg-orange-500 border-orange-500 text-white',    icon: 'up' }
+    case 'pending':   return { ring: 'bg-blue-500 border-blue-500 text-white',        icon: 'dot' }
+    default:          return { ring: 'bg-white border-gray-300 text-gray-300',        icon: 'dot' }
+  }
+}
+
+function StepIcon({ kind }) {
+  const cls = 'w-2.5 h-2.5'
+  if (kind === 'check') return <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+  if (kind === 'x')     return <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" /></svg>
+  if (kind === 'up')    return <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5M5 12l7-7 7 7" /></svg>
+  return <span className="w-1.5 h-1.5 rounded-full bg-current" />
+}
+
+// Track Status — renders the live approval chain for a selected request.
+function TrackStatusCard({ requests }) {
+  const navigate = useNavigate()
+  const [selectedKey, setSelectedKey] = useState(null)
+
+  const defaultReq = useMemo(
+    () => requests.find((r) => r.status === 'In Review' || r.status === 'Pending') || requests[0] || null,
+    [requests]
+  )
+  const active = requests.find((r) => r.key === selectedKey) || defaultReq
+
+  const steps = useMemo(() => {
+    if (!active) return []
+    const out = [{
+      key: 'submitted',
+      title: 'Request submitted',
+      sub: timeAgo(active.createdAt),
+      vis: { ring: 'bg-indigo-500 border-indigo-500 text-white', icon: 'check' },
+    }]
+    for (const s of active.chain || []) {
+      const norm = s.isCurrent && s.status !== 'approved' && s.status !== 'rejected' ? 'pending' : s.status
+      let sub
+      if (s.status === 'approved')      sub = s.decidedBy ? `Approved by ${s.decidedBy}` : 'Approved'
+      else if (s.status === 'rejected') sub = s.decidedBy ? `Rejected by ${s.decidedBy}` : 'Rejected'
+      else if (s.status === 'escalated') sub = 'Escalated'
+      else if (norm === 'pending')      sub = `Awaiting ${s.assignee || s.roleLabel || 'approval'}`
+      else                              sub = s.roleLabel ? `${s.roleLabel} · upcoming` : 'Upcoming'
+      out.push({ key: s.nodeId, title: s.title || s.roleLabel || 'Approval', sub, vis: statusVisual(norm), current: s.isCurrent })
+    }
+    if (active.status === 'Approved') {
+      out.push({ key: 'done', title: 'Completed', sub: timeAgo(active.latestAt), vis: { ring: 'bg-emerald-500 border-emerald-500 text-white', icon: 'check' } })
+    }
+    return out
+  }, [active])
+
+  if (!active) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col">
+        <h2 className="text-sm font-semibold text-gray-800 mb-4">Track Status</h2>
+        <div className="flex-1 flex items-center justify-center py-10 text-xs text-gray-400">No requests to track</div>
+      </div>
+    )
+  }
+
+  const styles = STATUS_STYLES[active.status] || STATUS_STYLES.default
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold text-gray-800">Track Status</h2>
+        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${styles.badge}`}>{active.status}</span>
+      </div>
+
+      {requests.length > 1 && (
+        <select
+          value={active.key}
+          onChange={(e) => setSelectedKey(e.target.value)}
+          className="mb-4 w-full text-xs border border-gray-200 rounded-lg px-2.5 py-2 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200"
+        >
+          {requests.map((r) => (
+            <option key={r.key} value={r.key}>{r.title} · {r.refId}</option>
+          ))}
+        </select>
+      )}
+
+      <ol className="flex-1">
+        {steps.map((st, i) => (
+          <li key={st.key} className="relative pl-7 pb-4 last:pb-0">
+            {i < steps.length - 1 && <span className="absolute left-[8px] top-5 bottom-0 w-px bg-gray-200" />}
+            <span className={`absolute left-0 top-0.5 w-[18px] h-[18px] rounded-full border flex items-center justify-center ${st.vis.ring} ${st.current ? 'ring-2 ring-blue-100' : ''}`}>
+              <StepIcon kind={st.vis.icon} />
+            </span>
+            <p className="text-xs font-medium text-gray-800 leading-tight">{st.title}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">{st.sub}</p>
+          </li>
+        ))}
+      </ol>
+
+      <button onClick={() => navigate(`/tasks/${active.latestTaskId}`)}
+        className="mt-2 w-full py-2 rounded-lg border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition">
+        View details
+      </button>
+    </div>
+  )
+}
+
+function RecentActivityCard({ requests }) {
+  const items = requests.slice(0, 5)
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-5">
+      <h2 className="text-sm font-semibold text-gray-800 mb-4">Recent Activity</h2>
+      {items.length === 0 ? (
+        <div className="flex items-center justify-center py-10 text-xs text-gray-400">No activity yet</div>
+      ) : (
+        <ul className="space-y-3">
+          {items.map((r) => {
+            const styles = STATUS_STYLES[r.status] || STATUS_STYLES.default
+            return (
+              <li key={r.key} className="flex items-start gap-3">
+                <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${styles.dot}`} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs text-gray-700 leading-snug">
+                    <span className="font-medium">{r.title}</span> {ACTIVITY_VERB[r.status] || 'updated'}
+                  </p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">{timeAgo(r.latestAt)}</p>
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function RequestSummaryCard({ requests }) {
+  const navigate = useNavigate()
+  const segs = useMemo(() => ([
+    { label: 'Approved',  value: requests.filter((r) => r.status === 'Approved').length,  color: '#22c55e' },
+    { label: 'In Review', value: requests.filter((r) => r.status === 'In Review').length, color: '#3b82f6' },
+    { label: 'Pending',   value: requests.filter((r) => r.status === 'Pending').length,   color: '#f59e0b' },
+    { label: 'Rejected',  value: requests.filter((r) => r.status === 'Rejected').length,  color: '#ef4444' },
+  ]), [requests])
+  const total = segs.reduce((s, x) => s + x.value, 0)
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-5">
+      <h2 className="text-sm font-semibold text-gray-800 mb-4">Request Summary</h2>
+      <div className="flex items-center gap-4">
+        <DonutChart segments={segs} total={total} />
+        <ul className="space-y-1.5 text-xs text-gray-600 flex-1">
+          {segs.map((s) => (
+            <li key={s.label} className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
+              <span className="flex-1">{s.label}</span>
+              <span className="text-gray-400 font-medium ml-2">
+                {s.value}{total > 0 ? ` (${Math.round((s.value / total) * 100)}%)` : ''}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <button onClick={() => navigate('/tasks')}
+        className="mt-4 w-full py-2 rounded-lg border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition">
+        View all requests
+      </button>
+    </div>
+  )
+}
+
+function NeedsAttentionCard({ rejected, approvals }) {
+  const navigate = useNavigate()
+  const items = [
+    ...rejected.map((r) => ({ key: `r-${r.key}`, title: r.title, note: 'Rejected — needs revisit', taskId: r.latestTaskId, tone: 'rose' })),
+    ...approvals.map((t) => ({ key: `a-${t.id}`, title: (t.title || 'Task').replace(/\s*—\s*Approval Required\s*$/i, ''), note: 'Awaiting your approval', taskId: t.id, tone: 'amber' })),
+  ]
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-5">
+      <h2 className="text-sm font-semibold text-gray-800 mb-4">Needs Your Attention</h2>
+      {items.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-10 text-center">
+          <IconCheck className="w-6 h-6 text-emerald-500 mb-2" />
+          <p className="text-xs text-gray-400">You're all caught up</p>
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {items.slice(0, 5).map((it) => (
+            <li key={it.key}>
+              <button onClick={() => navigate(`/tasks/${it.taskId}`)}
+                className="w-full text-left flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${it.tone === 'rose' ? 'bg-rose-500' : 'bg-amber-400'}`} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium text-gray-800 truncate">{it.title}</p>
+                  <p className={`text-[10px] mt-0.5 ${it.tone === 'rose' ? 'text-rose-600' : 'text-amber-600'}`}>{it.note}</p>
+                </div>
+                <span className="text-gray-300 text-xs">›</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function EmployeeDashboard({ user }) {
+  const tasks = useTasks()
+  const myId = user?._id || user?.id || null
+
+  const requests = useMemo(() => groupRequests(tasks, myId), [tasks, myId])
+  const myApprovals = useMemo(
+    () => tasks.filter((t) => myId && t.assignedToId === myId && (t.status === 'Pending' || t.status === 'Escalated')),
+    [tasks, myId]
+  )
+  const rejected = useMemo(() => requests.filter((r) => r.status === 'Rejected'), [requests])
+  const needsAttention = rejected.length + myApprovals.length
+
+  return (
+    <AppShell>
+      <div className="space-y-5">
+        <EmployeeStats requests={requests} needsAttention={needsAttention} />
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <MyRequestsList requests={requests} />
+          <MyProgressCard requests={requests} />
+          <TrackStatusCard requests={requests} />
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <RecentActivityCard requests={requests} />
+          <RequestSummaryCard requests={requests} />
+          <NeedsAttentionCard rejected={rejected} approvals={myApprovals} />
+        </div>
+      </div>
+    </AppShell>
+  )
+}
+
+// ---------- more inline icons ---------------------------------------------
+
+function IconDoc(p) { return <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 4H7a2 2 0 01-2-2V5a2 2 0 012-2h7l4 4v11a2 2 0 01-2 2z" /></svg> }
+function IconSend(p) { return <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" /></svg> }
+function IconAlert(p) { return <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg> }
+
+// ---------- role-routed page ----------------------------------------------
+
+function Dashboard() {
+  const user = useUser()
+  return canViewReports(user) ? <BuilderDashboard /> : <EmployeeDashboard user={user} />
 }
 
 export default Dashboard

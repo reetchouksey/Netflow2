@@ -66,7 +66,7 @@ function Register() {
   const inputErr  = 'border-red-300 focus:ring-red-200 focus:border-red-400'
 
   return (
-    <div className="min-h-screen flex bg-[#f0f0ff]">
+    <div className="h-screen overflow-hidden flex bg-[#f0f0ff]">
       {/* ── Left branding panel ── */}
       <div className="hidden lg:flex flex-col justify-between w-1/2 px-14 py-12 bg-[#f0f0ff]">
         {/* Logo */}
@@ -110,7 +110,7 @@ function Register() {
       </div>
 
       {/* ── Right form panel ── */}
-      <div className="flex flex-1 items-center justify-center px-6 py-12 bg-white lg:rounded-l-3xl shadow-2xl overflow-y-auto">
+      <div className="flex flex-1 items-center overflow-hidden justify-center px-6 py-12 bg-white lg:rounded-l-3xl shadow-2xl">
         <div className="w-full max-w-sm">
           {/* Mobile logo */}
           <div className="flex items-center gap-2 mb-6 lg:hidden">
@@ -122,7 +122,7 @@ function Register() {
             <span className="font-bold text-gray-900">NetFlow</span>
           </div>
 
-          <h1 className="text-2xl font-bold text-gray-900">Create your account 🚀</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Create your account </h1>
           <p className="text-sm text-gray-500 mt-1 mb-7">Start building approval workflows today.</p>
 
           {serverError && (

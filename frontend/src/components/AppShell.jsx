@@ -3,10 +3,12 @@
 // - Non-employees: left sidebar + top bar (search, bell, user)
 // - Employees: top bar (logo + search, bell, user) + bottom tab bar
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { authStore, useUser, initials, ROLE_LABELS } from '../utils/auth'
 import { useTasks } from '../lib/tasksStore'
+import { useForms } from '../lib/formsStore'
+import { useWorkflows } from '../lib/workflowsStore'
 import { useUnreadCount } from '../lib/notificationsStore'
 import { canManageUsers, canViewReports, canCreateWorkflow, isApprover } from '../utils/permissions'
 
@@ -23,7 +25,8 @@ const NAV_SECTIONS = [
       { key: 'dashboard', label: 'Dashboard',  to: '/dashboard',  icon: IconDashboard },
       { key: 'forms',     label: 'Forms',      to: '/forms',      icon: IconForms },
       { key: 'workflows', label: 'Workflows',  to: '/workflows',  icon: IconWorkflows, visible: canCreateWorkflow },
-      { key: 'routing',   label: 'AI Routing', to: '/approval-routing', icon: IconRouting, visible: canViewReports },
+      // Hidden for now — re-enable to restore the AI Routing nav item.
+      // { key: 'routing',   label: 'AI Routing', to: '/approval-routing', icon: IconRouting, visible: canViewReports },
       { key: 'tasks',     label: 'Tasks',      to: '/tasks',      icon: IconTasks, labelFor: (u) => (isApprover(u) ? 'Tasks' : 'Requests') }
     ]
   },
@@ -221,6 +224,172 @@ function IconDock({ user, pendingCount }) {
   )
 }
 
+// ---------- global search ------------------------------------------------
+
+const TYPE_BADGE = {
+  Request:  'bg-blue-50 text-blue-600',
+  Form:     'bg-emerald-50 text-emerald-600',
+  Workflow: 'bg-violet-50 text-violet-600',
+  Page:     'bg-gray-100 text-gray-500',
+}
+
+// Navigable pages the current user is actually allowed to open.
+function pageResults(user) {
+  return visibleSections(user).flatMap((s) =>
+    s.items.map((it) => ({
+      type: 'Page',
+      id: it.to,
+      label: typeof it.labelFor === 'function' ? it.labelFor(user) : it.label,
+      sub: 'Go to page',
+      to: it.to,
+    }))
+  )
+}
+
+const cleanReqTitle = (s) => (s || '').replace(/\s*—\s*Approval Required\s*$/i, '')
+
+// Works for every role: requests + forms come from endpoints all users can read;
+// workflows are only surfaced to roles that can open the workflows page.
+function GlobalSearch({ user }) {
+  const navigate = useNavigate()
+  const tasks = useTasks()
+  const forms = useForms()
+  const workflows = useWorkflows()
+
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const [activeIdx, setActiveIdx] = useState(0)
+  const inputRef = useRef(null)
+  const boxRef = useRef(null)
+
+  // Ctrl/Cmd+K focuses the search from anywhere in the app.
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        inputRef.current?.focus()
+        setOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // Close the dropdown when clicking outside the search box.
+  useEffect(() => {
+    if (!open) return
+    const onClick = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [open])
+
+  const results = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return []
+    const out = []
+
+    for (const t of tasks) {
+      const title = cleanReqTitle(t.title)
+      if (title.toLowerCase().includes(q) || (t.department || '').toLowerCase().includes(q)) {
+        out.push({ type: 'Request', id: t.id, label: title || 'Request', sub: t.status || t.department || 'Request', to: `/tasks/${t.id}` })
+      }
+    }
+    for (const f of forms) {
+      const name = f.name || f.title || ''
+      if (name.toLowerCase().includes(q) || (f.category || '').toLowerCase().includes(q)) {
+        out.push({ type: 'Form', id: f.id, label: name || 'Form', sub: f.category || 'Form', to: `/forms/${f.id}/fill` })
+      }
+    }
+    if (canCreateWorkflow(user)) {
+      for (const w of workflows) {
+        const name = w.name || w.title || ''
+        if (name.toLowerCase().includes(q) || (w.category || '').toLowerCase().includes(q)) {
+          out.push({ type: 'Workflow', id: w.id, label: name || 'Workflow', sub: w.status || w.category || 'Workflow', to: '/workflows' })
+        }
+      }
+    }
+    for (const p of pageResults(user)) {
+      if (p.label.toLowerCase().includes(q)) out.push(p)
+    }
+
+    const seen = new Set()
+    return out.filter((r) => {
+      const k = `${r.type}:${r.id}`
+      if (seen.has(k)) return false
+      seen.add(k)
+      return true
+    }).slice(0, 12)
+  }, [query, tasks, forms, workflows, user])
+
+  useEffect(() => { setActiveIdx(0) }, [query])
+
+  const go = (r) => {
+    if (!r) return
+    setOpen(false)
+    setQuery('')
+    navigate(r.to)
+  }
+
+  const onKeyDown = (e) => {
+    if (e.key === 'ArrowDown')      { e.preventDefault(); setOpen(true); setActiveIdx((i) => Math.min(i + 1, results.length - 1)) }
+    else if (e.key === 'ArrowUp')   { e.preventDefault(); setActiveIdx((i) => Math.max(i - 1, 0)) }
+    else if (e.key === 'Enter')     { if (results.length) go(results[activeIdx]) }
+    else if (e.key === 'Escape')    { setOpen(false); inputRef.current?.blur() }
+  }
+
+  const showDropdown = open && query.trim().length > 0
+
+  return (
+    <div ref={boxRef} className="flex-1 max-w-2xl relative">
+      <div className="relative">
+        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <circle cx="11" cy="11" r="7" /><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35" />
+        </svg>
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={onKeyDown}
+          placeholder="Search requests, forms, workflows…"
+          className="w-full pl-9 pr-16 py-2 text-sm text-gray-700 border border-gray-200 rounded-lg bg-gray-50 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:bg-white transition"
+        />
+        <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 border border-gray-200 rounded px-1.5 py-0.5 bg-white font-sans pointer-events-none">
+          Ctrl K
+        </kbd>
+      </div>
+
+      {showDropdown && (
+        <div className="absolute left-0 right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-30">
+          {results.length === 0 ? (
+            <div className="px-4 py-6 text-center text-xs text-gray-400">No matches for &ldquo;{query.trim()}&rdquo;</div>
+          ) : (
+            <ul className="max-h-80 overflow-y-auto py-1">
+              {results.map((r, i) => (
+                <li key={`${r.type}:${r.id}`}>
+                  <button
+                    type="button"
+                    onMouseEnter={() => setActiveIdx(i)}
+                    onClick={() => go(r)}
+                    className={`w-full text-left px-3 py-2 flex items-center gap-3 transition ${i === activeIdx ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}
+                  >
+                    <span className={`shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded ${TYPE_BADGE[r.type] || TYPE_BADGE.Page}`}>{r.type}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-xs font-medium text-gray-800 truncate">{r.label}</span>
+                      <span className="block text-[10px] text-gray-400 truncate">{r.sub}</span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ---------- top bar ------------------------------------------------------
 
 function TopBar({ user, unreadCount }) {
@@ -239,22 +408,8 @@ function TopBar({ user, unreadCount }) {
         <span className="font-bold text-gray-900 text-[15px] tracking-tight">NetFlow</span>
       </Link>
 
-      {/* Search bar */}
-      <div className="flex-1 max-w-2xl">
-        <div className="relative">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="7" /><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35" />
-          </svg>
-          <input
-            type="text"
-            placeholder="Search requests, forms, workflows…"
-            className="w-full pl-9 pr-16 py-2 text-sm text-gray-700 border border-gray-200 rounded-lg bg-gray-50 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:bg-white transition"
-          />
-          <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 border border-gray-200 rounded px-1.5 py-0.5 bg-white font-sans pointer-events-none">
-            Ctrl K
-          </kbd>
-        </div>
-      </div>
+      {/* Global search — works for every role */}
+      <GlobalSearch user={user} />
 
       <div className="flex items-center gap-2 ml-auto">
         <button

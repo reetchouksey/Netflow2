@@ -6,7 +6,8 @@ import { authStore, useUser } from './utils/auth'
 import { getToken } from './utils/api'
 import { canCreateWorkflow, canViewReports, canEditWorkflow, canEditForm } from './utils/permissions'
 
-import Register from './pages/Register'
+// Self-registration disabled — admins create users via the Admin Panel.
+// import Register from './pages/Register'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import AdminPanel from './pages/AdminPanel'
@@ -84,7 +85,9 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/register" element={<PublicOnly><Register /></PublicOnly>} />
+        {/* Self-registration disabled — only admins create users via the Admin Panel.
+            /register now falls through to the catch-all below and redirects to /login. */}
+        {/* <Route path="/register" element={<PublicOnly><Register /></PublicOnly>} /> */}
         <Route path="/login"    element={<PublicOnly><Login /></PublicOnly>} />
 
         <Route path="/dashboard"     element={<RequireAuth><Dashboard /></RequireAuth>} />
