@@ -14,12 +14,34 @@ const statusPill = (status) => {
     case 'Approved':  return { label: 'Approved',  cls: 'text-green-600' }
     case 'Rejected':  return { label: 'Rejected',  cls: 'text-red-600' }
     case 'Escalated': return { label: 'Escalated', cls: 'text-orange-600' }
-    default:          return { label: 'Pending',   cls: 'text-orange-500' }
+    default:          return { label: 'Awaiting approval', cls: 'text-blue-600' }
   }
 }
 
+// The submission/request status reflects the WHOLE approval chain, not the
+// single stage being viewed. A request is only "Approved" once EVERY required
+// stage is approved; while any stage is still pending/escalated it's awaiting
+// approval, and any rejection makes the whole request "Rejected".
+const requestStatus = (task) => {
+  const chain = task.approvalChain || []
+  const summary = task.approvalSummary
+
+  // Any rejection (in the chain or on this task) rejects the whole request.
+  if (task.status === 'Rejected' || chain.some((s) => s.status === 'rejected')) return 'Rejected'
+
+  // Prefer the "X of Y approved" summary — the most reliable completeness signal
+  // ("1 of 2 approved" must read as awaiting, not approved).
+  if (summary && Number(summary.required) > 0) {
+    return Number(summary.approved) >= Number(summary.required) ? 'Approved' : 'Pending'
+  }
+
+  // Fallbacks when no summary is attached.
+  if (chain.length > 0) return chain.every((s) => s.status === 'approved') ? 'Approved' : 'Pending'
+  return task.status
+}
+
 function SubmissionDetails({ task }) {
-  const pill = statusPill(task.status)
+  const pill = statusPill(requestStatus(task))
   return (
     <section className="bg-white border border-gray-200 rounded-lg px-6 py-5">
       <div className="flex items-center justify-between mb-4">
@@ -320,6 +342,13 @@ function TaskDetail() {
   const isAssignee = meId && String(task.assignedToId) === meId
   const canAct = isAssignee || APPROVER_ROLES.has(me?.role?.name)
 
+  // Request-level status (the whole chain) drives the requester's summary text.
+  const reqStatus = requestStatus(task)
+  const reqResolved = reqStatus === 'Approved' || reqStatus === 'Rejected'
+  const currentApprover =
+    (task.approvalChain || []).find((s) => s.isCurrent || s.status === 'pending')?.assignee ||
+    task.approver
+
   return (
     <AppShell
       title={pageTitle}
@@ -348,9 +377,9 @@ function TaskDetail() {
             <section className="bg-white border border-gray-200 rounded-lg px-6 py-5 mt-4">
               <h2 className="text-sm font-semibold text-gray-800 mb-1">Your request</h2>
               <p className="text-sm text-gray-500">
-                {task.status === 'Pending'
-                  ? `This request is awaiting approval${task.approver ? ` from ${task.approver}` : ''}. You'll be notified when there's an update.`
-                  : `This request has been ${task.status.toLowerCase()}.`}
+                {reqResolved
+                  ? `This request has been ${reqStatus.toLowerCase()}.`
+                  : `This request is awaiting approval${currentApprover ? ` from ${currentApprover}` : ''}. You'll be notified when there's an update.`}
               </p>
             </section>
           )}

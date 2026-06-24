@@ -17,6 +17,7 @@ export default function WorkflowEditor({
   onDeleteNode,
   onAddConnection,
   onDeleteConnection,
+  readOnly = false,
 }) {
   const containerRef = useRef(null);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -26,6 +27,7 @@ export default function WorkflowEditor({
   const [hoverTargetId, setHoverTargetId] = useState(null);
 
   const handleNodeMouseDown = (e, node) => {
+    if (readOnly) return;
     e.stopPropagation();
     onSelectNode?.(node.id);
     const rect = containerRef.current.getBoundingClientRect();
@@ -37,6 +39,7 @@ export default function WorkflowEditor({
   };
 
   const handleStartConnect = (e, nodeId) => {
+    if (readOnly) return;
     e.stopPropagation();
     e.preventDefault();
     const node = nodes.find((n) => n.id === nodeId);
@@ -98,10 +101,12 @@ export default function WorkflowEditor({
   return (
     <section className="flex-1 min-w-0 bg-gray-50/60 overflow-auto">
       <div className="mx-auto my-6" style={{ width: CANVAS_W }}>
-        <div className="text-xs text-gray-500 mb-2 px-1">
-          Tip: drag from a node’s bottom dot onto another node to connect them.
-          Hover a connection and click to delete it.
-        </div>
+        {!readOnly && (
+          <div className="text-xs text-gray-500 mb-2 px-1">
+            Tip: drag from a node’s bottom dot onto another node to connect them.
+            Hover a connection and click to delete it.
+          </div>
+        )}
         <div
           ref={containerRef}
           className={`relative bg-white border rounded-md transition ${
@@ -115,12 +120,14 @@ export default function WorkflowEditor({
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
           onDragOver={(e) => {
+            if (readOnly) return;
             e.preventDefault();
             e.dataTransfer.dropEffect = "copy";
             setIsDragOver(true);
           }}
           onDragLeave={() => setIsDragOver(false)}
           onDrop={(e) => {
+            if (readOnly) return;
             e.preventDefault();
             setIsDragOver(false);
             const type = e.dataTransfer.getData("application/x-node-type");
@@ -229,22 +236,24 @@ export default function WorkflowEditor({
               }
               return (
                 <g key={idx}>
-                  <path
-                    d={d}
-                    fill="none"
-                    stroke="transparent"
-                    strokeWidth={14}
-                    style={{ pointerEvents: "stroke", cursor: "pointer" }}
-                    onMouseEnter={() => setHoveredConnIdx(idx)}
-                    onMouseLeave={() => setHoveredConnIdx(null)}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDeleteConnection?.(idx);
-                      setHoveredConnIdx(null);
-                    }}
-                  >
-                    <title>Click to delete connection</title>
-                  </path>
+                  {!readOnly && (
+                    <path
+                      d={d}
+                      fill="none"
+                      stroke="transparent"
+                      strokeWidth={14}
+                      style={{ pointerEvents: "stroke", cursor: "pointer" }}
+                      onMouseEnter={() => setHoveredConnIdx(idx)}
+                      onMouseLeave={() => setHoveredConnIdx(null)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteConnection?.(idx);
+                        setHoveredConnIdx(null);
+                      }}
+                    >
+                      <title>Click to delete connection</title>
+                    </path>
+                  )}
 
                   <path
                     d={d}
@@ -281,6 +290,7 @@ export default function WorkflowEditor({
               onMouseDown={(e) => handleNodeMouseDown(e, node)}
               onStartConnect={(e) => handleStartConnect(e, node.id)}
               onDelete={() => onDeleteNode?.(node.id)}
+              readOnly={readOnly}
             />
           ))}
         </div>
@@ -297,43 +307,49 @@ function WorkflowNode({
   onMouseDown,
   onStartConnect,
   onDelete,
+  readOnly = false,
 }) {
   const s = NODE_STYLES[node.type] || NODE_STYLES.start;
+  const cursorCls = readOnly
+    ? "cursor-default"
+    : selected
+    ? `ring-2 ${s.ring} shadow-md cursor-grabbing`
+    : "cursor-grab";
   return (
     <div
-      onMouseDown={onMouseDown}
+      onMouseDown={readOnly ? undefined : onMouseDown}
       onClick={(e) => e.stopPropagation()}
-      className={`group absolute select-none rounded-md border px-3 py-2 text-center shadow-sm transition ${
-        s.card
-      } ${
-        selected
-          ? `ring-2 ${s.ring} shadow-md cursor-grabbing`
-          : "cursor-grab"
-      } ${isPendingTarget ? "ring-2 ring-blue-500/70 shadow-md" : ""}`}
+      className={`group absolute select-none rounded-md border px-3 py-2 text-center shadow-sm transition ${s.card} ${cursorCls} ${
+        !readOnly && isPendingTarget ? "ring-2 ring-blue-500/70 shadow-md" : ""
+      }`}
       style={{ left: node.x, top: node.y, width: NODE_W, height: NODE_H }}
     >
       <div className={`text-[13px] font-semibold ${s.title}`}>{node.title}</div>
       <div className={`text-[11px] mt-0.5 ${s.subtitle}`}>{node.subtitle}</div>
 
-      <div
-        className={`absolute left-1/2 -translate-x-1/2 -top-1.5 w-3 h-3 rounded-full bg-white border-2 transition ${
-          isPendingTarget
-            ? "border-blue-500 scale-125"
-            : "border-gray-300 group-hover:border-gray-500"
-        }`}
-      />
+      {!readOnly && (
+        <div
+          className={`absolute left-1/2 -translate-x-1/2 -top-1.5 w-3 h-3 rounded-full bg-white border-2 transition ${
+            isPendingTarget
+              ? "border-blue-500 scale-125"
+              : "border-gray-300 group-hover:border-gray-500"
+          }`}
+        />
+      )}
 
-      <div
-        onMouseDown={onStartConnect}
-        title="Drag to connect"
-        className={`absolute left-1/2 -translate-x-1/2 -bottom-1.5 w-3 h-3 rounded-full bg-white border-2 transition cursor-crosshair hover:scale-125 hover:bg-blue-50 ${
-          isPendingSource
-            ? "border-blue-500 scale-125 bg-blue-50"
-            : "border-gray-300 hover:border-blue-500"
-        }`}
-      />
+      {!readOnly && (
+        <div
+          onMouseDown={onStartConnect}
+          title="Drag to connect"
+          className={`absolute left-1/2 -translate-x-1/2 -bottom-1.5 w-3 h-3 rounded-full bg-white border-2 transition cursor-crosshair hover:scale-125 hover:bg-blue-50 ${
+            isPendingSource
+              ? "border-blue-500 scale-125 bg-blue-50"
+              : "border-gray-300 hover:border-blue-500"
+          }`}
+        />
+      )}
 
-      {selected && (
+      {!readOnly && selected && (
         <button
           type="button"
           onClick={(e) => {

@@ -603,8 +603,36 @@ function Step3Settings({ data, setData, forms }) {
   )
 }
 
+// Renders one row of node chips joined by arrows. `muted` = smaller styling,
+// used for the rejected-branch sub-lines shown beneath the main flow.
+function PreviewChips({ path, muted = false }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {path.map((n, i) => {
+        const s = NODE_STYLES[n.type] || NODE_STYLES.start
+        return (
+          <React.Fragment key={n.id}>
+            <span
+              className={`rounded-md border font-medium ${s.card} ${s.title} ${
+                muted ? 'px-2.5 py-1 text-xs' : 'px-3 py-1.5 text-sm'
+              }`}
+            >
+              {n.title}
+            </span>
+            {i < path.length - 1 && <span className="text-gray-400">→</span>}
+          </React.Fragment>
+        )
+      })}
+    </div>
+  )
+}
+
 function Step4Review({ data, forms }) {
   const { settings, nodes, connections } = data
+  const { main: mainPath, branches, orphans } = useMemo(
+    () => buildPreviewPaths(nodes, connections),
+    [nodes, connections]
+  )
   const slaPolicy = useMemo(() => {
     const approvals = nodes.filter((n) => n.type === 'approval')
     if (approvals.length === 0) return 'No SLA defined'
@@ -685,23 +713,38 @@ function Step4Review({ data, forms }) {
             {nodes.length} nodes · {connectionsCount} connections
           </span>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {nodes.map((n, i) => {
+        {/* Main (approved) flow rendered inline; each Decision's rejected branch
+            drops straight DOWN from its Decision chip (↓) so the split reads
+            top-to-bottom (e.g. Decision ↓ Notify → End) instead of as a
+            left-side sub-line. */}
+        <div className="flex flex-wrap items-start gap-2">
+          {mainPath.map((n, i) => {
             const s = NODE_STYLES[n.type] || NODE_STYLES.start
+            const branch = branches.find((b) => b[0]?.id === n.id)
             return (
               <React.Fragment key={n.id}>
-                <span className={`px-3 py-1.5 rounded-md border text-sm font-medium ${s.card} ${s.title}`}>
-                  {n.title}
-                </span>
-                {i < nodes.length - 1 && <span className="text-gray-400">→</span>}
+                <div className="flex flex-col items-center gap-1">
+                  <span className={`px-3 py-1.5 rounded-md border text-sm font-medium ${s.card} ${s.title}`}>
+                    {n.title}
+                  </span>
+                  {branch && (
+                    <div className="flex flex-col items-center gap-1 mt-1">
+                      <span className="text-rose-400 leading-none">↓</span>
+                      <span className="text-[10px] font-medium text-rose-500">reject</span>
+                      <PreviewChips path={branch.slice(1)} muted />
+                    </div>
+                  )}
+                </div>
+                {i < mainPath.length - 1 && <span className="text-gray-400 leading-9">→</span>}
               </React.Fragment>
             )
           })}
         </div>
-        {nodes.some((n) => n.type === 'condition') && (
-          <p className="mt-3 text-xs text-gray-500">
-            Rejection path: Decision → Notify rejection (Email + in-app)
-          </p>
+        {orphans.length > 0 && (
+          <div className="mt-3 pl-2">
+            <p className="text-[11px] font-medium text-amber-600 mb-1">Not connected to the flow</p>
+            <PreviewChips path={orphans} muted />
+          </div>
         )}
       </Section>
 
@@ -1029,6 +1072,68 @@ function graphIssues(nodes, connections) {
   }
 
   return issues
+}
+
+// Builds the chip preview as a MAIN path (Start → … → End, following the
+// approved/plain edges) plus one sub-line per Decision's rejected branch
+// (Decision → … → merge node, usually End). A single straight line can't show a
+// branch that splits and re-merges, so the rejected path is rendered beneath the
+// main flow. `orphans` surfaces any node reachable by neither, so nothing hides.
+function buildPreviewPaths(nodes, connections) {
+  const list = nodes || []
+  const byId = new Map(list.map((n) => [n.id, n]))
+  const start = list.find((n) => n.type === 'start') || list[0]
+  if (!start) return { main: list, branches: [], orphans: [] }
+
+  const outBy = new Map()
+  for (const c of connections || []) {
+    if (!outBy.has(c.from)) outBy.set(c.from, [])
+    outBy.get(c.from).push(c)
+  }
+  // Primary edge = the approved branch, else a plain edge, else whatever exists.
+  const primary = (id) => {
+    const e = outBy.get(id) || []
+    return (
+      e.find((c) => c.branch === 'approve') ||
+      e.find((c) => !c.branch && !c.dashed) ||
+      e[0]
+    )
+  }
+
+  // Main line: walk primary edges from Start until End / a repeat / a dead end.
+  const main = []
+  const onMain = new Set()
+  let cur = start.id
+  while (cur && byId.has(cur) && !onMain.has(cur)) {
+    onMain.add(cur)
+    main.push(byId.get(cur))
+    cur = primary(cur)?.to
+  }
+
+  // One sub-line per Decision reject/false branch: Decision → … → (merge node).
+  const branches = []
+  for (const node of main) {
+    if (node.type !== 'condition') continue
+    const rej = (outBy.get(node.id) || []).find((c) => c.branch === 'reject' || c.dashed)
+    if (!rej) continue
+    const line = [node] // include the Decision for context
+    const seen = new Set([node.id])
+    let id = rej.to
+    while (id && byId.has(id) && !seen.has(id)) {
+      seen.add(id)
+      line.push(byId.get(id))
+      if (onMain.has(id)) break // merged back into the main path (e.g. End)
+      id = primary(id)?.to
+    }
+    if (line.length > 1) branches.push(line)
+  }
+
+  // Anything shown in neither the main line nor a branch (truly disconnected).
+  const shown = new Set(onMain)
+  for (const b of branches) for (const n of b) shown.add(n.id)
+  const orphans = list.filter((n) => !shown.has(n.id))
+
+  return { main, branches, orphans }
 }
 
 function serializeNodes(nodes, connections) {
