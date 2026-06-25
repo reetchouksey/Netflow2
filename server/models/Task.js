@@ -14,6 +14,8 @@ const taskSchema = new mongoose.Schema({
   formResponseId: { type: mongoose.Schema.Types.ObjectId, ref: 'FormResponse' },
   title: { type: String, required: true },
   type: { type: String, required: true },
+  // 'approval' = approve/reject task; 'submit' = assignee uploads + submits to advance.
+  actionType: { type: String, enum: ['approval', 'submit'], default: 'approval' },
   status: {
     type: String,
     enum: ['pending', 'approved', 'rejected', 'escalated', 'completed'],
@@ -21,6 +23,15 @@ const taskSchema = new mongoose.Schema({
   },
   dueDate: { type: Date },
   currentNode: { type: String },
+  // Submit-node tasks: instructions shown to the assignee + uploaded document(s).
+  instructions: { type: String },
+  requireAttachment: { type: Boolean, default: false },
+  attachments: [{
+    name: { type: String },
+    url: { type: String },
+    mime: { type: String },
+    size: { type: Number }
+  }],
   approvalType: { type: String, enum: ['sequential', 'parallel'], default: 'sequential' },
   approvalHistory: [{
     action: {

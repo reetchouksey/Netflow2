@@ -31,17 +31,28 @@ const storage = multer.diskStorage({
   }
 })
 
-const upload = multer({
-  storage,
-  limits: { fileSize: 10 * 1024 * 1024 } // 10 MB
-})
+// Global hard ceiling. A form field may request a smaller per-field limit via
+// ?maxMb=, but never more than this, so this single endpoint stays safe no
+// matter what the client sends.
+const MAX_CEILING_MB = 50
 
 // POST /api/uploads  (multipart/form-data, field name "file")
+// Optional ?maxMb=N applies the form field's per-field size limit, clamped to
+// [1, MAX_CEILING_MB]. multer is built per-request so oversize uploads are
+// rejected mid-stream rather than after fully buffering to disk.
 router.post('/', protect, (req, res, next) => {
+  const reqMb = Math.min(
+    Math.max(parseInt(req.query.maxMb, 10) || MAX_CEILING_MB, 1),
+    MAX_CEILING_MB
+  )
+  const upload = multer({ storage, limits: { fileSize: reqMb * 1024 * 1024 } })
   upload.single('file')(req, res, (err) => {
     if (err) {
       const code = err.code === 'LIMIT_FILE_SIZE' ? 'FILE_TOO_LARGE' : 'UPLOAD_FAILED'
-      return sendError(res, err.message || 'Upload failed', code, 400)
+      const msg = err.code === 'LIMIT_FILE_SIZE'
+        ? `File too large. Max ${reqMb} MB.`
+        : (err.message || 'Upload failed')
+      return sendError(res, msg, code, 400)
     }
     if (!req.file) return sendError(res, 'No file provided', 'NO_FILE', 400)
 

@@ -225,7 +225,12 @@ const failExecution = async (execution, reason) => {
 
 // ---------- node handlers ----------
 
-const handleApprovalNode = async (execution, node, workflow) => {
+// Resolves who an approval / submit task should be assigned to. Order: a pinned
+// user (config.approverId) -> dynamic DoA/LLM routing -> semantic tokens
+// (direct_manager / hr_partner / ceo / <dept>_manager) -> plain role-name lookup
+// scoped to the submitter's department. Shared by the approval + submit handlers.
+// Returns { assignedTo, routingReason, routingSla }.
+const resolveAssignee = async (execution, node, workflow) => {
   let assignedTo = node.config?.approverId || null
   const submitter = execution.variables?.submitter || null
   let routingReason = null
@@ -288,6 +293,7 @@ const handleApprovalNode = async (execution, node, workflow) => {
 
   // Pass 2: plain role-name lookup (existing behaviour). Scoped to the
   // submitter's department when one is known, with a relax-and-retry fallback.
+  // Resolves custom roles like "Warehouse Manager" / "Accounts Officer".
   if (!assignedTo && node.config?.approverRole) {
     const roleId = await findRoleIdByName(node.config.approverRole)
     if (roleId) {
@@ -303,6 +309,12 @@ const handleApprovalNode = async (execution, node, workflow) => {
       }
     }
   }
+
+  return { assignedTo, routingReason, routingSla }
+}
+
+const handleApprovalNode = async (execution, node, workflow) => {
+  const { assignedTo, routingReason, routingSla } = await resolveAssignee(execution, node, workflow)
 
   if (!assignedTo) {
     return await failExecution(
@@ -352,6 +364,67 @@ const handleApprovalNode = async (execution, node, workflow) => {
   execution.variables.pendingNodeId = node.id
   if (routingReason) execution.variables.routingReason = routingReason
   // Mongoose Mixed type — tell it the variables object changed so the patch is persisted
+  execution.markModified('variables')
+  await execution.save()
+
+  return { paused: true, taskId: task._id }
+}
+
+// Submit node: like an approval, but the assignee uploads document(s) + a comment
+// and clicks Submit (no approve/reject). Pauses until POST /api/tasks/:id/submit
+// resumes the workflow via advanceWorkflow(taskId, 'submitted').
+const handleSubmitNode = async (execution, node, workflow) => {
+  const { assignedTo, routingReason, routingSla } = await resolveAssignee(execution, node, workflow)
+
+  if (!assignedTo) {
+    return await failExecution(
+      execution,
+      `Submit node "${node.id}" has no resolvable assignee (approverRole="${node.config?.approverRole || ''}")`
+    )
+  }
+
+  const slaHours = routingSla || node.config?.slaHours || 48
+
+  const task = await Task.create({
+    workflowExecutionId: execution._id,
+    workflowId: workflow._id,
+    assignedTo,
+    submittedBy: execution.triggeredBy,
+    formResponseId: execution.formResponseId,
+    title: `${workflow.title} — ${node.label || 'Submission Required'}`,
+    type: workflow.department || 'General',
+    actionType: 'submit',
+    status: 'pending',
+    dueDate: new Date(Date.now() + slaHours * 3600000),
+    currentNode: node.id,
+    instructions: node.config?.instructions || '',
+    requireAttachment: node.config?.requireAttachment !== false
+  })
+
+  createNotification({
+    userId: assignedTo,
+    title: 'New submission task assigned',
+    message: `You have a new task that needs a submission: ${task.title}`,
+    type: 'assignment',
+    taskId: task._id,
+    triggeredBy: execution.triggeredBy
+  })
+
+  const assignee = await User.findById(assignedTo).select('name email').lean()
+  if (assignee?.email) {
+    sendTaskAssignedEmail({
+      to: assignee.email,
+      assigneeName: assignee.name,
+      taskTitle: task.title,
+      submittedBy: 'NetFlow workflow',
+      dueDate: task.dueDate
+    })
+  }
+
+  execution.variables = execution.variables || {}
+  execution.variables.pendingTaskId = task._id.toString()
+  execution.variables.pendingNodeId = node.id
+  if (routingReason) execution.variables.routingReason = routingReason
   execution.markModified('variables')
   await execution.save()
 
@@ -448,6 +521,9 @@ const processNode = async (execution, nodeId, workflow) => {
 
     case 'approval':
       return await handleApprovalNode(execution, node, workflow)
+
+    case 'submit':
+      return await handleSubmitNode(execution, node, workflow)
 
     case 'condition':
       return await handleConditionNode(execution, node, workflow)

@@ -7,7 +7,7 @@ const nodeSchema = new mongoose.Schema({
   id: { type: String, required: true },
   type: {
     type: String,
-    enum: ['start', 'approval', 'condition', 'api', 'notification', 'timer', 'assignment', 'document', 'end'],
+    enum: ['start', 'approval', 'condition', 'api', 'notification', 'timer', 'assignment', 'document', 'submit', 'end'],
     required: true
   },
   label: { type: String },
@@ -28,6 +28,9 @@ const nodeSchema = new mongoose.Schema({
     apiMethod: { type: String },
     assignTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     assignToRole: { type: String },
+    // Submit-node config: instructions for the assignee + whether a file is required.
+    instructions: { type: String },
+    requireAttachment: { type: Boolean, default: true },
     slackWebhookUrl: { type: String }
   },
   nextNode: { type: String },

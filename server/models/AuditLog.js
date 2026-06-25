@@ -11,6 +11,7 @@ const auditLogSchema = new mongoose.Schema({
       'form_deleted',
       'task_approved',
       'task_rejected',
+      'task_submitted',
       'task_escalated',
       'workflow_started',
       'workflow_completed',

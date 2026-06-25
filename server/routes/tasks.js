@@ -334,6 +334,72 @@ router.post('/:id/approve', protect, async (req, res, next) => {
   }
 })
 
+// POST /api/tasks/:id/submit
+// For Submit-node tasks: the assignee uploads document(s) + an optional comment,
+// which advances the workflow (no approve/reject). Mirrors /approve but stores
+// attachments and resumes the engine with outcome 'submitted'.
+router.post('/:id/submit', protect, async (req, res, next) => {
+  try {
+    const { comment, attachments } = req.body || {}
+
+    const task = await Task.findById(req.params.id)
+    if (!task) return sendError(res, 'Task not found', 'TASK_NOT_FOUND', 404)
+    if (task.status !== 'pending') {
+      return sendError(res, `Task is already ${task.status}`, 'INVALID_STATE', 400)
+    }
+
+    const denial = requireApprover(task, req.user)
+    if (denial) return sendError(res, denial, 'FORBIDDEN', 403)
+
+    const files = Array.isArray(attachments) ? attachments.filter((a) => a && a.url) : []
+    if (task.requireAttachment && files.length === 0) {
+      return sendError(res, 'This step requires at least one attachment', 'ATTACHMENT_REQUIRED', 400)
+    }
+
+    task.attachments = files.map((a) => ({
+      name: a.name,
+      url: a.url,
+      mime: a.mime,
+      size: a.size
+    }))
+    task.approvalHistory.push({
+      action: 'submitted',
+      performedBy: req.user._id,
+      performedAt: new Date(),
+      comment: comment || undefined
+    })
+    task.status = 'completed'
+    await task.save()
+
+    tryAdvanceWorkflow(task._id, 'submitted')
+
+    writeAuditLog({
+      action: 'task_submitted',
+      performedBy: req.user._id,
+      targetEntity: `Task: ${task.title}`,
+      department: req.user.department,
+      ipAddress: req.ip,
+      detail: `${req.user.name} submitted "${task.title}"`,
+      metadata: { taskId: task._id, attachments: files.length, comment: comment || null }
+    })
+
+    if (task.submittedBy && !sameId(task.submittedBy, req.user._id)) {
+      createNotification({
+        userId: task.submittedBy,
+        title: 'Request updated',
+        message: `"${task.title}" has been submitted and moved to the next step.`,
+        type: 'assignment',
+        taskId: task._id,
+        triggeredBy: req.user._id
+      })
+    }
+
+    return sendSuccess(res, { task: task.toObject() })
+  } catch (err) {
+    next(err)
+  }
+})
+
 // POST /api/tasks/:id/reject
 router.post('/:id/reject', protect, async (req, res, next) => {
   try {
