@@ -7,6 +7,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import { api, toAbsoluteUrl } from '../utils/api'
 import { formsStore } from '../lib/formsStore'
+import { fieldMaxMb, MAX_UPLOAD_MB } from '../utils/uploads'
 
 const inputCls =
   'w-full px-3 py-2 text-sm rounded-md border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition'
@@ -16,17 +17,25 @@ const inputErrorCls =
 
 // Uploads the chosen file to /api/uploads and stores { name, url, mime, size }
 // as the field value, so the approver can later open the actual attachment.
-function FileField({ value, onChange }) {
+function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB }) {
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
+    // Block oversize files up front so the user gets instant feedback instead
+    // of waiting for the server to reject the upload.
+    if (file.size > maxMb * 1024 * 1024) {
+      setUploadError(`File is too large. Max ${maxMb} MB.`)
+      onChange('')
+      e.target.value = ''
+      return
+    }
     setUploading(true)
     setUploadError('')
     try {
-      const { file: saved } = await api.upload(file)
+      const { file: saved } = await api.upload(file, maxMb)
       onChange(saved)
     } catch (err) {
       setUploadError(err.message || 'Upload failed')
@@ -46,6 +55,7 @@ function FileField({ value, onChange }) {
         disabled={uploading}
         className="block w-full text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 disabled:opacity-60"
       />
+      {!uploading && !uploadError && <p className="mt-1 text-xs text-gray-400">Max {maxMb} MB</p>}
       {uploading && <p className="mt-1 text-xs text-gray-500">Uploading…</p>}
       {uploadError && <p className="mt-1 text-xs text-red-600">{uploadError}</p>}
       {current && !uploading && (
@@ -120,7 +130,7 @@ function FieldRow({ field, value, onChange, error }) {
           />
         )
       case 'file':
-        return <FileField value={value} onChange={onChange} />
+        return <FileField value={value} onChange={onChange} maxMb={fieldMaxMb(field)} />
 
       case 'repeater':
         return (

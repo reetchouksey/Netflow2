@@ -74,6 +74,12 @@ export const tasksStore = {
     await api.post(`/api/tasks/${id}/request-changes`, { comment })
     return fetchOne(id)
   },
+  // Submit-node tasks: send uploaded attachments + an optional comment, which
+  // advances the workflow. `attachments` is an array of { name, url, mime, size }.
+  async submit(id, { comment = '', attachments = [] } = {}) {
+    await api.post(`/api/tasks/${id}/submit`, { comment, attachments })
+    return fetchOne(id)
+  },
   clear() {
     cache = []
     cacheById = new Map()

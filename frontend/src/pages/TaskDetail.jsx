@@ -5,7 +5,8 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import { tasksStore, useTask } from '../lib/tasksStore'
 import { useUser } from '../utils/auth'
-import { toAbsoluteUrl } from '../utils/api'
+import { api, toAbsoluteUrl } from '../utils/api'
+import { MAX_UPLOAD_MB } from '../utils/uploads'
 
 const APPROVER_ROLES = new Set(['Admin', 'CEO', 'Manager', 'HR', 'VP'])
 
@@ -139,6 +140,156 @@ function ApprovalActions({ task, onAction, commentRef, busy, error }) {
           This task is {task.status.toLowerCase()} — no further action needed.
         </p>
       )}
+    </section>
+  )
+}
+
+// Submit-node action panel: the assignee uploads document(s) + an optional
+// comment and clicks Submit, which advances the workflow (no approve/reject).
+function SubmitActions({ task, onSubmitted }) {
+  const [comment, setComment] = useState('')
+  const [attachments, setAttachments] = useState([])
+  const [uploading, setUploading] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const isResolved = task.status !== 'Pending'
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setError('')
+    if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+      setError(`File too large. Max ${MAX_UPLOAD_MB} MB.`)
+      e.target.value = ''
+      return
+    }
+    setUploading(true)
+    try {
+      const { file: meta } = await api.upload(file, MAX_UPLOAD_MB)
+      setAttachments((prev) => [
+        ...prev,
+        { name: meta.name, url: meta.url, mime: meta.mime, size: meta.size }
+      ])
+    } catch (err) {
+      setError(err.message || 'Upload failed')
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
+  }
+
+  const doSubmit = async () => {
+    setError('')
+    if (task.requireAttachment && attachments.length === 0) {
+      setError('Please attach at least one file before submitting.')
+      return
+    }
+    setBusy(true)
+    try {
+      await tasksStore.submit(task.id, { comment, attachments })
+      onSubmitted?.()
+    } catch (err) {
+      setError(err.message || 'Submit failed')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="bg-white border border-gray-200 rounded-lg px-6 py-5 mt-4">
+      <h2 className="text-sm font-semibold text-gray-800 mb-1">Submit this step</h2>
+      <p className="text-sm text-gray-600 mb-3">
+        {task.instructions
+          ? task.instructions
+          : `Upload the required document${task.requireAttachment ? '' : '(s)'} and submit to advance the workflow.`}
+      </p>
+
+      {attachments.length > 0 && (
+        <ul className="mb-3 space-y-1.5">
+          {attachments.map((a, i) => (
+            <li
+              key={`${a.url}-${i}`}
+              className="flex items-center justify-between gap-2 text-sm bg-gray-50 border border-gray-200 rounded-md px-3 py-2"
+            >
+              <span className="truncate text-gray-700">{a.name}</span>
+              <button
+                type="button"
+                onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
+                disabled={isResolved || busy}
+                className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <label className="flex items-center gap-3 mb-3">
+        <span className="px-3 py-2 rounded-md border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 cursor-pointer">
+          {uploading ? 'Uploading…' : 'Choose file'}
+        </span>
+        <input
+          type="file"
+          onChange={handleFile}
+          disabled={isResolved || uploading || busy}
+          className="hidden"
+        />
+        <span className="text-[11px] text-gray-400">Max {MAX_UPLOAD_MB} MB per file</span>
+      </label>
+
+      <textarea
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        placeholder="Optional comment..."
+        rows={2}
+        disabled={isResolved || busy}
+        className="w-full px-3 py-2 text-sm rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition resize-none disabled:bg-gray-50 disabled:text-gray-400"
+      />
+
+      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+
+      <button
+        type="button"
+        disabled={isResolved || busy || uploading}
+        onClick={doSubmit}
+        className="mt-3 w-full px-4 py-2 rounded-md border border-teal-200 bg-teal-50/60 text-teal-700 hover:bg-teal-50 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {busy ? 'Submitting…' : 'Submit'}
+      </button>
+
+      {isResolved && (
+        <p className="mt-3 text-xs text-gray-400">
+          This step has been submitted — no further action needed.
+        </p>
+      )}
+    </section>
+  )
+}
+
+// Read-only list of files attached to a submit task (visible to everyone once
+// the assignee has submitted).
+function SubmittedFiles({ task }) {
+  if (!task.attachments || task.attachments.length === 0) return null
+  return (
+    <section className="bg-white border border-gray-200 rounded-lg px-6 py-5 mt-4">
+      <h2 className="text-sm font-semibold text-gray-800 mb-3">Submitted files</h2>
+      <ul className="space-y-2">
+        {task.attachments.map((a, i) => (
+          <li key={`${a.url}-${i}`}>
+            <a
+              href={toAbsoluteUrl(a.url)}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-700 underline"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+              </svg>
+              {a.name || 'Attachment'}
+            </a>
+          </li>
+        ))}
+      </ul>
     </section>
   )
 }
@@ -366,13 +517,20 @@ function TaskDetail() {
         <div className="lg:col-span-2 space-y-0">
           <SubmissionDetails task={task} />
           {canAct ? (
-            <ApprovalActions
-              task={task}
-              onAction={handleAction}
-              commentRef={commentRef}
-              busy={busy}
-              error={error}
-            />
+            task.actionType === 'submit' ? (
+              <SubmitActions
+                task={task}
+                onSubmitted={() => setTimeout(() => navigate('/tasks'), 600)}
+              />
+            ) : (
+              <ApprovalActions
+                task={task}
+                onAction={handleAction}
+                commentRef={commentRef}
+                busy={busy}
+                error={error}
+              />
+            )
           ) : (
             <section className="bg-white border border-gray-200 rounded-lg px-6 py-5 mt-4">
               <h2 className="text-sm font-semibold text-gray-800 mb-1">Your request</h2>
@@ -383,6 +541,7 @@ function TaskDetail() {
               </p>
             </section>
           )}
+          <SubmittedFiles task={task} />
         </div>
 
         <aside className="space-y-4">

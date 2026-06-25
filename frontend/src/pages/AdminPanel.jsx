@@ -804,7 +804,7 @@ function AdminPanel() {
                 <th className="px-5 py-3">User</th>
                 <th className="px-5 py-3">Role</th>
                 <th className="px-5 py-3">Status</th>
-                <th className="px-5 py-3">Last login</th>
+                <th className="px-5 py-3">Department</th>
                 <th className="px-5 py-3 text-right">Actions</th>
               </tr>
             </thead>
@@ -860,7 +860,7 @@ function AdminPanel() {
                       </span>
                     </td>
                     <td className="px-5 py-4 text-xs text-gray-500">
-                      {u.lastLogin ? new Date(u.lastLogin).toLocaleDateString() : '—'}
+                      {u.department}
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center justify-end gap-2">

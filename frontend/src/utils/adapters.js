@@ -138,6 +138,13 @@ export const adaptTask = (apiTask) => {
     id: apiTask._id,
     title: apiTask.title,
     subject: apiTask.title,
+    // 'submit' tasks ask the assignee to upload a file + comment (no approve/reject).
+    actionType: apiTask.actionType || 'approval',
+    instructions: apiTask.instructions || '',
+    requireAttachment: !!apiTask.requireAttachment,
+    attachments: Array.isArray(apiTask.attachments)
+      ? apiTask.attachments.map((a) => ({ name: a.name, url: a.url, mime: a.mime, size: a.size }))
+      : [],
     detail: apiTask.type || apiTask.workflowId?.title || 'General',
     requester: submitter,
     approver,

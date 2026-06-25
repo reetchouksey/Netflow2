@@ -15,6 +15,14 @@ export const NODE_STYLES = {
     subtitle: "text-blue-700/70",
     ring: "ring-blue-500/60",
   },
+  submit: {
+    label: "Submit",
+    chip: "bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100",
+    card: "bg-teal-50/70 border-teal-300",
+    title: "text-teal-700",
+    subtitle: "text-teal-700/70",
+    ring: "ring-teal-500/60",
+  },
   condition: {
     label: "Condition",
     chip: "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100",
@@ -52,6 +60,7 @@ export const NODE_STYLES = {
 export const NODE_TYPE_ORDER = [
   "start",
   "approval",
+  "submit",
   "condition",
   "notify",
   "timer",
@@ -69,6 +78,16 @@ export const NODE_DEFAULTS = {
     slaUnit: "Hours",
     onBreach: "Escalate to admin",
     sequential: false,
+  },
+  submit: {
+    title: "Submit",
+    subtitle: "Upload & submit",
+    approverRole: "direct_manager",
+    approverId: null,
+    instructions: "",
+    requireAttachment: true,
+    slaValue: 24,
+    slaUnit: "Hours",
   },
   condition: {
     title: "Decision",

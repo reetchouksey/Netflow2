@@ -101,10 +101,13 @@ export const api = {
   patch:  (e, body, opts) => request('PATCH', e, body, opts),
   delete: (e, opts)      => request('DELETE', e, undefined, opts),
   // Multipart upload. Returns { file: { name, url, mime, size } }.
-  upload: (file, opts) => {
+  // `maxMb` (optional) is forwarded so the server can enforce the field's
+  // per-field size limit (capped server-side at the global ceiling).
+  upload: (file, maxMb, opts) => {
     const fd = new FormData()
     fd.append('file', file)
-    return request('POST', '/api/uploads', fd, opts)
+    const q = maxMb ? `?maxMb=${encodeURIComponent(maxMb)}` : ''
+    return request('POST', `/api/uploads${q}`, fd, opts)
   }
 }
 

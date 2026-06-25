@@ -23,6 +23,12 @@ const ROLE_APPROVERS = [
   { value: "operations_manager", label: "Operations Manager",    hint: "Manager in Operations department" },
   { value: "sales_manager",   label: "Sales Manager",            hint: "Manager in Sales department" },
   { value: "legal_manager",   label: "Legal Manager",            hint: "Manager in Legal department" },
+  // Custom roles — resolved by exact Role name via the engine's role-name pass.
+  { value: "Warehouse Manager", label: "Warehouse Manager",      hint: "Any active user with the Warehouse Manager role" },
+  { value: "Accounts Officer",  label: "Accounts Officer",       hint: "Any active user with the Accounts Officer role" },
+  { value: "Brand Rep",         label: "Brand Rep",              hint: "Any active user with the Brand Rep role" },
+  { value: "Finance Approver",  label: "Finance Approver",       hint: "Any active user with the Finance Approver role" },
+  { value: "Receiving Staff",   label: "Receiving Staff",        hint: "Any active user with the Receiving Staff role" },
 ];
 
 const roleApproverByValue = (v) => ROLE_APPROVERS.find((r) => r.value === v);
@@ -81,6 +87,10 @@ export default function NodeConfig({
 
       {node.type === "approval" && (
         <ApprovalConfig node={node} update={update} />
+      )}
+
+      {node.type === "submit" && (
+        <SubmitConfig node={node} update={update} />
       )}
 
       {node.type === "condition" && (
@@ -304,6 +314,95 @@ function ApprovalConfig({ node, update }) {
         onChange={(v) => update({ sequential: v })}
         label="Sequential approval"
       />
+    </>
+  );
+}
+
+function SubmitConfig({ node, update }) {
+  // The Submit node assigns a task to a person/role who must upload a file +
+  // optional comment and click Submit to advance the flow (e.g. Accounts
+  // generating a Costing). The assignee resolves like an approver at runtime.
+  const setRoleMode = (value) =>
+    update({ approverRole: value, approverId: null });
+
+  const legacyToken = node.approver
+    ? String(node.approver).toLowerCase().replace(/\s+/g, "_")
+    : null;
+  const currentRoleValue =
+    node.approverRole ||
+    (legacyToken && roleApproverByValue(legacyToken)?.value) ||
+    "direct_manager";
+
+  const roleHint = roleApproverByValue(currentRoleValue)?.hint;
+
+  useEffect(() => {
+    if (node.approverId || (!node.approverRole && legacyToken)) {
+      update({ approverRole: currentRoleValue, approverId: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [node.id]);
+
+  return (
+    <>
+      <Field label="Assign to">
+        <select
+          value={currentRoleValue}
+          onChange={(e) => setRoleMode(e.target.value)}
+          className={inputCls}
+        >
+          {ROLE_APPROVERS.map((r) => (
+            <option key={r.value} value={r.value}>{r.label}</option>
+          ))}
+        </select>
+        {roleHint && (
+          <p className="mt-1 text-[11px] text-gray-500">{roleHint}</p>
+        )}
+        <p className="mt-1.5 text-[11px] text-gray-400">
+          This person uploads a file + comment and clicks Submit to advance the workflow.
+        </p>
+      </Field>
+
+      <Field label="Instructions">
+        <textarea
+          rows={3}
+          value={node.instructions || ""}
+          onChange={(e) => update({ instructions: e.target.value })}
+          placeholder="e.g. Generate the Costing sheet and attach it as a PDF."
+          className={`${inputCls} resize-none`}
+        />
+      </Field>
+
+      <div className="mb-4">
+        <Checkbox
+          checked={node.requireAttachment !== false}
+          onChange={(v) => update({ requireAttachment: v })}
+          label="Require a file attachment"
+        />
+        <p className="mt-1 ml-6 text-[11px] text-gray-400">
+          When on, the assignee can't submit without uploading at least one file.
+        </p>
+      </div>
+
+      <Field label="SLA deadline">
+        <div className="flex gap-2">
+          <input
+            type="number"
+            min={1}
+            value={node.slaValue ?? 24}
+            onChange={(e) => update({ slaValue: Number(e.target.value) })}
+            className={`${inputCls} w-20`}
+          />
+          <select
+            value={node.slaUnit || "Hours"}
+            onChange={(e) => update({ slaUnit: e.target.value })}
+            className={`${inputCls} flex-1`}
+          >
+            {SLA_UNITS.map((u) => (
+              <option key={u}>{u}</option>
+            ))}
+          </select>
+        </div>
+      </Field>
     </>
   );
 }

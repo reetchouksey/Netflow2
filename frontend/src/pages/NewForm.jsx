@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { formsStore, FORM_CATEGORIES } from '../lib/formsStore'
 import { api } from '../utils/api'
+import { fieldMaxMb, MAX_UPLOAD_MB } from '../utils/uploads'
 
 const FIELD_TYPES = [
   {
@@ -22,7 +23,7 @@ const FIELD_TYPES = [
   {
     type: 'file',
     label: 'File upload',
-    defaults: { label: 'Upload file', required: false, fileTypes: 'PDF / DOCX', maxSize: '5MB' },
+    defaults: { label: 'Upload file', required: false, fileTypes: 'PDF / DOCX', maxSize: 5 },
   },
   {
     type: 'checkbox',
@@ -52,7 +53,7 @@ const seededFields = () => [
   { id: newFieldId(), type: 'date', label: 'Start date', required: true },
   { id: newFieldId(), type: 'date', label: 'End date', required: true },
   { id: newFieldId(), type: 'text', label: 'Reason', placeholder: 'Briefly explain', required: false, multiline: true, maxLength: 300 },
-  { id: newFieldId(), type: 'file', label: 'Attach document', required: true, fileTypes: 'PDF / DOCX', maxSize: '5MB' },
+  { id: newFieldId(), type: 'file', label: 'Attach document', required: true, fileTypes: 'PDF / DOCX', maxSize: 5 },
 ]
 
 const subtitleFor = (f) => {
@@ -67,7 +68,7 @@ const subtitleFor = (f) => {
     case 'date':
       return `Date picker · ${req}`
     case 'file':
-      return `File upload · ${f.fileTypes || 'Any file'} up to ${f.maxSize || '5MB'}`
+      return `File upload · ${f.fileTypes || 'Any file'} up to ${fieldMaxMb(f)} MB`
     case 'checkbox':
       return `Checkbox · ${req}`
     case 'signature':
@@ -345,14 +346,17 @@ function FieldSettings({ field, onChange, onDelete }) {
             />
           </div>
           <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Max size</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Max size (MB)</label>
             <input
-              type="text"
-              value={field.maxSize || ''}
-              placeholder="e.g. 5MB"
-              onChange={(e) => update({ maxSize: e.target.value })}
+              type="number"
+              min={1}
+              max={MAX_UPLOAD_MB}
+              value={field.maxSize ?? ''}
+              placeholder="e.g. 25"
+              onChange={(e) => update({ maxSize: Number(e.target.value) || '' })}
               className={inputCls}
             />
+            <p className="mt-1 text-[11px] text-gray-400">Up to {MAX_UPLOAD_MB} MB per file.</p>
           </div>
         </>
       )}
@@ -506,7 +510,7 @@ function PreviewField({ field }) {
         <div>
           {label}
           <input type="file" className="block w-full text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
-          <p className="mt-1 text-xs text-gray-400">{field.fileTypes || 'Any file'} up to {field.maxSize || '5MB'}</p>
+          <p className="mt-1 text-xs text-gray-400">{field.fileTypes || 'Any file'} up to {fieldMaxMb(field)} MB</p>
         </div>
       )
     case 'number':

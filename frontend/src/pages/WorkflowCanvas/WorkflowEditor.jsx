@@ -1,11 +1,20 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NODE_STYLES } from "./nodeStyles";
 
 export const NODE_W = 160;
 export const NODE_H = 60;
 
-const CANVAS_W = 760;
-const CANVAS_H = 540;
+// The nodes live in a large logical "world". The viewport (the visible box) is
+// much smaller — users zoom + pan to navigate big graphs (20+ nodes) instead of
+// being clamped to a tiny fixed canvas.
+const WORLD_W = 2400;
+const WORLD_H = 4000;
+const MIN_SCALE = 0.2;
+const MAX_SCALE = 2;
+const clampScale = (s) => Math.max(MIN_SCALE, Math.min(MAX_SCALE, s));
+
+const zoomBtnCls =
+  "w-7 h-7 inline-flex items-center justify-center rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-900 text-sm font-semibold transition";
 
 export default function WorkflowEditor({
   nodes,
@@ -26,16 +35,87 @@ export default function WorkflowEditor({
   const [hoveredConnIdx, setHoveredConnIdx] = useState(null);
   const [hoverTargetId, setHoverTargetId] = useState(null);
 
+  // view = pan offset (x, y in screen px) + zoom (scale). Kept as one object so
+  // wheel/zoom updates stay internally consistent under rapid events.
+  const [view, setView] = useState({ scale: 1, x: 24, y: 24 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panRef = useRef(null); // { lastX, lastY } while panning
+  const didPanRef = useRef(false); // suppress the deselect-click after a pan
+
+  // Convert pointer (client) coordinates into world coordinates.
+  const toWorld = (clientX, clientY) => {
+    const rect = containerRef.current.getBoundingClientRect();
+    return {
+      x: (clientX - rect.left - view.x) / view.scale,
+      y: (clientY - rect.top - view.y) / view.scale,
+    };
+  };
+
+  // Wheel-to-zoom, focused on the cursor. Registered natively (passive:false)
+  // so we can preventDefault and stop the page from scrolling.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return undefined;
+    const onWheel = (e) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const fx = e.clientX - rect.left;
+      const fy = e.clientY - rect.top;
+      const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+      setView((v) => {
+        const next = clampScale(v.scale * factor);
+        const k = next / v.scale;
+        return { scale: next, x: fx - (fx - v.x) * k, y: fy - (fy - v.y) * k };
+      });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  const zoomAtCenter = (factor) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    const fx = rect ? rect.width / 2 : 0;
+    const fy = rect ? rect.height / 2 : 0;
+    setView((v) => {
+      const next = clampScale(v.scale * factor);
+      const k = next / v.scale;
+      return { scale: next, x: fx - (fx - v.x) * k, y: fy - (fy - v.y) * k };
+    });
+  };
+
+  const resetView = () => setView({ scale: 1, x: 24, y: 24 });
+
+  // Zoom + center so every node fits within the viewport.
+  const fitView = () => {
+    const el = containerRef.current;
+    if (!el || nodes.length === 0) {
+      resetView();
+      return;
+    }
+    const rect = el.getBoundingClientRect();
+    const pad = 48;
+    const minX = Math.min(...nodes.map((n) => n.x));
+    const minY = Math.min(...nodes.map((n) => n.y));
+    const maxX = Math.max(...nodes.map((n) => n.x + NODE_W));
+    const maxY = Math.max(...nodes.map((n) => n.y + NODE_H));
+    const w = Math.max(1, maxX - minX);
+    const h = Math.max(1, maxY - minY);
+    const scale = clampScale(
+      Math.min((rect.width - pad * 2) / w, (rect.height - pad * 2) / h)
+    );
+    setView({
+      scale,
+      x: (rect.width - w * scale) / 2 - minX * scale,
+      y: (rect.height - h * scale) / 2 - minY * scale,
+    });
+  };
+
   const handleNodeMouseDown = (e, node) => {
     if (readOnly) return;
     e.stopPropagation();
     onSelectNode?.(node.id);
-    const rect = containerRef.current.getBoundingClientRect();
-    setDragState({
-      id: node.id,
-      offsetX: e.clientX - rect.left - node.x,
-      offsetY: e.clientY - rect.top - node.y,
-    });
+    const w = toWorld(e.clientX, e.clientY);
+    setDragState({ id: node.id, offsetX: w.x - node.x, offsetY: w.y - node.y });
   };
 
   const handleStartConnect = (e, nodeId) => {
@@ -44,47 +124,54 @@ export default function WorkflowEditor({
     e.preventDefault();
     const node = nodes.find((n) => n.id === nodeId);
     if (!node) return;
-    const rect = containerRef.current.getBoundingClientRect();
+    const w = toWorld(e.clientX, e.clientY);
     setPendingConn({
       fromId: nodeId,
       startX: node.x + NODE_W / 2,
       startY: node.y + NODE_H,
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
+      x: w.x,
+      y: w.y,
     });
   };
 
+  // Mousedown on empty canvas -> begin panning. Nodes and connection dots call
+  // stopPropagation, so this only fires for the background.
+  const handleBackgroundMouseDown = (e) => {
+    if (dragState || pendingConn) return;
+    panRef.current = { lastX: e.clientX, lastY: e.clientY };
+    didPanRef.current = false;
+    setIsPanning(true);
+  };
+
   const handleMouseMove = (e) => {
-    const rect = containerRef.current.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-
     if (dragState) {
-      const x = Math.max(
-        0,
-        Math.min(CANVAS_W - NODE_W, mx - dragState.offsetX)
-      );
-      const y = Math.max(
-        0,
-        Math.min(CANVAS_H - NODE_H, my - dragState.offsetY)
-      );
+      const w = toWorld(e.clientX, e.clientY);
+      const x = Math.max(0, Math.min(WORLD_W - NODE_W, w.x - dragState.offsetX));
+      const y = Math.max(0, Math.min(WORLD_H - NODE_H, w.y - dragState.offsetY));
       onMoveNode?.(dragState.id, x, y);
+      return;
     }
-
     if (pendingConn) {
-      setPendingConn((prev) => ({ ...prev, x: mx, y: my }));
-      const target = nodeAt(mx, my, nodes, pendingConn.fromId);
+      const w = toWorld(e.clientX, e.clientY);
+      setPendingConn((prev) => ({ ...prev, x: w.x, y: w.y }));
+      const target = nodeAt(w.x, w.y, nodes, pendingConn.fromId);
       setHoverTargetId(target?.id || null);
+      return;
+    }
+    if (panRef.current) {
+      const dx = e.clientX - panRef.current.lastX;
+      const dy = e.clientY - panRef.current.lastY;
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) didPanRef.current = true;
+      panRef.current = { lastX: e.clientX, lastY: e.clientY };
+      setView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
     }
   };
 
-  const handleMouseUp = (e) => {
+  const endInteractions = (e) => {
     if (dragState) setDragState(null);
     if (pendingConn) {
-      const rect = containerRef.current.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
-      const target = nodeAt(mx, my, nodes, pendingConn.fromId);
+      const w = toWorld(e.clientX, e.clientY);
+      const target = nodeAt(w.x, w.y, nodes, pendingConn.fromId);
       if (target) {
         const exists = connections.some(
           (c) => c.from === pendingConn.fromId && c.to === target.id
@@ -96,60 +183,111 @@ export default function WorkflowEditor({
       setPendingConn(null);
       setHoverTargetId(null);
     }
+    if (panRef.current) {
+      panRef.current = null;
+      setIsPanning(false);
+    }
+  };
+
+  const handleBackgroundClick = () => {
+    // A drag-pan also fires a click on mouseup — don't let it deselect.
+    if (didPanRef.current) {
+      didPanRef.current = false;
+      return;
+    }
+    onSelectNode?.(null);
   };
 
   return (
-    <section className="flex-1 min-w-0 bg-gray-50/60 overflow-auto">
-      <div className="mx-auto my-6" style={{ width: CANVAS_W }}>
-        {!readOnly && (
-          <div className="text-xs text-gray-500 mb-2 px-1">
-            Tip: drag from a node’s bottom dot onto another node to connect them.
-            Hover a connection and click to delete it.
-          </div>
+    <section className="flex-1 min-w-0 bg-gray-50/60 flex flex-col">
+      <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-gray-200 bg-white">
+        {!readOnly ? (
+          <p className="text-[11px] text-gray-500 leading-tight">
+            Tip: drag a node’s bottom dot onto another to connect. Scroll to
+            zoom, drag empty space to pan.
+          </p>
+        ) : (
+          <span />
         )}
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => zoomAtCenter(1 / 1.2)}
+            className={zoomBtnCls}
+            title="Zoom out"
+          >
+            −
+          </button>
+          <button
+            type="button"
+            onClick={resetView}
+            className="h-7 min-w-[3.25rem] px-2 inline-flex items-center justify-center rounded-md border border-gray-200 bg-white text-[11px] font-medium text-gray-600 hover:bg-gray-50 transition"
+            title="Reset zoom to 100%"
+          >
+            {Math.round(view.scale * 100)}%
+          </button>
+          <button
+            type="button"
+            onClick={() => zoomAtCenter(1.2)}
+            className={zoomBtnCls}
+            title="Zoom in"
+          >
+            +
+          </button>
+          <button
+            type="button"
+            onClick={fitView}
+            className="ml-1 h-7 px-2.5 inline-flex items-center justify-center rounded-md border border-gray-200 bg-white text-[11px] font-medium text-gray-700 hover:bg-gray-50 transition"
+            title="Fit all nodes in view"
+          >
+            Fit
+          </button>
+        </div>
+      </div>
+
+      <div
+        ref={containerRef}
+        className={`relative flex-1 min-h-0 overflow-hidden ${
+          isPanning ? "cursor-grabbing" : "cursor-grab"
+        } ${isDragOver ? "ring-2 ring-inset ring-blue-300" : ""}`}
+        onMouseDown={handleBackgroundMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={endInteractions}
+        onMouseLeave={endInteractions}
+        onClick={handleBackgroundClick}
+        onDragOver={(e) => {
+          if (readOnly) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+          setIsDragOver(true);
+        }}
+        onDragLeave={() => setIsDragOver(false)}
+        onDrop={(e) => {
+          if (readOnly) return;
+          e.preventDefault();
+          setIsDragOver(false);
+          const type = e.dataTransfer.getData("application/x-node-type");
+          if (!type) return;
+          const w = toWorld(e.clientX, e.clientY);
+          const x = Math.max(0, Math.min(WORLD_W - NODE_W, w.x - NODE_W / 2));
+          const y = Math.max(0, Math.min(WORLD_H - NODE_H, w.y - NODE_H / 2));
+          onDropNewNode?.(type, x, y);
+        }}
+      >
         <div
-          ref={containerRef}
-          className={`relative bg-white border rounded-md transition ${
-            isDragOver
-              ? "border-blue-400 ring-2 ring-blue-300"
-              : "border-gray-200"
-          }`}
-          style={{ width: CANVAS_W, height: CANVAS_H }}
-          onClick={() => onSelectNode?.(null)}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-          onDragOver={(e) => {
-            if (readOnly) return;
-            e.preventDefault();
-            e.dataTransfer.dropEffect = "copy";
-            setIsDragOver(true);
-          }}
-          onDragLeave={() => setIsDragOver(false)}
-          onDrop={(e) => {
-            if (readOnly) return;
-            e.preventDefault();
-            setIsDragOver(false);
-            const type = e.dataTransfer.getData("application/x-node-type");
-            if (!type) return;
-            const rect = containerRef.current.getBoundingClientRect();
-            const x = Math.max(
-              0,
-              Math.min(CANVAS_W - NODE_W, e.clientX - rect.left - NODE_W / 2)
-            );
-            const y = Math.max(
-              0,
-              Math.min(CANVAS_H - NODE_H, e.clientY - rect.top - NODE_H / 2)
-            );
-            onDropNewNode?.(type, x, y);
+          className="absolute top-0 left-0 origin-top-left"
+          style={{
+            width: WORLD_W,
+            height: WORLD_H,
+            transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
           }}
         >
           <DottedBackground />
 
           <svg
             className="absolute inset-0"
-            width={CANVAS_W}
-            height={CANVAS_H}
+            width={WORLD_W}
+            height={WORLD_H}
             style={{ pointerEvents: "none" }}
           >
             <defs>
@@ -260,7 +398,9 @@ export default function WorkflowEditor({
                     fill="none"
                     stroke={strokeColor}
                     strokeWidth={isHovered ? 2 : 1.6}
-                    strokeDasharray={c.dashed || c.branch === "reject" ? "5 4" : undefined}
+                    strokeDasharray={
+                      c.dashed || c.branch === "reject" ? "5 4" : undefined
+                    }
                     markerEnd={marker}
                     style={{ pointerEvents: "none" }}
                   />
@@ -369,7 +509,7 @@ function WorkflowNode({
 function DottedBackground() {
   return (
     <svg
-      className="absolute inset-0 opacity-60"
+      className="absolute inset-0"
       width="100%"
       height="100%"
       style={{ pointerEvents: "none" }}

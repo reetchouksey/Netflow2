@@ -327,7 +327,9 @@ function Step2Builder({ data, setData }) {
     setData((d) => {
       const tail = pickTailNode(d.nodes, d.selectedNodeId)
       const x = tail ? tail.x : 300
-      const y = tail ? Math.min(tail.y + 110, 470) : 40
+      // Flow new nodes straight down. The canvas is a large pannable world now,
+      // so we only cap near the world's bottom (use Fit/zoom to see them all).
+      const y = tail ? Math.min(tail.y + 110, 3900) : 40
       const node = { id, type, x, y, ...def }
 
       // Skip auto-connect if the tail already has an outgoing edge to avoid
@@ -654,8 +656,8 @@ function Step4Review({ data, forms }) {
   const checklist = [
     { label: 'Linked form is selected and published', ok: !!settings.linkedFormId },
     {
-      label: 'All approval nodes have an assigned approver',
-      ok: nodes.filter((n) => n.type === 'approval').every(hasApprover),
+      label: 'All approval & submit nodes have an assigned owner',
+      ok: nodes.filter((n) => n.type === 'approval' || n.type === 'submit').every(hasApprover),
     },
     {
       label: 'SLA deadlines configured on all approval nodes',
@@ -1010,6 +1012,7 @@ function NewWorkflow() {
 const NODE_TYPE_TO_API = {
   start: 'start',
   approval: 'approval',
+  submit: 'submit',
   condition: 'condition',
   notify: 'notification',
   timer: 'timer',
@@ -1044,7 +1047,7 @@ function graphIssues(nodes, connections) {
         issues.push(`Decision "${label(n)}" is missing its ${missing} branch — drag a connection from it to the next step.`)
       }
     }
-    if ((n.type === 'approval' || n.type === 'notify' || n.type === 'timer') && outFrom(n.id).length === 0) {
+    if ((n.type === 'approval' || n.type === 'submit' || n.type === 'notify' || n.type === 'timer') && outFrom(n.id).length === 0) {
       issues.push(`"${label(n)}" has no next step — connect it to the following node (e.g. the next approval or End).`)
     }
   }
@@ -1174,6 +1177,20 @@ function serializeNodes(nodes, connections) {
       config.slaHours = toHours(n.slaValue, n.slaUnit)
       config.approvalType = n.sequential ? 'sequential' : 'parallel'
     }
+    if (n.type === 'submit') {
+      // Submit node: the assignee uploads a file + comment to advance. Reuses the
+      // approver fields to resolve who the submission task is assigned to.
+      if (n.approverId) {
+        config.approverId = n.approverId
+      } else if (n.approverRole) {
+        config.approverRole = n.approverRole
+      } else if (n.approver) {
+        config.approverRole = n.approver
+      }
+      config.instructions = n.instructions || ''
+      config.requireAttachment = n.requireAttachment !== false
+      config.slaHours = toHours(n.slaValue, n.slaUnit)
+    }
     if (n.type === 'condition') {
       // Decision nodes branch on whether the immediately preceding approval
       // was approved or rejected. The engine's `advanceWorkflow` caches that
@@ -1219,6 +1236,7 @@ function serializeEdges(connections) {
 const API_NODE_TYPE_TO_UI = {
   start: 'start',
   approval: 'approval',
+  submit: 'submit',
   condition: 'condition',
   notification: 'notify',
   timer: 'timer',
@@ -1253,6 +1271,17 @@ function deserializeNodes(apiNodes) {
         slaValue,
         slaUnit,
         sequential: cfg.approvalType !== 'parallel',
+      })
+    }
+    if (uiType === 'submit') {
+      const { slaValue, slaUnit } = SLA_HOURS_TO_DISPLAY(cfg.slaHours)
+      Object.assign(base, {
+        approverRole: cfg.approverRole || '',
+        approverId: cfg.approverId || null,
+        instructions: cfg.instructions || '',
+        requireAttachment: cfg.requireAttachment !== false,
+        slaValue,
+        slaUnit,
       })
     }
     if (uiType === 'timer') {
