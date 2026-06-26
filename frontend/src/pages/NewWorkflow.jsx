@@ -656,8 +656,8 @@ function Step4Review({ data, forms }) {
   const checklist = [
     { label: 'Linked form is selected and published', ok: !!settings.linkedFormId },
     {
-      label: 'All approval & submit nodes have an assigned owner',
-      ok: nodes.filter((n) => n.type === 'approval' || n.type === 'submit').every(hasApprover),
+      label: 'All approval, submit & review nodes have an assigned owner',
+      ok: nodes.filter((n) => n.type === 'approval' || n.type === 'submit' || n.type === 'review').every(hasApprover),
     },
     {
       label: 'SLA deadlines configured on all approval nodes',
@@ -1013,6 +1013,7 @@ const NODE_TYPE_TO_API = {
   start: 'start',
   approval: 'approval',
   submit: 'submit',
+  review: 'review',
   condition: 'condition',
   notify: 'notification',
   timer: 'timer',
@@ -1045,6 +1046,16 @@ function graphIssues(nodes, connections) {
           .filter(Boolean)
           .join(' and ')
         issues.push(`Decision "${label(n)}" is missing its ${missing} branch — drag a connection from it to the next step.`)
+      }
+    }
+    if (n.type === 'review') {
+      const hasForward = conns.some((c) => c.from === n.id && c.branch === 'approve')
+      const hasChanges = conns.some((c) => c.from === n.id && c.branch === 'reject')
+      if (!hasForward || !hasChanges) {
+        const missing = [!hasForward && 'No-changes / forward', !hasChanges && 'Changes-required']
+          .filter(Boolean)
+          .join(' and ')
+        issues.push(`Review "${label(n)}" is missing its ${missing} branch — drag a connection from it to the next step.`)
       }
     }
     if ((n.type === 'approval' || n.type === 'submit' || n.type === 'notify' || n.type === 'timer') && outFrom(n.id).length === 0) {
@@ -1116,7 +1127,7 @@ function buildPreviewPaths(nodes, connections) {
   // One sub-line per Decision reject/false branch: Decision → … → (merge node).
   const branches = []
   for (const node of main) {
-    if (node.type !== 'condition') continue
+    if (node.type !== 'condition' && node.type !== 'review') continue
     const rej = (outBy.get(node.id) || []).find((c) => c.branch === 'reject' || c.dashed)
     if (!rej) continue
     const line = [node] // include the Decision for context
@@ -1176,10 +1187,11 @@ function serializeNodes(nodes, connections) {
       }
       config.slaHours = toHours(n.slaValue, n.slaUnit)
       config.approvalType = n.sequential ? 'sequential' : 'parallel'
+      config.requireSignature = n.requireSignature === true
     }
     if (n.type === 'submit') {
-      // Submit node: the assignee uploads a file + comment to advance. Reuses the
-      // approver fields to resolve who the submission task is assigned to.
+      // Submit node: the assignee fills an inline form + comment to advance.
+      // Reuses the approver fields to resolve who the submission task goes to.
       if (n.approverId) {
         config.approverId = n.approverId
       } else if (n.approverRole) {
@@ -1188,8 +1200,26 @@ function serializeNodes(nodes, connections) {
         config.approverRole = n.approver
       }
       config.instructions = n.instructions || ''
-      config.requireAttachment = n.requireAttachment !== false
+      config.formFields = Array.isArray(n.formFields) ? n.formFields : []
       config.slaHours = toHours(n.slaValue, n.slaUnit)
+    }
+    if (n.type === 'review') {
+      // Review (viewer) node: assigns a reviewer (reuses the approver fields) and
+      // branches like a Decision. Forward (no changes) = 'approve' edge, Changes
+      // required = 'reject' edge. Engine reads config.forwardPath / changesPath.
+      if (n.approverId) {
+        config.approverId = n.approverId
+      } else if (n.approverRole) {
+        config.approverRole = n.approverRole
+      } else if (n.approver) {
+        config.approverRole = n.approver
+      }
+      config.instructions = n.instructions || ''
+      config.slaHours = toHours(n.slaValue, n.slaUnit)
+      const forwardPath = approveTargetByFrom.get(n.id)
+      const changesPath = rejectTargetByFrom.get(n.id)
+      if (forwardPath) config.forwardPath = forwardPath
+      if (changesPath) config.changesPath = changesPath
     }
     if (n.type === 'condition') {
       // Decision nodes branch on whether the immediately preceding approval
@@ -1237,6 +1267,7 @@ const API_NODE_TYPE_TO_UI = {
   start: 'start',
   approval: 'approval',
   submit: 'submit',
+  review: 'review',
   condition: 'condition',
   notification: 'notify',
   timer: 'timer',
@@ -1271,6 +1302,7 @@ function deserializeNodes(apiNodes) {
         slaValue,
         slaUnit,
         sequential: cfg.approvalType !== 'parallel',
+        requireSignature: cfg.requireSignature === true,
       })
     }
     if (uiType === 'submit') {
@@ -1279,7 +1311,26 @@ function deserializeNodes(apiNodes) {
         approverRole: cfg.approverRole || '',
         approverId: cfg.approverId || null,
         instructions: cfg.instructions || '',
-        requireAttachment: cfg.requireAttachment !== false,
+        formFields: Array.isArray(cfg.formFields)
+          ? cfg.formFields.map((f) => ({
+              id: f.id,
+              type: f.type,
+              label: f.label,
+              required: !!f.required,
+              placeholder: f.placeholder || '',
+              options: Array.isArray(f.options) ? f.options : [],
+            }))
+          : [],
+        slaValue,
+        slaUnit,
+      })
+    }
+    if (uiType === 'review') {
+      const { slaValue, slaUnit } = SLA_HOURS_TO_DISPLAY(cfg.slaHours)
+      Object.assign(base, {
+        approverRole: cfg.approverRole || '',
+        approverId: cfg.approverId || null,
+        instructions: cfg.instructions || '',
         slaValue,
         slaUnit,
       })

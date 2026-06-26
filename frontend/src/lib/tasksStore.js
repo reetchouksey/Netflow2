@@ -62,22 +62,28 @@ export const tasksStore = {
   async loadOne(id) {
     return fetchOne(id)
   },
-  async approve(id, comment = '') {
-    await api.post(`/api/tasks/${id}/approve`, { comment })
+  async approve(id, comment = '', signature = null) {
+    await api.post(`/api/tasks/${id}/approve`, { comment, signature })
     return fetchOne(id)
   },
-  async reject(id, comment = '') {
-    await api.post(`/api/tasks/${id}/reject`, { comment })
+  async reject(id, comment = '', signature = null) {
+    await api.post(`/api/tasks/${id}/reject`, { comment, signature })
     return fetchOne(id)
   },
-  async requestChanges(id, comment = '') {
-    await api.post(`/api/tasks/${id}/request-changes`, { comment })
+  async requestChanges(id, comment = '', signature = null) {
+    await api.post(`/api/tasks/${id}/request-changes`, { comment, signature })
     return fetchOne(id)
   },
   // Submit-node tasks: send uploaded attachments + an optional comment, which
   // advances the workflow. `attachments` is an array of { name, url, mime, size }.
-  async submit(id, { comment = '', attachments = [] } = {}) {
-    await api.post(`/api/tasks/${id}/submit`, { comment, attachments })
+  async submit(id, { comment = '', formData = {} } = {}) {
+    await api.post(`/api/tasks/${id}/submit`, { comment, formData })
+    return fetchOne(id)
+  },
+  // Review-node tasks: reviewer forwards (outcome 'forward') or sends back
+  // (outcome 'changes', comment required). Advances the workflow accordingly.
+  async review(id, outcome, comment = '') {
+    await api.post(`/api/tasks/${id}/review`, { outcome, comment })
     return fetchOne(id)
   },
   clear() {

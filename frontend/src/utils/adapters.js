@@ -98,6 +98,11 @@ export const adaptTask = (apiTask) => {
   const submission = Object.entries(formData).map(([k, v]) => {
     const def = fieldMap.get(k)
     const label = def?.label || titleCase(k)
+    // Grid/table fields carry an array of row objects — pass the column defs +
+    // rows through so the UI can render a real table instead of raw JSON.
+    if (def?.type === 'grid' && Array.isArray(v)) {
+      return { label, grid: { columns: def.columns || [], rows: v } }
+    }
     const file = def?.type === 'file' ? fileValue(v) : fileValue(v)
     if (file) {
       return { label, value: file.name, href: file.url, isFile: true }
@@ -116,7 +121,8 @@ export const adaptTask = (apiTask) => {
     return {
       label: `${who} ${verb}${h.comment ? ` — "${h.comment}"` : ''}`,
       time: h.performedAt ? new Date(h.performedAt).toLocaleString() : '',
-      dotColor: ACTION_DOT[h.action] || 'bg-gray-400'
+      dotColor: ACTION_DOT[h.action] || 'bg-gray-400',
+      signature: h.signature || null
     }
   })
 
@@ -142,8 +148,25 @@ export const adaptTask = (apiTask) => {
     actionType: apiTask.actionType || 'approval',
     instructions: apiTask.instructions || '',
     requireAttachment: !!apiTask.requireAttachment,
+    requireSignature: !!apiTask.requireSignature,
+    // Submit-node inline form: field definitions + the submitted values.
+    formFields: Array.isArray(apiTask.formFields) ? apiTask.formFields : [],
+    formData: apiTask.formData && typeof apiTask.formData === 'object' ? apiTask.formData : {},
     attachments: Array.isArray(apiTask.attachments)
       ? apiTask.attachments.map((a) => ({ name: a.name, url: a.url, mime: a.mime, size: a.size }))
+      : [],
+    // Documents carried over from earlier workflow steps (submit-node uploads).
+    priorDocuments: Array.isArray(apiTask.priorDocuments)
+      ? apiTask.priorDocuments.map((d) => ({ name: d.name, url: d.url, mime: d.mime, size: d.size, step: d.step }))
+      : [],
+    // Structured form values submitted at earlier submit-node steps.
+    priorForms: Array.isArray(apiTask.priorForms)
+      ? apiTask.priorForms.map((f) => ({
+          step: f.step,
+          nodeId: f.nodeId,
+          fields: Array.isArray(f.fields) ? f.fields : [],
+          data: f.data && typeof f.data === 'object' ? f.data : {},
+        }))
       : [],
     detail: apiTask.type || apiTask.workflowId?.title || 'General',
     requester: submitter,

@@ -5,8 +5,8 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import { tasksStore, useTask } from '../lib/tasksStore'
 import { useUser } from '../utils/auth'
-import { api, toAbsoluteUrl } from '../utils/api'
-import { MAX_UPLOAD_MB } from '../utils/uploads'
+import { toAbsoluteUrl } from '../utils/api'
+import { SignaturePad, SignatureMark, FieldRow, validateFields, FieldValueView } from '../components/FormFields'
 
 const APPROVER_ROLES = new Set(['Admin', 'CEO', 'Manager', 'HR', 'VP'])
 
@@ -41,6 +41,45 @@ const requestStatus = (task) => {
   return task.status
 }
 
+// Read-only render of a submitted grid/table value (columns + rows).
+function GridValueTable({ grid }) {
+  const cols = grid?.columns || []
+  const rows = Array.isArray(grid?.rows) ? grid.rows : []
+  if (cols.length === 0) return <span className="text-gray-400">—</span>
+  return (
+    <div className="overflow-x-auto border border-gray-200 rounded-md">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="bg-gray-50">
+            {cols.map((c) => (
+              <th key={c.id} className="px-2 py-1.5 text-left font-medium text-gray-600 border-b border-gray-200 whitespace-nowrap">
+                {c.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={cols.length} className="px-2 py-2 text-center text-xs text-gray-400">No rows</td>
+            </tr>
+          ) : (
+            rows.map((r, i) => (
+              <tr key={i}>
+                {cols.map((c) => (
+                  <td key={c.id} className="px-2 py-1.5 border-b border-gray-100 text-gray-700 align-top">
+                    {r?.[c.id] === undefined || r?.[c.id] === '' ? '—' : String(r[c.id])}
+                  </td>
+                ))}
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function SubmissionDetails({ task }) {
   const pill = statusPill(requestStatus(task))
   return (
@@ -57,7 +96,9 @@ function SubmissionDetails({ task }) {
             <div key={`${row.label}-${i}`} className="grid grid-cols-3 gap-4 py-2.5">
               <dt className="text-sm text-gray-500">{row.label}</dt>
               <dd className="col-span-2 text-sm text-gray-800 font-medium break-words">
-                {row.href ? (
+                {row.grid ? (
+                  <GridValueTable grid={row.grid} />
+                ) : row.href ? (
                   <a
                     href={toAbsoluteUrl(row.href)}
                     target="_blank"
@@ -83,12 +124,22 @@ function SubmissionDetails({ task }) {
 
 function ApprovalActions({ task, onAction, commentRef, busy, error }) {
   const [comment, setComment] = useState('')
+  const [signature, setSignature] = useState(null)
+  const [localErr, setLocalErr] = useState('')
   const isResolved = task.status !== 'Pending'
+  const needsSig = !!task.requireSignature
 
   const submit = (action) => {
-    onAction(action, comment)
+    if (needsSig && !signature) {
+      setLocalErr('Please add your e-signature before continuing.')
+      return
+    }
+    setLocalErr('')
+    onAction(action, comment, signature)
     setComment('')
   }
+
+  const blocked = isResolved || !!busy || (needsSig && !signature)
 
   return (
     <section className="bg-white border border-gray-200 rounded-lg px-6 py-5 mt-4">
@@ -104,14 +155,24 @@ function ApprovalActions({ task, onAction, commentRef, busy, error }) {
         className="w-full px-3 py-2 text-sm rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition resize-none disabled:bg-gray-50 disabled:text-gray-400"
       />
 
-      {error && (
-        <p className="mt-2 text-xs text-red-600">{error}</p>
+      {needsSig && (
+        <div className="mt-3">
+          <SignaturePad
+            onChange={setSignature}
+            disabled={isResolved || !!busy}
+            label={<>E-signature <span className="text-red-500">*</span></>}
+          />
+        </div>
+      )}
+
+      {(error || localErr) && (
+        <p className="mt-2 text-xs text-red-600">{error || localErr}</p>
       )}
 
       <div className="grid grid-cols-3 gap-3 mt-3">
         <button
           type="button"
-          disabled={isResolved || !!busy}
+          disabled={blocked}
           onClick={() => submit('approve')}
           className="px-4 py-2 rounded-md border border-green-200 bg-green-50/40 text-green-700 hover:bg-green-50 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
@@ -119,7 +180,7 @@ function ApprovalActions({ task, onAction, commentRef, busy, error }) {
         </button>
         <button
           type="button"
-          disabled={isResolved || !!busy}
+          disabled={blocked}
           onClick={() => submit('reject')}
           className="px-4 py-2 rounded-md border border-red-200 bg-red-50/40 text-red-600 hover:bg-red-50 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
@@ -127,13 +188,19 @@ function ApprovalActions({ task, onAction, commentRef, busy, error }) {
         </button>
         <button
           type="button"
-          disabled={isResolved || !!busy}
+          disabled={blocked}
           onClick={() => submit('changes')}
           className="px-4 py-2 rounded-md border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {busy === 'changes' ? 'Sending...' : 'Request changes'}
         </button>
       </div>
+
+      {needsSig && !signature && !isResolved && (
+        <p className="mt-2 text-[11px] text-gray-400">
+          This step requires your e-signature before you can act.
+        </p>
+      )}
 
       {isResolved && (
         <p className="mt-3 text-xs text-gray-400">
@@ -144,49 +211,33 @@ function ApprovalActions({ task, onAction, commentRef, busy, error }) {
   )
 }
 
-// Submit-node action panel: the assignee uploads document(s) + an optional
-// comment and clicks Submit, which advances the workflow (no approve/reject).
+// Submit-node action panel: the assignee fills the inline form the designer
+// defined (if any) + an optional comment, then submits to advance the workflow.
 function SubmitActions({ task, onSubmitted }) {
+  const fields = Array.isArray(task.formFields) ? task.formFields : []
+  const [values, setValues] = useState({})
   const [comment, setComment] = useState('')
-  const [attachments, setAttachments] = useState([])
-  const [uploading, setUploading] = useState(false)
+  const [errors, setErrors] = useState({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const isResolved = task.status !== 'Pending'
 
-  const handleFile = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setError('')
-    if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
-      setError(`File too large. Max ${MAX_UPLOAD_MB} MB.`)
-      e.target.value = ''
-      return
-    }
-    setUploading(true)
-    try {
-      const { file: meta } = await api.upload(file, MAX_UPLOAD_MB)
-      setAttachments((prev) => [
-        ...prev,
-        { name: meta.name, url: meta.url, mime: meta.mime, size: meta.size }
-      ])
-    } catch (err) {
-      setError(err.message || 'Upload failed')
-    } finally {
-      setUploading(false)
-      e.target.value = ''
-    }
+  const setField = (id, v) => {
+    setValues((prev) => ({ ...prev, [id]: v }))
+    setErrors((prev) => (prev[id] ? { ...prev, [id]: undefined } : prev))
   }
 
   const doSubmit = async () => {
     setError('')
-    if (task.requireAttachment && attachments.length === 0) {
-      setError('Please attach at least one file before submitting.')
+    const errs = validateFields(fields, values)
+    if (Object.keys(errs).length) {
+      setErrors(errs)
+      setError('Please complete the required fields.')
       return
     }
     setBusy(true)
     try {
-      await tasksStore.submit(task.id, { comment, attachments })
+      await tasksStore.submit(task.id, { comment, formData: values })
       onSubmitted?.()
     } catch (err) {
       setError(err.message || 'Submit failed')
@@ -197,46 +248,31 @@ function SubmitActions({ task, onSubmitted }) {
   return (
     <section className="bg-white border border-gray-200 rounded-lg px-6 py-5 mt-4">
       <h2 className="text-sm font-semibold text-gray-800 mb-1">Submit this step</h2>
-      <p className="text-sm text-gray-600 mb-3">
+      <p className="text-sm text-gray-600 mb-4">
         {task.instructions
           ? task.instructions
-          : `Upload the required document${task.requireAttachment ? '' : '(s)'} and submit to advance the workflow.`}
+          : fields.length
+          ? 'Fill out the form below and submit to advance the workflow.'
+          : 'Add an optional comment and submit to advance the workflow.'}
       </p>
 
-      {attachments.length > 0 && (
-        <ul className="mb-3 space-y-1.5">
-          {attachments.map((a, i) => (
-            <li
-              key={`${a.url}-${i}`}
-              className="flex items-center justify-between gap-2 text-sm bg-gray-50 border border-gray-200 rounded-md px-3 py-2"
-            >
-              <span className="truncate text-gray-700">{a.name}</span>
-              <button
-                type="button"
-                onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
-                disabled={isResolved || busy}
-                className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
-              >
-                Remove
-              </button>
-            </li>
+      {fields.length > 0 && (
+        <div className="space-y-4 mb-4">
+          {fields.map((f) => (
+            <FieldRow
+              key={f.id}
+              field={f}
+              value={values[f.id]}
+              error={errors[f.id]}
+              richSignature
+              disabled={isResolved || busy}
+              onChange={(v) => setField(f.id, v)}
+            />
           ))}
-        </ul>
+        </div>
       )}
 
-      <label className="flex items-center gap-3 mb-3">
-        <span className="px-3 py-2 rounded-md border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 cursor-pointer">
-          {uploading ? 'Uploading…' : 'Choose file'}
-        </span>
-        <input
-          type="file"
-          onChange={handleFile}
-          disabled={isResolved || uploading || busy}
-          className="hidden"
-        />
-        <span className="text-[11px] text-gray-400">Max {MAX_UPLOAD_MB} MB per file</span>
-      </label>
-
+      <label className="block text-sm font-medium text-gray-700 mb-1">Comment</label>
       <textarea
         value={comment}
         onChange={(e) => setComment(e.target.value)}
@@ -250,7 +286,7 @@ function SubmitActions({ task, onSubmitted }) {
 
       <button
         type="button"
-        disabled={isResolved || busy || uploading}
+        disabled={isResolved || busy}
         onClick={doSubmit}
         className="mt-3 w-full px-4 py-2 rounded-md border border-teal-200 bg-teal-50/60 text-teal-700 hover:bg-teal-50 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
       >
@@ -260,6 +296,79 @@ function SubmitActions({ task, onSubmitted }) {
       {isResolved && (
         <p className="mt-3 text-xs text-gray-400">
           This step has been submitted — no further action needed.
+        </p>
+      )}
+    </section>
+  )
+}
+
+// Review-node tasks: the reviewer reads the submission + prior documents above,
+// then forwards (no changes) or sends it back for changes. Deliberately not an
+// approve/reject — it's a review checkpoint that routes the workflow.
+function ReviewActions({ task, onReviewed }) {
+  const [comment, setComment] = useState('')
+  const [busy, setBusy] = useState(null)
+  const [error, setError] = useState('')
+  const isResolved = task.status !== 'Pending'
+
+  const submit = async (outcome) => {
+    setError('')
+    if (outcome === 'changes' && !comment.trim()) {
+      setError('Please describe what changes are needed before sending it back.')
+      return
+    }
+    setBusy(outcome)
+    try {
+      await tasksStore.review(task.id, outcome, comment)
+      onReviewed?.()
+    } catch (err) {
+      setError(err.message || 'Action failed')
+      setBusy(null)
+    }
+  }
+
+  return (
+    <section className="bg-white border border-gray-200 rounded-lg px-6 py-5 mt-4">
+      <h2 className="text-sm font-semibold text-gray-800 mb-1">Review</h2>
+      <p className="text-sm text-gray-600 mb-3">
+        {task.instructions
+          ? task.instructions
+          : 'Review the submission and documents above, then forward it or send it back for changes. This is a review checkpoint — not an approval.'}
+      </p>
+
+      <textarea
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        placeholder="Comment (required when requesting changes)..."
+        rows={2}
+        disabled={isResolved || !!busy}
+        className="w-full px-3 py-2 text-sm rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition resize-none disabled:bg-gray-50 disabled:text-gray-400"
+      />
+
+      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+
+      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <button
+          type="button"
+          disabled={isResolved || !!busy}
+          onClick={() => submit('forward')}
+          className="px-4 py-2 rounded-md border border-emerald-200 bg-emerald-50/60 text-emerald-700 hover:bg-emerald-50 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {busy === 'forward' ? 'Forwarding…' : 'No changes — forward'}
+        </button>
+        <button
+          type="button"
+          disabled={isResolved || !!busy}
+          onClick={() => submit('changes')}
+          className="px-4 py-2 rounded-md border border-amber-200 bg-amber-50/60 text-amber-700 hover:bg-amber-50 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {busy === 'changes' ? 'Sending back…' : 'Changes required'}
+        </button>
+      </div>
+
+      {isResolved && (
+        <p className="mt-3 text-xs text-gray-400">
+          This review is complete — no further action needed.
         </p>
       )}
     </section>
@@ -290,6 +399,90 @@ function SubmittedFiles({ task }) {
           </li>
         ))}
       </ul>
+    </section>
+  )
+}
+
+// Read-only list of documents uploaded at EARLIER workflow steps (e.g. a submit
+// node's costing doc). Lets the current assignee/approver review everything that
+// came before — not just their own step's files.
+function PriorDocuments({ task }) {
+  if (!task.priorDocuments || task.priorDocuments.length === 0) return null
+  return (
+    <section className="bg-white border border-gray-200 rounded-lg px-6 py-5 mt-4">
+      <h2 className="text-sm font-semibold text-gray-800 mb-3">Documents from previous steps</h2>
+      <ul className="space-y-2">
+        {task.priorDocuments.map((d, i) => (
+          <li key={`${d.url}-${i}`} className="flex items-center gap-2">
+            <a
+              href={toAbsoluteUrl(d.url)}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-700 underline"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+              </svg>
+              {d.name || 'Attachment'}
+            </a>
+            {d.step && <span className="text-xs text-gray-400 truncate">— {d.step}</span>}
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+// Read-only label→value grid for a submitted form. File fields are skipped here
+// because they already render as attachments / "Documents from previous steps".
+function SubmittedFormFields({ fields, data }) {
+  const list = (fields || []).filter((f) => f.type !== 'file')
+  if (!list.length) return null
+  return (
+    <dl className="divide-y divide-gray-100">
+      {list.map((f) => (
+        <div key={f.id} className="py-2 grid grid-cols-3 gap-3">
+          <dt className="text-sm text-gray-500">{f.label}</dt>
+          <dd className="col-span-2 text-sm">
+            <FieldValueView field={f} value={data?.[f.id]} />
+          </dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
+// The current Submit task's own form, shown read-only once it's been submitted.
+function SubmittedForm({ task }) {
+  if (task.actionType !== 'submit' || task.status === 'Pending') return null
+  const fields = Array.isArray(task.formFields) ? task.formFields : []
+  if (!fields.some((f) => f.type !== 'file')) return null
+  return (
+    <section className="bg-white border border-gray-200 rounded-lg px-6 py-5 mt-4">
+      <h2 className="text-sm font-semibold text-gray-800 mb-3">Submitted form</h2>
+      <SubmittedFormFields fields={fields} data={task.formData} />
+    </section>
+  )
+}
+
+// Structured form values submitted at EARLIER submit-node steps, so the current
+// reviewer/approver can read them (name, account no., e-signature, …).
+function PriorForms({ task }) {
+  const forms = Array.isArray(task.priorForms)
+    ? task.priorForms.filter((f) => (f.fields || []).some((x) => x.type !== 'file'))
+    : []
+  if (!forms.length) return null
+  return (
+    <section className="bg-white border border-gray-200 rounded-lg px-6 py-5 mt-4">
+      <h2 className="text-sm font-semibold text-gray-800 mb-3">Form data from previous steps</h2>
+      <div className="space-y-4">
+        {forms.map((f, i) => (
+          <div key={`${f.nodeId}-${i}`}>
+            {f.step && <p className="text-xs font-medium text-gray-400 mb-1">{f.step}</p>}
+            <SubmittedFormFields fields={f.fields} data={f.data} />
+          </div>
+        ))}
+      </div>
     </section>
   )
 }
@@ -380,6 +573,7 @@ function ApprovalHistory({ task }) {
               <span className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${step.dotColor}`} />
               <div className="leading-tight">
                 <p className="text-sm text-gray-800">{step.label}</p>
+                {step.signature && <SignatureMark signature={step.signature} className="mt-1" />}
                 <p className="text-xs text-gray-400 mt-0.5">{step.time}</p>
               </div>
             </li>
@@ -466,13 +660,13 @@ function TaskDetail() {
     )
   }
 
-  const handleAction = async (action, comment) => {
+  const handleAction = async (action, comment, signature) => {
     setBusy(action)
     setError('')
     try {
-      if (action === 'approve')  await tasksStore.approve(task.id, comment)
-      if (action === 'reject')   await tasksStore.reject(task.id, comment)
-      if (action === 'changes')  await tasksStore.requestChanges(task.id, comment)
+      if (action === 'approve')  await tasksStore.approve(task.id, comment, signature)
+      if (action === 'reject')   await tasksStore.reject(task.id, comment, signature)
+      if (action === 'changes')  await tasksStore.requestChanges(task.id, comment, signature)
       if (action !== 'changes') {
         setTimeout(() => navigate('/tasks'), 600)
       }
@@ -516,11 +710,18 @@ function TaskDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 space-y-0">
           <SubmissionDetails task={task} />
+          <PriorForms task={task} />
+          <PriorDocuments task={task} />
           {canAct ? (
             task.actionType === 'submit' ? (
               <SubmitActions
                 task={task}
                 onSubmitted={() => setTimeout(() => navigate('/tasks'), 600)}
+              />
+            ) : task.actionType === 'review' ? (
+              <ReviewActions
+                task={task}
+                onReviewed={() => setTimeout(() => navigate('/tasks'), 600)}
               />
             ) : (
               <ApprovalActions
@@ -541,6 +742,7 @@ function TaskDetail() {
               </p>
             </section>
           )}
+          <SubmittedForm task={task} />
           <SubmittedFiles task={task} />
         </div>
 

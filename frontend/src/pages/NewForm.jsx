@@ -40,12 +40,35 @@ const FIELD_TYPES = [
     label: 'Number',
     defaults: { label: 'Enter a number', placeholder: '', required: false, min: null, max: null },
   },
+  {
+    type: 'radio',
+    label: 'Radio group',
+    defaults: { label: 'Choose one', required: false, options: ['Option 1', 'Option 2'] },
+  },
+  {
+    type: 'grid',
+    label: 'Table / Grid',
+    defaults: {
+      label: 'Table',
+      required: false,
+      columns: [{ id: 'c1', label: 'Column 1', type: 'text' }],
+    },
+  },
 ]
 
 const newFieldId = () =>
   typeof crypto !== 'undefined' && crypto.randomUUID
     ? crypto.randomUUID()
     : `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+
+// Clone grid columns with fresh ids so duplicated/added grids never share the
+// same column objects (which would alias edits across separate fields).
+const freshColumns = (cols) =>
+  (Array.isArray(cols) ? cols : []).map((c) => ({
+    ...c,
+    id: newFieldId(),
+    options: Array.isArray(c.options) ? [...c.options] : undefined,
+  }))
 
 const seededFields = () => [
   { id: newFieldId(), type: 'text', label: 'Employee name', placeholder: 'Jane Doe', required: true, multiline: false, maxLength: null },
@@ -75,6 +98,12 @@ const subtitleFor = (f) => {
       return `Signature · ${req}`
     case 'number':
       return `Number · ${req}`
+    case 'radio':
+      return `Radio · ${(f.options || []).join(' / ') || 'no options'}`
+    case 'grid': {
+      const n = (f.columns || []).length
+      return `Table · ${n} column${n === 1 ? '' : 's'}`
+    }
     default:
       return f.type
   }
@@ -294,7 +323,7 @@ function FieldSettings({ field, onChange, onDelete }) {
         </>
       )}
 
-      {field.type === 'dropdown' && (
+      {(field.type === 'dropdown' || field.type === 'radio') && (
         <div className="mb-3">
           <label className="block text-xs font-medium text-gray-700 mb-1">Options</label>
           <div className="space-y-1.5">
@@ -329,6 +358,79 @@ function FieldSettings({ field, onChange, onDelete }) {
             className="mt-2 w-full px-3 py-1.5 rounded-md border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 transition"
           >
             Add option
+          </button>
+        </div>
+      )}
+
+      {field.type === 'grid' && (
+        <div className="mb-3">
+          <label className="block text-xs font-medium text-gray-700 mb-1">Columns</label>
+          <div className="space-y-2">
+            {(field.columns || []).map((col, idx) => {
+              const setCol = (patch) =>
+                update({ columns: field.columns.map((c, i) => (i === idx ? { ...c, ...patch } : c)) })
+              return (
+                <div key={col.id} className="rounded-md border border-gray-200 p-2 space-y-1.5">
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      value={col.label}
+                      onChange={(e) => setCol({ label: e.target.value })}
+                      placeholder="Column name"
+                      className={inputCls}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => update({ columns: field.columns.filter((_, i) => i !== idx) })}
+                      title="Remove column"
+                      className="w-8 shrink-0 rounded-md border border-gray-200 text-gray-400 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition flex items-center justify-center"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <select
+                    value={col.type}
+                    onChange={(e) => {
+                      const t = e.target.value
+                      setCol({ type: t, options: t === 'dropdown' ? (col.options || ['Option 1']) : undefined })
+                    }}
+                    className={inputCls}
+                  >
+                    <option value="text">Text</option>
+                    <option value="number">Number</option>
+                    <option value="dropdown">Dropdown</option>
+                    <option value="date">Date</option>
+                  </select>
+                  {col.type === 'dropdown' && (
+                    <input
+                      type="text"
+                      value={(col.options || []).join(', ')}
+                      onChange={(e) =>
+                        setCol({ options: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })
+                      }
+                      placeholder="Option 1, Option 2"
+                      className={inputCls}
+                    />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              update({
+                columns: [
+                  ...(field.columns || []),
+                  { id: newFieldId(), label: `Column ${(field.columns?.length || 0) + 1}`, type: 'text' },
+                ],
+              })
+            }
+            className="mt-2 w-full px-3 py-1.5 rounded-md border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 transition"
+          >
+            Add column
           </button>
         </div>
       )}
@@ -543,6 +645,47 @@ function PreviewField({ field }) {
           </div>
         </div>
       )
+    case 'radio':
+      return (
+        <div>
+          {label}
+          <div className="space-y-1.5">
+            {(field.options || []).map((opt) => (
+              <label key={opt} className="flex items-center gap-2 text-sm text-gray-700">
+                <input type="radio" name={`preview-${field.id}`} className="w-4 h-4 border-gray-300 text-indigo-600 focus:ring-indigo-400" />
+                {opt}
+              </label>
+            ))}
+          </div>
+        </div>
+      )
+    case 'grid':
+      return (
+        <div>
+          {label}
+          <div className="overflow-x-auto border border-gray-200 rounded-md">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50">
+                  {(field.columns || []).map((c) => (
+                    <th key={c.id} className="px-2 py-1.5 text-left font-medium text-gray-600 border-b border-gray-200 whitespace-nowrap">
+                      {c.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  {(field.columns || []).map((c) => (
+                    <td key={c.id} className="px-2 py-2 border-b border-gray-100 text-gray-300">—</td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-1 text-xs text-gray-400">Respondents can add rows when filling.</p>
+        </div>
+      )
     default:
       return null
   }
@@ -587,6 +730,8 @@ function NewForm() {
     if (!def) return
     const id = newFieldId()
     const newField = { id, type, ...def.defaults, label: def.defaults.label }
+    if (Array.isArray(def.defaults.options)) newField.options = [...def.defaults.options]
+    if (type === 'grid') newField.columns = freshColumns(def.defaults.columns)
     setFields((prev) => (atEnd ? [...prev, newField] : [newField, ...prev]))
     setSelectedId(id)
   }
@@ -597,7 +742,10 @@ function NewForm() {
   const duplicateField = (id) => {
     const idx = fields.findIndex((f) => f.id === id)
     if (idx === -1) return
-    const newField = { ...fields[idx], id: newFieldId(), label: `${fields[idx].label} (copy)` }
+    const src = fields[idx]
+    const newField = { ...src, id: newFieldId(), label: `${src.label} (copy)` }
+    if (Array.isArray(src.options)) newField.options = [...src.options]
+    if (src.type === 'grid') newField.columns = freshColumns(src.columns)
     const next = [...fields]
     next.splice(idx + 1, 0, newField)
     setFields(next)

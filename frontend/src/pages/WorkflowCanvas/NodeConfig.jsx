@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { NODE_STYLES } from "./nodeStyles";
+import { FORM_FIELD_TYPES, newFieldId } from "../../components/FormFields";
 
 const SLA_UNITS = ["Minutes", "Hours", "Days"];
 const BREACH_ACTIONS = [
@@ -91,6 +92,16 @@ export default function NodeConfig({
 
       {node.type === "submit" && (
         <SubmitConfig node={node} update={update} />
+      )}
+
+      {node.type === "review" && (
+        <ReviewConfig
+          node={node}
+          update={update}
+          nodes={nodes}
+          connections={connections}
+          onConnectionsChange={onConnectionsChange}
+        />
       )}
 
       {node.type === "condition" && (
@@ -314,6 +325,17 @@ function ApprovalConfig({ node, update }) {
         onChange={(v) => update({ sequential: v })}
         label="Sequential approval"
       />
+
+      <div className="mt-3">
+        <Checkbox
+          checked={!!node.requireSignature}
+          onChange={(v) => update({ requireSignature: v })}
+          label="Require e-signature on decision"
+        />
+        <p className="mt-1 ml-6 text-[11px] text-gray-400">
+          When on, the approver must add an e-signature (typed or uploaded) before they can approve, reject, or request changes.
+        </p>
+      </div>
     </>
   );
 }
@@ -358,7 +380,7 @@ function SubmitConfig({ node, update }) {
           <p className="mt-1 text-[11px] text-gray-500">{roleHint}</p>
         )}
         <p className="mt-1.5 text-[11px] text-gray-400">
-          This person uploads a file + comment and clicks Submit to advance the workflow.
+          This person fills the form below and clicks Submit to advance the workflow.
         </p>
       </Field>
 
@@ -372,16 +394,10 @@ function SubmitConfig({ node, update }) {
         />
       </Field>
 
-      <div className="mb-4">
-        <Checkbox
-          checked={node.requireAttachment !== false}
-          onChange={(v) => update({ requireAttachment: v })}
-          label="Require a file attachment"
-        />
-        <p className="mt-1 ml-6 text-[11px] text-gray-400">
-          When on, the assignee can't submit without uploading at least one file.
-        </p>
-      </div>
+      <SubmitFormBuilder
+        fields={node.formFields}
+        onChange={(formFields) => update({ formFields })}
+      />
 
       <Field label="SLA deadline">
         <div className="flex gap-2">
@@ -403,6 +419,225 @@ function SubmitConfig({ node, update }) {
           </select>
         </div>
       </Field>
+    </>
+  );
+}
+
+// Field-list editor for the Submit node's inline form. The designer adds the
+// fields (label, type, required, dropdown options) the assignee must fill.
+function SubmitFormBuilder({ fields, onChange }) {
+  const list = Array.isArray(fields) ? fields : [];
+
+  const addField = () =>
+    onChange([
+      ...list,
+      { id: newFieldId(), type: "text", label: "Untitled field", required: false },
+    ]);
+
+  const updateField = (i, patch) =>
+    onChange(list.map((f, idx) => (idx === i ? { ...f, ...patch } : f)));
+
+  const removeField = (i) => onChange(list.filter((_, idx) => idx !== i));
+
+  const moveField = (i, dir) => {
+    const j = i + dir;
+    if (j < 0 || j >= list.length) return;
+    const next = [...list];
+    [next[i], next[j]] = [next[j], next[i]];
+    onChange(next);
+  };
+
+  return (
+    <Field label="Form fields">
+      <p className="-mt-1 mb-2 text-[11px] text-gray-400">
+        The assignee fills these before submitting. File fields become attachments
+        visible to later steps.
+      </p>
+
+      {list.length === 0 && (
+        <p className="mb-2 text-[11px] text-gray-400 italic">No fields yet.</p>
+      )}
+
+      <div className="space-y-2">
+        {list.map((f, i) => (
+          <div key={f.id} className="border border-gray-200 rounded-md p-2.5 bg-gray-50/60">
+            <div className="flex items-center gap-1.5 mb-2">
+              <input
+                value={f.label || ""}
+                onChange={(e) => updateField(i, { label: e.target.value })}
+                placeholder="Field label"
+                className={`${inputCls} flex-1`}
+              />
+              <button
+                type="button"
+                onClick={() => moveField(i, -1)}
+                disabled={i === 0}
+                className="px-1.5 py-1 text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                title="Move up"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                onClick={() => moveField(i, 1)}
+                disabled={i === list.length - 1}
+                className="px-1.5 py-1 text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                title="Move down"
+              >
+                ↓
+              </button>
+              <button
+                type="button"
+                onClick={() => removeField(i)}
+                className="px-1.5 py-1 text-red-500 hover:text-red-700"
+                title="Remove field"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={f.type}
+                onChange={(e) => updateField(i, { type: e.target.value })}
+                className={`${inputCls} flex-1`}
+              >
+                {FORM_FIELD_TYPES.map((t) => (
+                  <option key={t.type} value={t.type}>{t.label}</option>
+                ))}
+              </select>
+              <label className="flex items-center gap-1.5 text-xs text-gray-600 whitespace-nowrap">
+                <input
+                  type="checkbox"
+                  checked={!!f.required}
+                  onChange={(e) => updateField(i, { required: e.target.checked })}
+                  className="w-4 h-4 rounded border-gray-300 accent-blue-600"
+                />
+                Required
+              </label>
+            </div>
+            {f.type === "dropdown" && (
+              <input
+                value={(f.options || []).join(", ")}
+                onChange={(e) =>
+                  updateField(i, {
+                    options: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+                  })
+                }
+                placeholder="Option 1, Option 2, Option 3"
+                className={`${inputCls} mt-2`}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        onClick={addField}
+        className="mt-2 w-full px-3 py-2 text-sm rounded-md border border-dashed border-gray-300 text-gray-600 hover:border-teal-300 hover:text-teal-700 transition"
+      >
+        + Add field
+      </button>
+    </Field>
+  );
+}
+
+function ReviewConfig({ node, update, nodes, connections, onConnectionsChange }) {
+  // The Review (viewer) node assigns a task to a reviewer (e.g. Brand Rep) who
+  // sees the submission + every document carried over from earlier steps, then
+  // chooses to forward (no changes) or send it back for changes. Routing mirrors
+  // the Decision node: two outgoing edges tagged 'approve' (forward) / 'reject'
+  // (changes) which the engine reads as config.forwardPath / config.changesPath.
+  const setRoleMode = (value) => update({ approverRole: value, approverId: null });
+  const currentRoleValue = node.approverRole || "direct_manager";
+  const roleHint = roleApproverByValue(currentRoleValue)?.hint;
+
+  const targets = nodes.filter((n) => n.id !== node.id);
+  const forwardEdge = connections.find(
+    (c) => c.from === node.id && c.branch === "approve"
+  );
+  const changesEdge = connections.find(
+    (c) => c.from === node.id && c.branch === "reject"
+  );
+
+  const setBranchTarget = (branch, toId) => {
+    if (!onConnectionsChange) return;
+    const others = connections.filter(
+      (c) => !(c.from === node.id && c.branch === branch)
+    );
+    if (toId) {
+      others.push({ from: node.id, to: toId, branch, dashed: branch === "reject" });
+    }
+    onConnectionsChange(others);
+  };
+
+  const branchSelect = (branch, edge) => (
+    <select
+      value={edge?.to || ""}
+      onChange={(e) => setBranchTarget(branch, e.target.value)}
+      className={inputCls}
+    >
+      <option value="">— Select target —</option>
+      {targets.map((n) => (
+        <option key={n.id} value={n.id}>
+          {n.title || n.id} ({n.type})
+        </option>
+      ))}
+    </select>
+  );
+
+  return (
+    <>
+      <Field label="Assign to (reviewer)">
+        <select
+          value={currentRoleValue}
+          onChange={(e) => setRoleMode(e.target.value)}
+          className={inputCls}
+        >
+          {ROLE_APPROVERS.map((r) => (
+            <option key={r.value} value={r.value}>{r.label}</option>
+          ))}
+        </select>
+        {roleHint && (
+          <p className="mt-1 text-[11px] text-gray-500">{roleHint}</p>
+        )}
+        <p className="mt-1.5 text-[11px] text-gray-400">
+          The reviewer sees the submission + all earlier documents, then forwards
+          it or sends it back — no approve/reject.
+        </p>
+      </Field>
+
+      <Field label="Instructions">
+        <textarea
+          rows={2}
+          value={node.instructions || ""}
+          onChange={(e) => update({ instructions: e.target.value })}
+          placeholder="e.g. Check the costing against the GRN before forwarding."
+          className={`${inputCls} resize-none`}
+        />
+      </Field>
+
+      <Field label="If no changes → (forward)">
+        {branchSelect("approve", forwardEdge)}
+        {forwardEdge && (
+          <p className="mt-1 text-[11px] text-emerald-700">Forward path wired.</p>
+        )}
+      </Field>
+
+      <Field label="If changes required →">
+        {branchSelect("reject", changesEdge)}
+        {changesEdge && (
+          <p className="mt-1 text-[11px] text-rose-700">
+            Changes path wired (usually loops back to the submit step).
+          </p>
+        )}
+      </Field>
+
+      {targets.length === 0 && (
+        <p className="text-[11px] text-amber-700">
+          Add more nodes to the canvas first, then pick where each outcome goes.
+        </p>
+      )}
     </>
   );
 }

@@ -70,6 +70,98 @@ function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB }) {
   )
 }
 
+// One editable cell inside a grid/table row, rendered per its column type.
+function GridCell({ col, value, onChange }) {
+  const cls =
+    'w-full px-2 py-1 text-sm rounded border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300'
+  switch (col.type) {
+    case 'number':
+      return <input type="number" value={value ?? ''} onChange={(e) => onChange(e.target.value)} className={cls} />
+    case 'date':
+      return <input type="date" value={value ?? ''} onChange={(e) => onChange(e.target.value)} className={cls} />
+    case 'dropdown':
+      return (
+        <select value={value ?? ''} onChange={(e) => onChange(e.target.value)} className={cls}>
+          <option value="">—</option>
+          {(col.options || []).map((o) => (
+            <option key={o} value={o}>{o}</option>
+          ))}
+        </select>
+      )
+    default:
+      return <input type="text" value={value ?? ''} onChange={(e) => onChange(e.target.value)} className={cls} />
+  }
+}
+
+// A table/grid field: fixed columns (set by the form designer), and the
+// respondent adds/removes as many rows as needed. Value = array of row objects
+// keyed by column id: [{ [colId]: cellValue }, ...].
+function GridField({ field, value, onChange }) {
+  const cols = field.columns || []
+  const rows = Array.isArray(value) ? value : []
+
+  const addRow = () => onChange([...rows, {}])
+  const removeRow = (i) => onChange(rows.filter((_, idx) => idx !== i))
+  const setCell = (i, colId, v) =>
+    onChange(rows.map((r, idx) => (idx === i ? { ...r, [colId]: v } : r)))
+
+  return (
+    <div>
+      <div className="overflow-x-auto border border-gray-200 rounded-md">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50">
+              {cols.map((c) => (
+                <th key={c.id} className="px-2 py-1.5 text-left font-medium text-gray-600 border-b border-gray-200 whitespace-nowrap">
+                  {c.label}
+                </th>
+              ))}
+              <th className="w-8 border-b border-gray-200" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={cols.length + 1} className="px-2 py-3 text-center text-xs text-gray-400">
+                  No rows yet — click “Add row”.
+                </td>
+              </tr>
+            )}
+            {rows.map((row, i) => (
+              <tr key={i}>
+                {cols.map((c) => (
+                  <td key={c.id} className="px-2 py-1 border-b border-gray-100 align-top">
+                    <GridCell col={c} value={row[c.id]} onChange={(v) => setCell(i, c.id, v)} />
+                  </td>
+                ))}
+                <td className="px-1 py-1 border-b border-gray-100 text-center align-top">
+                  <button
+                    type="button"
+                    onClick={() => removeRow(i)}
+                    title="Remove row"
+                    className="text-gray-300 hover:text-red-500 transition"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <button
+        type="button"
+        onClick={addRow}
+        className="mt-2 px-3 py-1.5 rounded-md border border-dashed border-gray-300 text-sm text-gray-600 hover:border-indigo-300 hover:text-indigo-700 transition"
+      >
+        + Add row
+      </button>
+    </div>
+  )
+}
+
 function FieldRow({ field, value, onChange, error }) {
   const cls = `${inputCls} ${error ? inputErrorCls : ''}`
 
@@ -131,6 +223,27 @@ function FieldRow({ field, value, onChange, error }) {
         )
       case 'file':
         return <FileField value={value} onChange={onChange} maxMb={fieldMaxMb(field)} />
+
+      case 'radio':
+        return (
+          <div className="space-y-1.5">
+            {(field.options || []).map((opt) => (
+              <label key={opt} className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="radio"
+                  name={field.id}
+                  value={opt}
+                  checked={value === opt}
+                  onChange={(e) => onChange(e.target.value)}
+                  className="w-4 h-4 border-gray-300 text-indigo-600 focus:ring-indigo-400"
+                />
+                <span>{opt}</span>
+              </label>
+            ))}
+          </div>
+        )
+      case 'grid':
+        return <GridField field={field} value={value} onChange={onChange} />
 
       case 'repeater':
         return (
@@ -211,6 +324,17 @@ function FillForm() {
     for (const f of visibleFields) {
       if (!f.required) continue
       const v = values[f.id]
+      if (f.type === 'grid') {
+        const rows = Array.isArray(v) ? v : []
+        const cols = f.columns || []
+        const cellEmpty = (cell) => cell === undefined || cell === null || String(cell).trim() === ''
+        if (rows.length === 0) {
+          errs[f.id] = `${f.label} needs at least one row`
+        } else if (rows.some((r) => cols.some((c) => cellEmpty(r[c.id])))) {
+          errs[f.id] = `Fill every cell in ${f.label}`
+        }
+        continue
+      }
       const isEmpty =
         v === undefined ||
         v === null ||
