@@ -7,7 +7,7 @@ const nodeSchema = new mongoose.Schema({
   id: { type: String, required: true },
   type: {
     type: String,
-    enum: ['start', 'approval', 'condition', 'api', 'notification', 'timer', 'assignment', 'document', 'submit', 'end'],
+    enum: ['start', 'approval', 'condition', 'api', 'notification', 'timer', 'assignment', 'document', 'submit', 'review', 'end'],
     required: true
   },
   label: { type: String },
@@ -21,6 +21,9 @@ const nodeSchema = new mongoose.Schema({
     conditionValue: { type: String },
     truePath: { type: String },
     falsePath: { type: String },
+    // Review-node routing: forwardPath = "no changes / forward", changesPath = "changes required".
+    forwardPath: { type: String },
+    changesPath: { type: String },
     slaHours: { type: Number, default: 48 },
     escalateTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     notificationMessage: { type: String },
@@ -28,9 +31,20 @@ const nodeSchema = new mongoose.Schema({
     apiMethod: { type: String },
     assignTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     assignToRole: { type: String },
-    // Submit-node config: instructions for the assignee + whether a file is required.
+    // Submit-node config: instructions for the assignee + the inline form fields
+    // they must fill before submitting. (requireAttachment kept for back-compat.)
     instructions: { type: String },
     requireAttachment: { type: Boolean, default: true },
+    formFields: [{
+      id: { type: String },
+      type: { type: String },
+      label: { type: String },
+      required: { type: Boolean, default: false },
+      placeholder: { type: String },
+      options: [{ type: String }]
+    }],
+    // Approval-node option: require the approver to attach an e-signature on decision.
+    requireSignature: { type: Boolean, default: false },
     slackWebhookUrl: { type: String }
   },
   nextNode: { type: String },

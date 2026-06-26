@@ -85,8 +85,12 @@ const buildApprovalChain = async (task) => {
     const n = nodeById.get(nodeId)
     if (!n) return
     if (n.type === 'approval') orderedApprovals.push(n)
+    // Follow every branch type so approvals downstream of a Decision (truePath/
+    // falsePath) OR a Review node (forwardPath/changesPath) are still discovered.
     walk(n.config?.truePath)
+    walk(n.config?.forwardPath)
     walk(n.config?.falsePath)
+    walk(n.config?.changesPath)
     walk(n.nextNode)
   }
   walk(start ? start.id : null)
@@ -216,6 +220,23 @@ router.get('/:id', protect, async (req, res, next) => {
     task.approvalChain = approvalChain
     task.approvalSummary = approvalSummary
 
+    // Files uploaded at EARLIER steps (e.g. a submit node's costing doc) so the
+    // current assignee/approver can review everything that came before. The
+    // current task's own uploads already render via `attachments`, so drop those.
+    if (task.workflowExecutionId) {
+      const exec = await WorkflowExecution
+        .findById(task.workflowExecutionId)
+        .select('variables')
+        .lean()
+      const docs = Array.isArray(exec?.variables?.documents) ? exec.variables.documents : []
+      task.priorDocuments = docs.filter((d) => d.nodeId !== task.currentNode)
+      const forms = Array.isArray(exec?.variables?.forms) ? exec.variables.forms : []
+      task.priorForms = forms.filter((f) => f.nodeId !== task.currentNode)
+    } else {
+      task.priorDocuments = []
+      task.priorForms = []
+    }
+
     return sendSuccess(res, { task })
   } catch (err) {
     next(err)
@@ -234,10 +255,37 @@ const requireApprover = (task, user) => {
   return 'Not authorised to act on this task'
 }
 
+// Internal helper: validate an e-signature payload from the client.
+const isValidSignature = (s) =>
+  !!s && (
+    (s.kind === 'typed' && typeof s.text === 'string' && s.text.trim()) ||
+    (s.kind === 'uploaded' && typeof s.url === 'string' && s.url)
+  )
+
+// Normalise a signature payload to the shape we persist (drop anything extra).
+const cleanSignature = (s) => {
+  if (!isValidSignature(s)) return undefined
+  return s.kind === 'typed'
+    ? { kind: 'typed', text: String(s.text).trim(), font: s.font || 'cursive' }
+    : { kind: 'uploaded', url: s.url }
+}
+
+// Internal helper: is a Submit-node form-field value empty? (for required checks)
+const isFieldEmpty = (field, v) => {
+  if (v === undefined || v === null || v === '') return true
+  if (field.type === 'checkbox') return v === false
+  if (field.type === 'signature') {
+    if (typeof v === 'string') return !v.trim()
+    return !(v && (v.text || v.url))
+  }
+  if (field.type === 'file') return !(v && typeof v === 'object' && v.url)
+  return false
+}
+
 // POST /api/tasks/:id/approve
 router.post('/:id/approve', protect, async (req, res, next) => {
   try {
-    const { comment } = req.body || {}
+    const { comment, signature } = req.body || {}
 
     const task = await Task.findById(req.params.id)
     if (!task) return sendError(res, 'Task not found', 'TASK_NOT_FOUND', 404)
@@ -247,6 +295,11 @@ router.post('/:id/approve', protect, async (req, res, next) => {
 
     const denial = requireApprover(task, req.user)
     if (denial) return sendError(res, denial, 'FORBIDDEN', 403)
+
+    if (task.requireSignature && !isValidSignature(signature)) {
+      return sendError(res, 'This approval requires your e-signature', 'SIGNATURE_REQUIRED', 400)
+    }
+    const sig = task.requireSignature ? cleanSignature(signature) : undefined
 
     // Parallel approvals: record this vote, check if all approved
     if (task.approvalType === 'parallel' && task.parallelApprovers?.length > 0) {
@@ -265,7 +318,8 @@ router.post('/:id/approve', protect, async (req, res, next) => {
         action: 'approved',
         performedBy: req.user._id,
         performedAt: new Date(),
-        comment: comment || undefined
+        comment: comment || undefined,
+        signature: sig
       })
 
       const allApproved = task.parallelApprovers.every(approverId =>
@@ -287,7 +341,8 @@ router.post('/:id/approve', protect, async (req, res, next) => {
         action: 'approved',
         performedBy: req.user._id,
         performedAt: new Date(),
-        comment: comment || undefined
+        comment: comment || undefined,
+        signature: sig
       })
     }
 
@@ -335,12 +390,12 @@ router.post('/:id/approve', protect, async (req, res, next) => {
 })
 
 // POST /api/tasks/:id/submit
-// For Submit-node tasks: the assignee uploads document(s) + an optional comment,
-// which advances the workflow (no approve/reject). Mirrors /approve but stores
-// attachments and resumes the engine with outcome 'submitted'.
+// For Submit-node tasks: the assignee fills the inline form the designer defined
+// + an optional comment, which advances the workflow (no approve/reject). File
+// fields are surfaced as task.attachments so downstream nodes can open them.
 router.post('/:id/submit', protect, async (req, res, next) => {
   try {
-    const { comment, attachments } = req.body || {}
+    const { comment, formData } = req.body || {}
 
     const task = await Task.findById(req.params.id)
     if (!task) return sendError(res, 'Task not found', 'TASK_NOT_FOUND', 404)
@@ -351,17 +406,27 @@ router.post('/:id/submit', protect, async (req, res, next) => {
     const denial = requireApprover(task, req.user)
     if (denial) return sendError(res, denial, 'FORBIDDEN', 403)
 
-    const files = Array.isArray(attachments) ? attachments.filter((a) => a && a.url) : []
-    if (task.requireAttachment && files.length === 0) {
-      return sendError(res, 'This step requires at least one attachment', 'ATTACHMENT_REQUIRED', 400)
+    const fields = Array.isArray(task.formFields) ? task.formFields : []
+    const data = formData && typeof formData === 'object' ? formData : {}
+
+    // Server-side required-field validation (mirrors the client form).
+    const missing = fields
+      .filter((f) => f.required && isFieldEmpty(f, data[f.id]))
+      .map((f) => f.label || f.id)
+    if (missing.length) {
+      return sendError(res, `Please complete required field(s): ${missing.join(', ')}`, 'FIELD_REQUIRED', 400)
     }
 
-    task.attachments = files.map((a) => ({
-      name: a.name,
-      url: a.url,
-      mime: a.mime,
-      size: a.size
-    }))
+    // Surface file-type field values as real attachments for downstream nodes.
+    const files = fields
+      .filter((f) => f.type === 'file')
+      .map((f) => data[f.id])
+      .filter((v) => v && typeof v === 'object' && v.url)
+      .map((v) => ({ name: v.name, url: v.url, mime: v.mime, size: v.size }))
+
+    task.formData = data
+    task.markModified('formData')
+    task.attachments = files
     task.approvalHistory.push({
       action: 'submitted',
       performedBy: req.user._id,
@@ -400,10 +465,75 @@ router.post('/:id/submit', protect, async (req, res, next) => {
   }
 })
 
+// POST /api/tasks/:id/review
+// For Review-node tasks: the reviewer views the submission + accumulated
+// documents and chooses to forward (no changes) or send back for changes.
+// Advances the engine with outcome 'forward' | 'changes' (no approve/reject).
+router.post('/:id/review', protect, async (req, res, next) => {
+  try {
+    const { outcome, comment } = req.body || {}
+    const decision = outcome === 'changes' ? 'changes' : 'forward'
+
+    const task = await Task.findById(req.params.id)
+    if (!task) return sendError(res, 'Task not found', 'TASK_NOT_FOUND', 404)
+    if (task.status !== 'pending') {
+      return sendError(res, `Task is already ${task.status}`, 'INVALID_STATE', 400)
+    }
+    if (task.actionType !== 'review') {
+      return sendError(res, 'This task is not a review task', 'INVALID_ACTION', 400)
+    }
+
+    const denial = requireApprover(task, req.user)
+    if (denial) return sendError(res, denial, 'FORBIDDEN', 403)
+
+    if (decision === 'changes' && (!comment || !String(comment).trim())) {
+      return sendError(res, 'Please describe the changes required', 'COMMENT_REQUIRED', 400)
+    }
+
+    task.approvalHistory.push({
+      action: decision === 'changes' ? 'request_changes' : 'approved',
+      performedBy: req.user._id,
+      performedAt: new Date(),
+      comment: comment || undefined
+    })
+    task.status = 'completed'
+    await task.save()
+
+    tryAdvanceWorkflow(task._id, decision)
+
+    writeAuditLog({
+      action: 'task_reviewed',
+      performedBy: req.user._id,
+      targetEntity: `Task: ${task.title}`,
+      department: req.user.department,
+      ipAddress: req.ip,
+      detail: `${req.user.name} reviewed "${task.title}" → ${decision === 'changes' ? 'changes required' : 'forwarded'}`,
+      metadata: { taskId: task._id, outcome: decision, comment: comment || null }
+    })
+
+    if (task.submittedBy && !sameId(task.submittedBy, req.user._id)) {
+      createNotification({
+        userId: task.submittedBy,
+        title: decision === 'changes' ? 'Changes requested' : 'Review passed',
+        message: decision === 'changes'
+          ? `"${task.title}" needs changes before it can proceed.`
+          : `"${task.title}" was reviewed and moved to the next step.`,
+        type: decision === 'changes' ? 'reminder' : 'assignment',
+        taskId: task._id,
+        triggeredBy: req.user._id
+      })
+    }
+
+    return sendSuccess(res, { task: task.toObject() })
+  } catch (err) {
+    next(err)
+  }
+})
+
 // POST /api/tasks/:id/reject
 router.post('/:id/reject', protect, async (req, res, next) => {
   try {
-    const { comment } = req.body || {}
+    const { comment, signature } = req.body || {}
     if (!comment || !String(comment).trim()) {
       return sendError(res, 'A rejection comment is required', 'COMMENT_REQUIRED', 400)
     }
@@ -416,6 +546,10 @@ router.post('/:id/reject', protect, async (req, res, next) => {
 
     const denial = requireApprover(task, req.user)
     if (denial) return sendError(res, denial, 'FORBIDDEN', 403)
+
+    if (task.requireSignature && !isValidSignature(signature)) {
+      return sendError(res, 'This decision requires your e-signature', 'SIGNATURE_REQUIRED', 400)
+    }
 
     if (task.approvalType === 'parallel' && task.parallelApprovers?.length > 0) {
       const idx = (task.parallelApprovals || []).findIndex(p => sameId(p.userId, req.user._id))
@@ -435,7 +569,8 @@ router.post('/:id/reject', protect, async (req, res, next) => {
       action: 'rejected',
       performedBy: req.user._id,
       performedAt: new Date(),
-      comment
+      comment,
+      signature: task.requireSignature ? cleanSignature(signature) : undefined
     })
     task.status = 'rejected'
     await task.save()
@@ -483,7 +618,7 @@ router.post('/:id/reject', protect, async (req, res, next) => {
 // POST /api/tasks/:id/request-changes
 router.post('/:id/request-changes', protect, async (req, res, next) => {
   try {
-    const { comment } = req.body || {}
+    const { comment, signature } = req.body || {}
     if (!comment || !String(comment).trim()) {
       return sendError(res, 'A comment is required when requesting changes', 'COMMENT_REQUIRED', 400)
     }
@@ -497,11 +632,16 @@ router.post('/:id/request-changes', protect, async (req, res, next) => {
     const denial = requireApprover(task, req.user)
     if (denial) return sendError(res, denial, 'FORBIDDEN', 403)
 
+    if (task.requireSignature && !isValidSignature(signature)) {
+      return sendError(res, 'This decision requires your e-signature', 'SIGNATURE_REQUIRED', 400)
+    }
+
     task.approvalHistory.push({
       action: 'request_changes',
       performedBy: req.user._id,
       performedAt: new Date(),
-      comment
+      comment,
+      signature: task.requireSignature ? cleanSignature(signature) : undefined
     })
     // Status stays 'pending' — submitter has to act before approval can proceed.
     await task.save()

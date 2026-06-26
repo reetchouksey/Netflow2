@@ -14,8 +14,9 @@ const taskSchema = new mongoose.Schema({
   formResponseId: { type: mongoose.Schema.Types.ObjectId, ref: 'FormResponse' },
   title: { type: String, required: true },
   type: { type: String, required: true },
-  // 'approval' = approve/reject task; 'submit' = assignee uploads + submits to advance.
-  actionType: { type: String, enum: ['approval', 'submit'], default: 'approval' },
+  // 'approval' = approve/reject task; 'submit' = assignee uploads + submits to advance;
+  // 'review' = reviewer views documents then forwards or sends back for changes.
+  actionType: { type: String, enum: ['approval', 'submit', 'review'], default: 'approval' },
   status: {
     type: String,
     enum: ['pending', 'approved', 'rejected', 'escalated', 'completed'],
@@ -23,9 +24,21 @@ const taskSchema = new mongoose.Schema({
   },
   dueDate: { type: Date },
   currentNode: { type: String },
-  // Submit-node tasks: instructions shown to the assignee + uploaded document(s).
+  // Submit-node tasks: instructions shown to the assignee + the inline form they
+  // fill. formFields = definition snapshot; formData = the submitted values.
   instructions: { type: String },
   requireAttachment: { type: Boolean, default: false },
+  formFields: [{
+    id: { type: String },
+    type: { type: String },
+    label: { type: String },
+    required: { type: Boolean, default: false },
+    placeholder: { type: String },
+    options: [{ type: String }]
+  }],
+  formData: { type: mongoose.Schema.Types.Mixed, default: {} },
+  // Approval tasks: when true, the approver must attach an e-signature on decision.
+  requireSignature: { type: Boolean, default: false },
   attachments: [{
     name: { type: String },
     url: { type: String },
@@ -40,7 +53,14 @@ const taskSchema = new mongoose.Schema({
     },
     performedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     performedAt: { type: Date, default: Date.now },
-    comment: { type: String }
+    comment: { type: String },
+    // Optional e-signature captured at decision time (when the node requires it).
+    signature: {
+      kind: { type: String, enum: ['uploaded', 'typed'] },
+      url: { type: String },
+      text: { type: String },
+      font: { type: String }
+    }
   }],
   parallelApprovers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   parallelApprovals: [{

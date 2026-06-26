@@ -10,13 +10,20 @@ const formSchema = new mongoose.Schema({
     id: { type: String, required: true },
     type: {
       type: String,
-      enum: ['number', 'text', 'dropdown', 'date', 'file', 'checkbox', 'signature', 'repeater', 'textarea'],
+      enum: ['number', 'text', 'dropdown', 'date', 'file', 'checkbox', 'signature', 'repeater', 'textarea', 'radio', 'grid'],
       required: true
     },
     label: { type: String, required: true },
     placeholder: { type: String },
     required: { type: Boolean, default: false },
     options: [{ type: String }],
+    // Grid/table field: the columns the respondent fills (one value per column per row).
+    columns: [{
+      id: { type: String },
+      label: { type: String },
+      type: { type: String },
+      options: [{ type: String }]
+    }],
     conditionalLogic: {
       enabled: { type: Boolean, default: false },
       dependsOn: { type: String },

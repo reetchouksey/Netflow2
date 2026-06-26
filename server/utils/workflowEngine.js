@@ -336,7 +336,8 @@ const handleApprovalNode = async (execution, node, workflow) => {
     status: 'pending',
     dueDate: new Date(Date.now() + slaHours * 3600000),
     currentNode: node.id,
-    approvalType: node.config?.approvalType || 'sequential'
+    approvalType: node.config?.approvalType || 'sequential',
+    requireSignature: node.config?.requireSignature === true
   })
 
   createNotification({
@@ -398,7 +399,7 @@ const handleSubmitNode = async (execution, node, workflow) => {
     dueDate: new Date(Date.now() + slaHours * 3600000),
     currentNode: node.id,
     instructions: node.config?.instructions || '',
-    requireAttachment: node.config?.requireAttachment !== false
+    formFields: Array.isArray(node.config?.formFields) ? node.config.formFields : []
   })
 
   createNotification({
@@ -415,6 +416,68 @@ const handleSubmitNode = async (execution, node, workflow) => {
     sendTaskAssignedEmail({
       to: assignee.email,
       assigneeName: assignee.name,
+      taskTitle: task.title,
+      submittedBy: 'NetFlow workflow',
+      dueDate: task.dueDate
+    })
+  }
+
+  execution.variables = execution.variables || {}
+  execution.variables.pendingTaskId = task._id.toString()
+  execution.variables.pendingNodeId = node.id
+  if (routingReason) execution.variables.routingReason = routingReason
+  execution.markModified('variables')
+  await execution.save()
+
+  return { paused: true, taskId: task._id }
+}
+
+// Review (viewer) node: a reviewer (e.g. Brand Representative) views the
+// submission + accumulated documents, then chooses to forward (no changes) or
+// send it back for changes. Pauses until POST /api/tasks/:id/review resumes the
+// engine with outcome 'forward' | 'changes', which advanceWorkflow routes via
+// the node's config.forwardPath / config.changesPath.
+const handleReviewNode = async (execution, node, workflow) => {
+  const { assignedTo, routingReason, routingSla } = await resolveAssignee(execution, node, workflow)
+
+  if (!assignedTo) {
+    return await failExecution(
+      execution,
+      `Review node "${node.id}" has no resolvable reviewer (approverRole="${node.config?.approverRole || ''}")`
+    )
+  }
+
+  const slaHours = routingSla || node.config?.slaHours || 48
+
+  const task = await Task.create({
+    workflowExecutionId: execution._id,
+    workflowId: workflow._id,
+    assignedTo,
+    submittedBy: execution.triggeredBy,
+    formResponseId: execution.formResponseId,
+    title: `${workflow.title} — ${node.label || 'Review Required'}`,
+    type: workflow.department || 'General',
+    actionType: 'review',
+    status: 'pending',
+    dueDate: new Date(Date.now() + slaHours * 3600000),
+    currentNode: node.id,
+    instructions: node.config?.instructions || ''
+  })
+
+  createNotification({
+    userId: assignedTo,
+    title: 'New review task assigned',
+    message: `You have a new task to review: ${task.title}`,
+    type: 'assignment',
+    taskId: task._id,
+    triggeredBy: execution.triggeredBy
+  })
+
+  const reviewer = await User.findById(assignedTo).select('name email').lean()
+  if (reviewer?.email) {
+    sendTaskAssignedEmail({
+      to: reviewer.email,
+      assigneeName: reviewer.name,
       taskTitle: task.title,
       submittedBy: 'NetFlow workflow',
       dueDate: task.dueDate
@@ -524,6 +587,9 @@ const processNode = async (execution, nodeId, workflow) => {
 
     case 'submit':
       return await handleSubmitNode(execution, node, workflow)
+
+    case 'review':
+      return await handleReviewNode(execution, node, workflow)
 
     case 'condition':
       return await handleConditionNode(execution, node, workflow)
@@ -645,9 +711,49 @@ const advanceWorkflow = async (taskId, outcome = 'approved') => {
     delete execution.variables.pendingTaskId
     delete execution.variables.pendingNodeId
   }
+  if (Array.isArray(task.attachments) && task.attachments.length > 0) {
+    const prior = Array.isArray(execution.variables.documents) ? execution.variables.documents : []
+    execution.variables.documents = [
+      ...prior,
+      ...task.attachments.map((f) => ({
+        name: f.name, url: f.url, mime: f.mime, size: f.size,
+        step: task.title, nodeId: task.currentNode,
+      })),
+    ]
+  }
+  // Carry submitted Submit-node form values forward so later reviewers/approvers
+  // can see the structured data (name, account no., e-signature, …), not just files.
+  if (task.formData && typeof task.formData === 'object' && Object.keys(task.formData).length > 0) {
+    const priorForms = Array.isArray(execution.variables.forms) ? execution.variables.forms : []
+    execution.variables.forms = [
+      ...priorForms,
+      {
+        step: task.title,
+        nodeId: task.currentNode,
+        fields: Array.isArray(task.formFields) ? task.formFields : [],
+        data: task.formData,
+      },
+    ]
+  }
   execution.markModified('variables')
 
   await updateNodeLog(execution, task.currentNode, 'completed', { outcome })
+
+  // Review (viewer) node: the reviewer's choice routes directly to one of the
+  // node's two branch targets — 'changes' goes back (e.g. to the submit step),
+  // anything else ('forward') continues. No approve/reject semantics.
+  if (currentNode.type === 'review') {
+    const target = outcome === 'changes'
+      ? currentNode.config?.changesPath
+      : currentNode.config?.forwardPath
+    if (!target) {
+      return await failExecution(
+        execution,
+        `Review node "${task.currentNode}" has no ${outcome === 'changes' ? 'changes' : 'forward'} path configured`
+      )
+    }
+    return await processNode(execution, target, workflow)
+  }
 
   // A rejection only terminates the workflow if there's no Decision node
   // downstream to handle it. If the next node is a condition, we let it
