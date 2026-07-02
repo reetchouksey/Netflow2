@@ -45,6 +45,8 @@ const nodeSchema = new mongoose.Schema({
     }],
     // Approval-node option: require the approver to attach an e-signature on decision.
     requireSignature: { type: Boolean, default: false },
+    // End-node option: auto-generate a signed PDF of the approved request on completion.
+    generatePdf: { type: Boolean, default: false },
     slackWebhookUrl: { type: String }
   },
   nextNode: { type: String },
@@ -67,6 +69,24 @@ const workflowSchema = new mongoose.Schema({
     default: 'draft'
   },
   linkedFormId: { type: mongoose.Schema.Types.ObjectId, ref: 'Form' },
+  // Who may initiate (submit) this workflow. Only enforced when
+  // whoCanSubmit === 'Specific people' and allowedInitiators is non-empty;
+  // otherwise submission stays open (backward-compatible default).
+  access: {
+    whoCanSubmit: { type: String, default: 'All employees' },
+    departments: [{ type: String }],
+    allowedInitiators: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
+  },
+  // Trigger + submission behaviour set on the workflow's settings page.
+  //   triggerOn: 'Every form submission' (auto-fire) | 'Manual trigger only' (only /execute)
+  //   notifyOnSlaBreach: 'Always' | 'After first breach' | 'Never'
+  triggerOn: { type: String, default: 'Every form submission' },
+  preventDuplicates: { type: Boolean, default: false },
+  notifyOnSlaBreach: { type: String, default: 'Always' },
+  advanced: {
+    allowCancel: { type: Boolean, default: false },
+    autoPdf: { type: Boolean, default: false }
+  },
   department: { type: String },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   version: { type: Number, default: 1 },

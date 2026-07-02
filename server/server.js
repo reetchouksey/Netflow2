@@ -65,6 +65,9 @@ app.use('/api/roles', require('./routes/roles'))
 app.use('/api/forms', require('./routes/forms'))
 app.use('/api/uploads', require('./routes/uploads'))
 
+// Public (unauthenticated) form links — collect data from non-users.
+app.use('/api/public', require('./routes/public'))
+
 // Routes — M2
 app.use('/api/workflows', require('./routes/workflows'))
 
@@ -76,6 +79,9 @@ app.use('/api/analytics', require('./routes/analytics'))
 
 // Routes — AI-01 (Approval-Routing AI / Delegation-of-Authority)
 app.use('/api/approval-routing', require('./routes/approvalRouting'))
+
+// Routes — AI-02 (In-app AI assistant chatbot)
+app.use('/api/assistant', require('./routes/assistant'))
 
 app.use((req, res) => {
   res.status(404).json({

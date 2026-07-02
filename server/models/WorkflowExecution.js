@@ -9,7 +9,7 @@ const workflowExecutionSchema = new mongoose.Schema({
   triggeredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   status: {
     type: String,
-    enum: ['running', 'completed', 'failed', 'paused'],
+    enum: ['running', 'completed', 'failed', 'paused', 'cancelled'],
     default: 'running'
   },
   currentNodeId: { type: String },

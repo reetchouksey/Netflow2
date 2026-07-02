@@ -11,6 +11,7 @@ const { protect } = require('../middleware/auth')
 const { roleGuard } = require('../middleware/roleGuard')
 const { sendSuccess, sendError } = require('../utils/apiResponse')
 const { writeAuditLog } = require('../utils/writeAuditLog')
+const { createNotification } = require('../utils/createNotification')
 const { triggerWorkflow } = require('../utils/workflowEngine')
 
 const router = express.Router()
@@ -53,7 +54,10 @@ router.get('/', protect, async (req, res, next) => {
 // POST /api/workflows
 router.post('/', protect, roleGuard(...BUILDER_ROLES), async (req, res, next) => {
   try {
-    const { title, description, nodes, edges, department, linkedFormId } = req.body
+    const {
+      title, description, nodes, edges, department, linkedFormId, access,
+      triggerOn, preventDuplicates, notifyOnSlaBreach, advanced
+    } = req.body
     if (!title) return sendError(res, 'title is required', 'MISSING_FIELDS', 400)
 
     const workflow = await Workflow.create({
@@ -63,6 +67,11 @@ router.post('/', protect, roleGuard(...BUILDER_ROLES), async (req, res, next) =>
       edges: Array.isArray(edges) ? edges : [],
       department,
       linkedFormId: linkedFormId || undefined,
+      access: access || undefined,
+      triggerOn: triggerOn || undefined,
+      preventDuplicates: preventDuplicates === true,
+      notifyOnSlaBreach: notifyOnSlaBreach || undefined,
+      advanced: advanced || undefined,
       status: 'draft',
       createdBy: req.user._id,
       version: 1
@@ -219,6 +228,74 @@ router.post('/:id/execute', protect, async (req, res, next) => {
       executionId: execution._id,
       status: execution.status
     }, 201)
+  } catch (err) {
+    next(err)
+  }
+})
+
+// POST /api/workflows/executions/:id/cancel
+// The submitter cancels their own in-flight request. Allowed only when the
+// workflow enables advanced.allowCancel. Cancels the execution + open tasks.
+router.post('/executions/:id/cancel', protect, async (req, res, next) => {
+  try {
+    const execution = await WorkflowExecution.findById(req.params.id)
+    if (!execution) return sendError(res, 'Request not found', 'EXECUTION_NOT_FOUND', 404)
+    if (execution.status !== 'running') {
+      return sendError(res, `Request is ${execution.status} and can no longer be cancelled`, 'NOT_CANCELLABLE', 400)
+    }
+    if (String(execution.triggeredBy) !== String(req.user._id)) {
+      return sendError(res, 'Only the submitter can cancel this request', 'NOT_SUBMITTER', 403)
+    }
+
+    const workflow = await Workflow.findById(execution.workflowId).select('title advanced').lean()
+    if (!workflow?.advanced?.allowCancel) {
+      return sendError(res, 'This workflow does not allow cancelling requests', 'CANCEL_DISABLED', 403)
+    }
+
+    execution.status = 'cancelled'
+    execution.completedAt = new Date()
+    execution.currentNodeId = null
+    await execution.save()
+
+    // Cancel any still-open tasks for this run and let their assignees know.
+    const openTasks = await Task.find({
+      workflowExecutionId: execution._id,
+      status: { $in: ['pending', 'escalated'] }
+    }).populate('assignedTo', 'name').lean()
+
+    await Task.updateMany(
+      { workflowExecutionId: execution._id, status: { $in: ['pending', 'escalated'] } },
+      { $set: { status: 'cancelled' } }
+    )
+
+    for (const t of openTasks) {
+      if (t.assignedTo?._id) {
+        createNotification({
+          userId: t.assignedTo._id,
+          title: 'Request cancelled',
+          message: `${req.user.name} cancelled "${t.title}", so it no longer needs your action.`,
+          type: 'reminder',
+          taskId: t._id,
+          triggeredBy: req.user._id
+        })
+      }
+    }
+
+    writeAuditLog({
+      action: 'workflow_cancelled',
+      performedBy: req.user._id,
+      targetEntity: `Workflow: ${workflow.title}`,
+      department: req.user.department,
+      ipAddress: req.ip,
+      detail: `${req.user.name} cancelled their request`,
+      metadata: { executionId: String(execution._id), cancelledTasks: openTasks.length }
+    })
+
+    return sendSuccess(res, {
+      executionId: execution._id,
+      status: execution.status,
+      cancelledTasks: openTasks.length
+    })
   } catch (err) {
     next(err)
   }

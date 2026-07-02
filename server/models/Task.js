@@ -19,7 +19,7 @@ const taskSchema = new mongoose.Schema({
   actionType: { type: String, enum: ['approval', 'submit', 'review'], default: 'approval' },
   status: {
     type: String,
-    enum: ['pending', 'approved', 'rejected', 'escalated', 'completed'],
+    enum: ['pending', 'approved', 'rejected', 'escalated', 'completed', 'cancelled'],
     default: 'pending'
   },
   dueDate: { type: Date },

@@ -28,7 +28,17 @@ const userSchema = new mongoose.Schema({
   managerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   // HR partner responsible for this user (an HR-role user).
   hrId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  lastLogin: { type: Date }
+  lastLogin: { type: Date },
+  // Out-of-office: while enabled (and within the optional from/until window),
+  // any approval / review / submit task that would be assigned to this user is
+  // instead auto-routed to their manager by the workflow engine. Self-service.
+  outOfOffice: {
+    enabled: { type: Boolean, default: false },
+    from: { type: Date, default: null },
+    until: { type: Date, default: null },
+    note: { type: String },
+    delegateId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+  }
 }, { timestamps: true })
 
 userSchema.pre('save', async function () {

@@ -42,7 +42,13 @@ const formSchema = new mongoose.Schema({
   },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   department: { type: String },
-  version: { type: Number, default: 1 }
+  version: { type: Number, default: 1 },
+  // Public sharing: when enabled, the form can be filled by anyone who has the
+  // unguessable token link (no login). Data is collected without a workflow.
+  public: {
+    enabled: { type: Boolean, default: false },
+    token: { type: String, default: null, index: true }
+  }
 }, { timestamps: true })
 
 module.exports = mongoose.model('Form', formSchema)

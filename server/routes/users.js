@@ -87,6 +87,10 @@ router.get('/me/profile', protect, async (req, res, next) => {
         select: 'name email department',
         populate: { path: 'role', select: 'name' }
       })
+      .populate({
+        path: 'outOfOffice.delegateId',
+        select: 'name email department'
+      })
       .lean()
     if (!user) return sendError(res, 'User not found', 'USER_NOT_FOUND', 404)
 
@@ -97,6 +101,67 @@ router.get('/me/profile', protect, async (req, res, next) => {
       .lean()
 
     return sendSuccess(res, { user, reports })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// PUT /api/users/me/out-of-office
+// Self-service Out-of-Office. While enabled (and within the optional date
+// window), new approval / review / submit tasks that would be assigned to this
+// user are auto-routed to their chosen delegate. Declared before
+// /:id so "me" isn't captured as an id.
+router.put('/me/out-of-office', protect, async (req, res, next) => {
+  try {
+    const { enabled, from, until, note, delegateId } = req.body || {}
+
+    const parseDate = (v) => {
+      if (v === undefined || v === null || v === '') return null
+      const d = new Date(v)
+      return isNaN(d.getTime()) ? undefined : d
+    }
+    const fromD = parseDate(from)
+    const untilD = parseDate(until)
+    if (fromD === undefined || untilD === undefined) {
+      return sendError(res, 'Invalid date provided', 'INVALID_DATE', 400)
+    }
+    if (fromD && untilD && untilD < fromD) {
+      return sendError(res, 'The end date must be on or after the start date', 'INVALID_RANGE', 400)
+    }
+
+    const outOfOffice = {
+      enabled: !!enabled,
+      from: fromD,
+      until: untilD,
+      note: note ? String(note).slice(0, 500) : undefined,
+      delegateId: delegateId || undefined
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { outOfOffice },
+      { new: true, runValidators: true }
+    )
+      .select('-password')
+      .populate('role')
+      .populate({ path: 'managerId', select: 'name email department' })
+      .populate({ path: 'hrId', select: 'name email department' })
+      .populate({ path: 'outOfOffice.delegateId', select: 'name email department' })
+      .lean()
+
+    if (!user) return sendError(res, 'User not found', 'USER_NOT_FOUND', 404)
+
+    writeAuditLog({
+      action: 'user_updated',
+      performedBy: req.user._id,
+      targetEntity: `User: ${user.name}`,
+      department: user.department,
+      ipAddress: req.ip,
+      detail: `${user.name} turned Out-of-Office ${outOfOffice.enabled ? 'ON' : 'OFF'}`,
+      metadata: { userId: String(user._id), outOfOffice: outOfOffice.enabled }
+    })
+
+    return sendSuccess(res, { user })
   } catch (err) {
     next(err)
   }

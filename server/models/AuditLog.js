@@ -22,7 +22,8 @@ const auditLogSchema = new mongoose.Schema({
       'user_deleted',
       'role_changed',
       'request_changes',
-      'approver_inferred'
+      'approver_inferred',
+      'workflow_cancelled'
     ],
     required: true
   },

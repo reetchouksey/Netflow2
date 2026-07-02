@@ -51,6 +51,42 @@ const findFirstUserByRoleName = async (roleName) => {
   return u?._id || null
 }
 
+// True when a user is currently on Out-of-Office (within the optional window).
+const isUserOOO = (user, at = new Date()) => {
+  const o = user && user.outOfOffice
+  if (!o || !o.enabled) return false
+  if (o.from && at < new Date(o.from)) return false
+  if (o.until && at > new Date(o.until)) return false
+  return true
+}
+
+// If the resolved approver is out of office, route to their chosen delegate.
+// Returns { assignedTo, reason }; `reason` is null when no redirect happened 
+// (so the original assignee stays).
+const redirectIfOutOfOffice = async (assignedTo) => {
+  if (!assignedTo) return { assignedTo, reason: null }
+  const original = await User.findById(assignedTo)
+    .select('name isActive outOfOffice managerId')
+    .lean()
+  if (!original || !isUserOOO(original)) return { assignedTo, reason: null }
+
+  // Route to the chosen delegate if they are active and not also away
+  if (original.outOfOffice?.delegateId) {
+    const delegate = await User.findById(original.outOfOffice.delegateId)
+      .select('name isActive outOfOffice')
+      .lean()
+    if (delegate && delegate.isActive !== false && !isUserOOO(delegate)) {
+      return {
+        assignedTo: delegate._id,
+        reason: `${original.name} is out of office; routed to their chosen delegate ${delegate.name}.`
+      }
+    }
+  }
+
+  // No auto-routing fallback to manager. Task stays with original assignee if delegate is invalid/absent.
+  return { assignedTo, reason: null }
+}
+
 // Resolve a semantic approver token using submitter context. Returns a User _id
 // or null if the token is not recognised / no matching user exists. Tokens are
 // case- and whitespace-insensitive ("Direct manager", "direct_manager", and
@@ -203,6 +239,50 @@ const completeExecution = async (execution) => {
   return { completed: true, executionId: execution._id }
 }
 
+// End-node option: when config.generatePdf is on, produce a signed PDF of the
+// approved request (form data + approval trail + captured e-signatures), file it
+// under /uploads, and surface it on both the execution's documents and the
+// submitter's FormResponse so everyone can download it. Best-effort: a PDF
+// failure never blocks the workflow from completing.
+const maybeGeneratePdf = async (execution, node, workflow) => {
+  // Generate when the End node opts in, OR when the workflow-wide
+  // "Auto-generate PDF on completion" advanced setting is enabled.
+  if (!node?.config?.generatePdf && !workflow?.advanced?.autoPdf) return
+  try {
+    const { generateApprovalPdf } = require('./pdf')
+    const doc = await generateApprovalPdf(execution, workflow)
+
+    execution.variables = execution.variables || {}
+    const prior = Array.isArray(execution.variables.documents) ? execution.variables.documents : []
+    execution.variables.documents = [
+      ...prior,
+      {
+        name: doc.name, url: doc.url, mime: doc.mime, size: doc.size,
+        step: node.label || 'Approved request', nodeId: node.id, generated: true,
+      },
+    ]
+    execution.markModified('variables')
+    await execution.save()
+
+    if (execution.formResponseId) {
+      const FormResponse = require('../models/FormResponse')
+      await FormResponse.findByIdAndUpdate(execution.formResponseId, {
+        $push: { attachments: { filename: doc.name, path: doc.url, mimetype: doc.mime } },
+      })
+    }
+
+    writeAuditLog({
+      action: 'workflow_completed',
+      performedBy: execution.triggeredBy,
+      targetEntity: `Workflow Execution #${execution._id}`,
+      detail: `Signed PDF generated (${doc.name})`,
+      metadata: { nodeId: node.id, url: doc.url }
+    })
+  } catch (err) {
+    console.error(`PDF generation failed for execution ${execution._id}:`, err.message)
+  }
+}
+
 const failExecution = async (execution, reason) => {
   execution.status = 'failed'
   execution.failedAt = new Date()
@@ -307,6 +387,24 @@ const resolveAssignee = async (execution, node, workflow) => {
         const fallback = await User.findOne(query).lean()
         assignedTo = fallback?._id || null
       }
+    }
+  }
+
+  // Out-of-Office redirect: if the resolved assignee is away, route to their
+  // manager. Applies to approval / submit / review nodes alike since they all
+  // resolve their assignee through this function.
+  if (assignedTo) {
+    const ooo = await redirectIfOutOfOffice(assignedTo)
+    if (ooo.reason) {
+      assignedTo = ooo.assignedTo
+      routingReason = [routingReason, ooo.reason].filter(Boolean).join(' ')
+      writeAuditLog({
+        action: 'approver_inferred',
+        performedBy: execution.triggeredBy,
+        targetEntity: `Workflow: ${workflow.title}`,
+        detail: ooo.reason,
+        metadata: { nodeId: node.id, redirectedTo: String(assignedTo), reason: 'out_of_office' }
+      })
     }
   }
 
@@ -604,6 +702,7 @@ const processNode = async (execution, nodeId, workflow) => {
       return await handleAssignmentNode(execution, node, workflow)
 
     case 'end':
+      await maybeGeneratePdf(execution, node, workflow)
       return await completeExecution(execution)
 
     case 'api':

@@ -50,7 +50,9 @@ const runEscalation = async () => {
       status: 'pending',
       dueDate: { $lt: startedAt },
       isEscalated: false
-    }).populate('assignedTo submittedBy')
+    })
+      .populate('assignedTo submittedBy')
+      .populate({ path: 'workflowId', select: 'notifyOnSlaBreach title' })
 
     let escalatedCount = 0
 
@@ -118,6 +120,32 @@ const runEscalation = async () => {
           escalatedToName: target.name
         }
       })
+
+      // Workflow-level "Notify admin on SLA breach" oversight ping.
+      //   Always            → notify an admin on every breach
+      //   After first breach → only from the 2nd escalation onward
+      //   Never             → skip
+      const notifyPref = task.workflowId?.notifyOnSlaBreach || 'Always'
+      const shouldNotifyAdmin =
+        notifyPref === 'Always' ||
+        (notifyPref === 'After first breach' && updated.escalationLevel >= 2)
+      if (shouldNotifyAdmin) {
+        const adminRoleId = await findRoleIdByName('Admin')
+        const admin = adminRoleId
+          ? await User.findOne({ role: adminRoleId, isActive: true }).lean()
+          : null
+        // Skip if the admin is already the escalation target (avoid a double ping).
+        if (admin && String(admin._id) !== String(target._id)) {
+          createNotification({
+            userId: admin._id,
+            title: 'SLA breach alert',
+            message: `Task "${task.title}" breached its SLA (${hoursOverdue}hrs overdue) and was escalated to ${target.name}.`,
+            type: 'escalation',
+            taskId: task._id,
+            triggeredBy: task.submittedBy?._id
+          })
+        }
+      }
 
       escalatedCount++
     }

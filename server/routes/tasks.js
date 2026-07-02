@@ -151,7 +151,7 @@ router.get('/my-tasks', protect, async (req, res, next) => {
     const tasks = await Task.find(query)
       .populate('submittedBy', 'name email department')
       .populate('assignedTo', 'name email department')
-      .populate('workflowId', 'title')
+      .populate('workflowId', 'title advanced')
       .populate({
         path: 'formResponseId',
         select: 'formData status formId',
@@ -178,6 +178,16 @@ router.get('/my-tasks', protect, async (req, res, next) => {
       t.approvalSummary = built.approvalSummary
     }
 
+    // Flag which of the user's OWN pending requests can be cancelled (workflow
+    // must opt in via advanced.allowCancel). Separate loop so cached-chain
+    // `continue` above doesn't skip it.
+    for (const t of tasks) {
+      t.canCancel =
+        String(t.submittedBy?._id || t.submittedBy) === String(me) &&
+        ['pending', 'escalated'].includes(t.status) &&
+        t.workflowId?.advanced?.allowCancel === true
+    }
+
     return sendSuccess(res, { count: tasks.length, tasks })
   } catch (err) {
     next(err)
@@ -190,7 +200,7 @@ router.get('/:id', protect, async (req, res, next) => {
     const task = await Task.findById(req.params.id)
       .populate('submittedBy', 'name email department')
       .populate('assignedTo', 'name email department')
-      .populate('workflowId', 'title')
+      .populate('workflowId', 'title advanced')
       .populate({
         path: 'formResponseId',
         select: 'formData status attachments formId',
@@ -219,6 +229,12 @@ router.get('/:id', protect, async (req, res, next) => {
     const { approvalChain, approvalSummary } = await buildApprovalChain(task)
     task.approvalChain = approvalChain
     task.approvalSummary = approvalSummary
+
+    // Can the viewer (the submitter) cancel this in-flight request?
+    task.canCancel =
+      sameId(task.submittedBy?._id, req.user._id) &&
+      ['pending', 'escalated'].includes(task.status) &&
+      task.workflowId?.advanced?.allowCancel === true
 
     // Files uploaded at EARLIER steps (e.g. a submit node's costing doc) so the
     // current assignee/approver can review everything that came before. The
