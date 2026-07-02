@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { formsStore, FORM_CATEGORIES } from '../lib/formsStore'
+import { FORM_TEMPLATES } from '../lib/formTemplates'
 import { api } from '../utils/api'
 import { fieldMaxMb, MAX_UPLOAD_MB } from '../utils/uploads'
 
@@ -694,14 +695,51 @@ function PreviewField({ field }) {
 function NewForm() {
   const navigate = useNavigate()
   const { id: editId } = useParams()
+  const [searchParams] = useSearchParams()
   const isEditMode = !!editId
-  const [name, setName] = useState(isEditMode ? '' : 'Leave Request Form')
-  const [category, setCategory] = useState('Company-wide')
-  const [fields, setFields] = useState(isEditMode ? [] : seededFields)
+
+  // How the builder was opened from the "New form" chooser:
+  //   ?template=<id> → seed a ready-made template
+  //   ?ai=1          → start blank and focus the AI prompt box
+  //   ?blank=1       → start with no fields
+  // (no param keeps the legacy default: a seeded Leave Request form)
+  const templateId = searchParams.get('template')
+  const aiMode = searchParams.get('ai') === '1'
+  const blankMode = searchParams.get('blank') === '1'
+  const template = !isEditMode && templateId
+    ? FORM_TEMPLATES.find((t) => t.id === templateId) || null
+    : null
+
+  const [name, setName] = useState(() => {
+    if (isEditMode) return ''
+    if (template) return template.name
+    if (aiMode || blankMode) return ''
+    return 'Leave Request Form'
+  })
+  const [category, setCategory] = useState(() => (template ? template.category : 'Company-wide'))
+  const [fields, setFields] = useState(() => {
+    if (isEditMode || aiMode || blankMode) return []
+    if (template) {
+      return template.fields.map((f) => ({
+        ...f,
+        id: newFieldId(),
+        options: Array.isArray(f.options) ? [...f.options] : f.options,
+        columns: f.type === 'grid' ? freshColumns(f.columns) : f.columns,
+      }))
+    }
+    return seededFields()
+  })
   const [loadError, setLoadError] = useState('')
   const [selectedId, setSelectedId] = useState(null)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+
+  // AI Form Builder
+  const [aiAvailable, setAiAvailable] = useState(false)
+  const [aiPrompt, setAiPrompt] = useState(() => searchParams.get('prompt') || '')
+  const [aiBusy, setAiBusy] = useState(false)
+  const [aiError, setAiError] = useState('')
+  const aiInputRef = useRef(null)
 
   // In edit mode, fetch the existing form and populate state.
   useEffect(() => {
@@ -717,6 +755,23 @@ function NewForm() {
       }
     })()
   }, [editId])
+
+  // Is the AI form-builder available? (server has an LLM key configured)
+  useEffect(() => {
+    let cancelled = false
+    api.get('/api/forms/ai-status')
+      .then((d) => { if (!cancelled) setAiAvailable(!!d.aiConfigured) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  // Opened via the chooser's AI option → bring the prompt box into focus.
+  useEffect(() => {
+    if (aiMode && aiAvailable && aiInputRef.current) {
+      aiInputRef.current.focus()
+      try { aiInputRef.current.scrollIntoView({ block: 'center' }) } catch { /* noop */ }
+    }
+  }, [aiMode, aiAvailable])
 
   // Reorder drag state. `draggingId` is the field being moved, `dropTarget`
   // is `{ id, position: 'before' | 'after' }` for the indicator line.
@@ -734,6 +789,38 @@ function NewForm() {
     if (type === 'grid') newField.columns = freshColumns(def.defaults.columns)
     setFields((prev) => (atEnd ? [...prev, newField] : [newField, ...prev]))
     setSelectedId(id)
+  }
+
+  // Turn a plain-English description into fields via the server's Gemini client,
+  // then merge them into the builder (assigning fresh ids on the client).
+  const generateWithAI = async () => {
+    const prompt = aiPrompt.trim()
+    if (!prompt || aiBusy) return
+    setAiBusy(true)
+    setAiError('')
+    try {
+      const res = await api.post('/api/forms/ai-draft', { prompt })
+      const incoming = (res.fields || []).map((f) => ({
+        ...f,
+        id: newFieldId(),
+        columns: f.type === 'grid' ? freshColumns(f.columns) : f.columns,
+      }))
+      if (!incoming.length) {
+        setAiError('No fields were generated. Try rephrasing.')
+        return
+      }
+      const replace =
+        fields.length === 0 ||
+        window.confirm('Replace the current fields with the AI-generated ones?\n\nOK = replace · Cancel = add them below your existing fields.')
+      setFields((prev) => (replace ? incoming : [...prev, ...incoming]))
+      setSelectedId(incoming[0].id)
+      if (res.title && (!name.trim() || name === 'Leave Request Form')) setName(res.title)
+      setAiPrompt('')
+    } catch (err) {
+      setAiError(err.message || 'AI generation failed. Please try again.')
+    } finally {
+      setAiBusy(false)
+    }
   }
 
   const updateField = (updated) =>
@@ -891,9 +978,7 @@ function NewForm() {
       <header className="h-16 bg-white border-b border-gray-200 px-6 flex items-center justify-between">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-8 h-8 rounded-md bg-indigo-600 flex items-center justify-center shrink-0">
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h10M4 18h7" />
-            </svg>
+          <img src="/netflow-icon.png" alt="NetFlow" className="w-8 h-8" />
           </div>
           <span className="font-semibold text-gray-900 shrink-0">NetFlow</span>
           <span className="text-gray-300 shrink-0">|</span>
@@ -951,6 +1036,40 @@ function NewForm() {
         <FieldPalette onAdd={(type) => addField(type, true)} />
 
         <main className="flex-1 min-w-0 overflow-y-auto px-8 py-6">
+          {aiAvailable && (
+            <div className="mb-3 rounded-lg border border-indigo-200 bg-indigo-50/40 p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-indigo-600" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M11 2.5a.6.6 0 0 1 1.13 0l1.32 3.43a3 3 0 0 0 1.72 1.72l3.43 1.32a.6.6 0 0 1 0 1.13l-3.43 1.32a3 3 0 0 0-1.72 1.72l-1.32 3.43a.6.6 0 0 1-1.13 0l-1.32-3.43a3 3 0 0 0-1.72-1.72L4.26 11.2a.6.6 0 0 1 0-1.13l3.43-1.32a3 3 0 0 0 1.72-1.72L11 2.5Z" />
+                </svg>
+                <span className="text-sm font-semibold text-indigo-800">Generate with AI</span>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  ref={aiInputRef}
+                  type="text"
+                  value={aiPrompt}
+                  onChange={(e) => setAiPrompt(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') generateWithAI() }}
+                  placeholder='e.g. "Leave request form with dates, reason, and manager"'
+                  disabled={aiBusy}
+                  className="flex-1 px-3 py-2 text-sm rounded-md border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition disabled:opacity-60"
+                />
+                <button
+                  type="button"
+                  onClick={generateWithAI}
+                  disabled={aiBusy || !aiPrompt.trim()}
+                  className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium shadow-sm transition whitespace-nowrap"
+                >
+                  {aiBusy ? 'Generating…' : 'Generate'}
+                </button>
+              </div>
+              {aiError && <p className="mt-2 text-xs text-red-600">{aiError}</p>}
+              <p className="mt-1.5 text-[11px] text-indigo-700/70">
+               AI generates the form fields based on the description.
+              </p>
+            </div>
+          )}
           <div
             onDragOver={(e) => {
               e.preventDefault()

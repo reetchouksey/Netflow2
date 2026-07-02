@@ -174,6 +174,8 @@ export const adaptTask = (apiTask) => {
     department: apiTask.type || apiTask.workflowId?.department || apiTask.submittedBy?.department || 'General',
     assignedToId: idOf(apiTask.assignedTo),
     submittedById: idOf(apiTask.submittedBy),
+    executionId: idOf(apiTask.workflowExecutionId),
+    canCancel: !!apiTask.canCancel,
     workflow: apiTask.workflowId?.title || apiTask.type || 'Standalone',
     initials: initials(submitter),
     avatarColor: colourForName(submitter),
@@ -243,7 +245,9 @@ export const adaptForm = (f) => ({
   submissions: f.submissions || 0,
   createdAt: f.createdAt,
   createdBy: f.createdBy?.name || 'Unknown',
-  version: f.version || 1
+  version: f.version || 1,
+  isPublic: !!f.public?.enabled,
+  publicToken: f.public?.token || null
 })
 
 // ---------- workflows ----------

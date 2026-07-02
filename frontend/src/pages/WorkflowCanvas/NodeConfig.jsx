@@ -1,6 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { NODE_STYLES } from "./nodeStyles";
 import { FORM_FIELD_TYPES, newFieldId } from "../../components/FormFields";
+import { api } from "../../utils/api";
 
 const SLA_UNITS = ["Minutes", "Hours", "Days"];
 const BREACH_ACTIONS = [
@@ -33,6 +34,28 @@ const ROLE_APPROVERS = [
 ];
 
 const roleApproverByValue = (v) => ROLE_APPROVERS.find((r) => r.value === v);
+
+// Active users for the "specific person" approver picker. Cached at module level
+// so switching between nodes doesn't refetch the list every time.
+let _activeUsersCache = null;
+function useActiveUsers() {
+  const [users, setUsers] = useState(_activeUsersCache || []);
+  useEffect(() => {
+    if (_activeUsersCache) return;
+    let cancelled = false;
+    api
+      .get("/api/users?isActive=true&limit=100")
+      .then((d) => {
+        _activeUsersCache = d.users || [];
+        if (!cancelled) setUsers(_activeUsersCache);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return users;
+}
 
 export default function NodeConfig({
   node,
@@ -155,6 +178,21 @@ export default function NodeConfig({
           </div>
         </Field>
       )}
+
+      {node.type === "end" && (
+        <div className="mt-1">
+          <Checkbox
+            checked={!!node.generatePdf}
+            onChange={(v) => update({ generatePdf: v })}
+            label="Generate signed PDF on completion"
+          />
+          <p className="mt-1 ml-6 text-[11px] text-gray-400">
+            When on, finishing here auto-produces a signed PDF (form data + the
+            full approval trail with e-signatures) and attaches it to the request
+            for the submitter and approvers to download.
+          </p>
+        </div>
+      )}
     </aside>
   );
 }
@@ -239,12 +277,17 @@ function DecisionConfig({ node, nodes, connections, onConnectionsChange }) {
 }
 
 function ApprovalConfig({ node, update }) {
-  // Approvers are always auto-resolved at runtime by the workflow engine from
-  // the submitter's org-chart context (see server/utils/workflowEngine.js
-  // resolveSemanticApprover). There is no manual "specific person" option —
-  // approvals route to the reporting manager (or the chosen role) automatically.
-  const setRoleMode = (value) =>
-    update({ approverRole: value, approverId: null });
+  // Approvers can be auto-resolved from the submitter's org chart (a role token
+  // like "direct_manager") OR pinned to a specific person. When a person is
+  // chosen we store node.approverId — the engine's resolveAssignee uses it
+  // directly and skips role resolution (see server/utils/workflowEngine.js).
+  const users = useActiveUsers();
+  const [mode, setMode] = useState(node.approverId ? "person" : "role");
+
+  // Re-sync the mode when a different node is selected.
+  useEffect(() => {
+    setMode(node.approverId ? "person" : "role");
+  }, [node.id]);
 
   // Backward compat: older nodes might have a free-form `approver` string
   // (e.g. "Direct manager"). Normalise to a known role token if possible.
@@ -258,33 +301,66 @@ function ApprovalConfig({ node, update }) {
 
   const roleHint = roleApproverByValue(currentRoleValue)?.hint;
 
-  // Migrate legacy nodes that pinned a specific person: drop approverId and
-  // fall back to auto role resolution so approvals are never hard-wired.
-  useEffect(() => {
-    if (node.approverId || (!node.approverRole && legacyToken)) {
-      update({ approverRole: currentRoleValue, approverId: null });
+  const onApproverChange = (value) => {
+    if (value === "__person__") {
+      setMode("person");
+    } else {
+      setMode("role");
+      update({ approverRole: value, approverId: null });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [node.id]);
+  };
+
+  const onPersonChange = (userId) =>
+    update({ approverId: userId || null, approverRole: userId ? null : currentRoleValue });
+
+  const selectedPerson = users.find((u) => String(u._id) === String(node.approverId));
 
   return (
     <>
       <Field label="Approver">
         <select
-          value={currentRoleValue}
-          onChange={(e) => setRoleMode(e.target.value)}
+          value={mode === "person" ? "__person__" : currentRoleValue}
+          onChange={(e) => onApproverChange(e.target.value)}
           className={inputCls}
         >
-          {ROLE_APPROVERS.map((r) => (
-            <option key={r.value} value={r.value}>{r.label}</option>
-          ))}
+          <optgroup label="Auto (from org chart)">
+            {ROLE_APPROVERS.map((r) => (
+              <option key={r.value} value={r.value}>{r.label}</option>
+            ))}
+          </optgroup>
+          <optgroup label="Specific person">
+            <option value="__person__">Pick a specific person…</option>
+          </optgroup>
         </select>
-        {roleHint && (
-          <p className="mt-1 text-[11px] text-gray-500">{roleHint}</p>
+
+        {mode === "person" ? (
+          <div className="mt-2">
+            <select
+              value={node.approverId || ""}
+              onChange={(e) => onPersonChange(e.target.value)}
+              className={inputCls}
+            >
+              <option value="">— Select a person —</option>
+              {users.map((u) => (
+                <option key={u._id} value={u._id}>
+                  {u.name}{u.department ? ` · ${u.department}` : ""}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-[11px] text-gray-500">
+              {selectedPerson
+                ? `Always assigned to ${selectedPerson.name}, regardless of the submitter's org chart.`
+                : "This exact person will be assigned every time, regardless of who submits."}
+            </p>
+          </div>
+        ) : (
+          <>
+            {roleHint && <p className="mt-1 text-[11px] text-gray-500">{roleHint}</p>}
+            <p className="mt-1.5 text-[11px] text-gray-400">
+              Auto-detected at submit time from the org chart.
+            </p>
+          </>
         )}
-        <p className="mt-1.5 text-[11px] text-gray-400">
-          Auto-detected at submit time from the org chart — approvers can't be set to a specific person.
-        </p>
       </Field>
 
       <Field label="SLA deadline">

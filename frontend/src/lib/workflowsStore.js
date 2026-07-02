@@ -45,6 +45,11 @@ export const workflowsStore = {
       description: input.description,
       department: input.category || input.department,
       linkedFormId: input.linkedFormId,
+      access: input.access,
+      triggerOn: input.triggerOn,
+      preventDuplicates: input.preventDuplicates,
+      notifyOnSlaBreach: input.notifyOnSlaBreach,
+      advanced: input.advanced,
       nodes: input.nodes || [],
       edges: input.edges || []
     })
@@ -81,6 +86,11 @@ export const workflowsStore = {
       description: input.description,
       department: input.category || input.department,
       linkedFormId: input.linkedFormId,
+      access: input.access,
+      triggerOn: input.triggerOn,
+      preventDuplicates: input.preventDuplicates,
+      notifyOnSlaBreach: input.notifyOnSlaBreach,
+      advanced: input.advanced,
       nodes: input.nodes || [],
       edges: input.edges || []
     })

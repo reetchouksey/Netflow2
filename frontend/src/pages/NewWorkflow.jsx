@@ -167,15 +167,14 @@ const TEMPLATES = [
 const CATEGORIES = WORKFLOW_CATEGORIES
 const DEPARTMENTS = WORKFLOW_CATEGORIES
 
-// These are UI-only enums — backend has no concept of them.
+// 'Manual trigger only' saves the linked form submission but does NOT auto-fire
+// the workflow — it can be started later via the execute endpoint instead.
 const TRIGGER_OPTIONS = [
   'Every form submission',
-  'Only when amount > $1,000',
   'Manual trigger only',
-  'On schedule (daily)',
 ]
 
-const SUBMITTER_OPTIONS = ['All employees', 'Managers only', 'Specific roles', 'Department leads']
+const SUBMITTER_OPTIONS = ['All employees', 'Managers only', 'Specific people']
 
 const SLA_OPTIONS = ['Always', 'After first breach', 'Never']
 
@@ -407,6 +406,26 @@ function Step3Settings({ data, setData, forms }) {
       settings: { ...d.settings, advanced: { ...d.settings.advanced, ...patch } },
     }))
 
+  // Active users for the "Specific people" initiator picker.
+  const [users, setUsers] = useState([])
+  useEffect(() => {
+    let cancelled = false
+    api
+      .get('/api/users?isActive=true&limit=100')
+      .then((d) => { if (!cancelled) setUsers(d.users || []) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  const allowedInitiators = settings.allowedInitiators || []
+  const addInitiator = (id) => {
+    if (id && !allowedInitiators.includes(id)) {
+      update({ allowedInitiators: [...allowedInitiators, id] })
+    }
+  }
+  const removeInitiator = (id) =>
+    update({ allowedInitiators: allowedInitiators.filter((x) => x !== id) })
+
   const publishedForms = forms.filter((f) => f.status === 'Published')
 
   const toggleDept = (dept) => {
@@ -518,6 +537,56 @@ function Step3Settings({ data, setData, forms }) {
               <option key={s}>{s}</option>
             ))}
           </select>
+
+          {settings.whoCanSubmit === 'Specific people' && (
+            <div className="mt-2 space-y-2">
+              <select
+                value=""
+                onChange={(e) => { addInitiator(e.target.value); e.target.value = '' }}
+                className={inputCls}
+              >
+                <option value="">+ Add a person…</option>
+                {users
+                  .filter((u) => !allowedInitiators.includes(String(u._id)))
+                  .map((u) => (
+                    <option key={u._id} value={u._id}>
+                      {u.name}{u.department ? ` · ${u.department}` : ''}
+                    </option>
+                  ))}
+              </select>
+
+              {allowedInitiators.length === 0 ? (
+                <p className="text-[11px] text-amber-600">
+                  Add at least one person — otherwise anyone who can see the form can start it.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {allowedInitiators.map((id) => {
+                    const u = users.find((x) => String(x._id) === String(id))
+                    return (
+                      <span
+                        key={id}
+                        className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 text-xs rounded-md border border-indigo-300 bg-indigo-50 text-indigo-700"
+                      >
+                        {u ? u.name : 'Unknown user'}
+                        <button
+                          type="button"
+                          onClick={() => removeInitiator(id)}
+                          className="w-4 h-4 rounded hover:bg-indigo-200 flex items-center justify-center text-indigo-500"
+                          aria-label={`Remove ${u ? u.name : 'user'}`}
+                        >
+                          &times;
+                        </button>
+                      </span>
+                    )
+                  })}
+                </div>
+              )}
+              <p className="text-[11px] text-gray-500">
+                Only these people can submit the linked form and start this workflow.
+              </p>
+            </div>
+          )}
         </div>
         <div>
           <p className="block text-sm font-medium text-gray-700 mb-1">Visible to departments</p>
@@ -583,9 +652,7 @@ function Step3Settings({ data, setData, forms }) {
       <Section title="Advanced options">
         {[
           { key: 'allowCancel', label: 'Allow submitter to cancel pending request' },
-          { key: 'slackOnApproval', label: 'Send Slack notification on approval' },
           { key: 'autoPdf', label: 'Auto-generate PDF on workflow completion' },
-          { key: 'webhookEnabled', label: 'Enable webhook on each node completion' },
         ].map((opt) => (
           <label
             key={opt.key}
@@ -668,7 +735,6 @@ function Step4Review({ data, forms }) {
       ok: flowProblems.length === 0,
     },
     { label: 'Email notification templates selected', ok: true },
-    { label: 'Webhook URL configured (optional)', ok: !settings.advanced.webhookEnabled },
   ]
 
   const connectionsCount = connections?.length ?? 0
@@ -695,6 +761,15 @@ function Step4Review({ data, forms }) {
             ['Linked form', linkedFormTitle],
             ['Trigger', settings.triggerOn],
             ['Departments', settings.visibleDepartments.join(', ') || 'None'],
+            ['Who can submit', settings.whoCanSubmit],
+            ...(settings.whoCanSubmit === 'Specific people'
+              ? [[
+                  'Initiators',
+                  (settings.allowedInitiators || []).length
+                    ? `${settings.allowedInitiators.length} specific ${settings.allowedInitiators.length === 1 ? 'person' : 'people'}`
+                    : 'None selected',
+                ]]
+              : []),
             ['SLA policy', slaPolicy],
             [
               'PDF generation',
@@ -815,12 +890,11 @@ function NewWorkflow() {
         preventDuplicates: true,
         whoCanSubmit: 'All employees',
         visibleDepartments: [...WORKFLOW_CATEGORIES],
+        allowedInitiators: [],
         notifyOnSlaBreach: 'Always',
         advanced: {
           allowCancel: false,
-          slackOnApproval: true,
           autoPdf: true,
-          webhookEnabled: false,
         },
       },
     }
@@ -844,6 +918,23 @@ function NewWorkflow() {
             description: workflow.description || '',
             category: workflow.department || 'HR',
             linkedFormId: workflow.linkedFormId || null,
+            whoCanSubmit: SUBMITTER_OPTIONS.includes(workflow.access?.whoCanSubmit)
+              ? workflow.access.whoCanSubmit
+              : d.settings.whoCanSubmit,
+            visibleDepartments: workflow.access?.departments?.length
+              ? workflow.access.departments
+              : d.settings.visibleDepartments,
+            allowedInitiators: (workflow.access?.allowedInitiators || []).map((x) => String(x)),
+            triggerOn: TRIGGER_OPTIONS.includes(workflow.triggerOn)
+              ? workflow.triggerOn
+              : d.settings.triggerOn,
+            preventDuplicates: workflow.preventDuplicates === true,
+            notifyOnSlaBreach: workflow.notifyOnSlaBreach || d.settings.notifyOnSlaBreach,
+            advanced: {
+              ...d.settings.advanced,
+              allowCancel: workflow.advanced?.allowCancel === true,
+              autoPdf: workflow.advanced?.autoPdf === true,
+            },
           },
         }))
       } catch (err) {
@@ -898,6 +989,26 @@ function NewWorkflow() {
         description: data.settings.description,
         category: data.settings.category,
         linkedFormId: data.settings.linkedFormId || undefined,
+        access: {
+          whoCanSubmit: data.settings.whoCanSubmit,
+          // "All departments" selected → store [] (unrestricted) so users whose
+          // department isn't one of the standard categories aren't blocked.
+          departments:
+            (data.settings.visibleDepartments || []).length >= WORKFLOW_CATEGORIES.length
+              ? []
+              : data.settings.visibleDepartments,
+          allowedInitiators:
+            data.settings.whoCanSubmit === 'Specific people'
+              ? data.settings.allowedInitiators || []
+              : [],
+        },
+        triggerOn: data.settings.triggerOn,
+        preventDuplicates: data.settings.preventDuplicates === true,
+        notifyOnSlaBreach: data.settings.notifyOnSlaBreach,
+        advanced: {
+          allowCancel: data.settings.advanced.allowCancel === true,
+          autoPdf: data.settings.advanced.autoPdf === true,
+        },
         nodes: serializeNodes(data.nodes, data.connections),
         edges: serializeEdges(data.connections)
       }
@@ -1236,6 +1347,9 @@ function serializeNodes(nodes, connections) {
     if (n.type === 'timer') {
       config.slaHours = toHours(n.waitValue, n.waitUnit)
     }
+    if (n.type === 'end') {
+      config.generatePdf = n.generatePdf === true
+    }
     return {
       id: n.id,
       type: NODE_TYPE_TO_API[n.type] || n.type,
@@ -1338,6 +1452,9 @@ function deserializeNodes(apiNodes) {
     if (uiType === 'timer') {
       const { slaValue, slaUnit } = SLA_HOURS_TO_DISPLAY(cfg.slaHours)
       Object.assign(base, { waitValue: slaValue, waitUnit: slaUnit })
+    }
+    if (uiType === 'end') {
+      base.generatePdf = cfg.generatePdf === true
     }
     return base
   })

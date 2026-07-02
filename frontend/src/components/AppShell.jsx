@@ -11,8 +11,7 @@ import { useForms } from '../lib/formsStore'
 import { useWorkflows } from '../lib/workflowsStore'
 import { useUnreadCount } from '../lib/notificationsStore'
 import { canManageUsers, canViewReports, canCreateWorkflow, isApprover } from '../utils/permissions'
-
-const isEmployee = (user) => user?.role?.name === 'Employee'
+import AssistantWidget from './AssistantWidget'
 
 // ---------- left rail ----------------------------------------------------
 
@@ -35,12 +34,6 @@ const NAV_SECTIONS = [
     items: [
       { key: 'analytics', label: 'Analytics',  to: '/analytics',  icon: IconAnalytics, visible: canViewReports },
       { key: 'audit',     label: 'Audit log',  to: '/audit-log',  icon: IconAudit,     visible: canViewReports }
-    ]
-  },
-  {
-    label: 'ACCOUNT',
-    items: [
-      { key: 'profile', label: 'My profile', to: '/profile', icon: IconUser }
     ]
   },
   {
@@ -398,7 +391,6 @@ function TopBar({ user, unreadCount }) {
   const roleLabel = user?.role?.name
     ? (ROLE_LABELS[user.role.name] || user.role.name)
     : 'Member'
-  const empMode = isEmployee(user)
 
   return (
     <header className="h-16 bg-white border-b border-gray-200 px-6 flex items-center gap-4 sticky top-0 z-20">
@@ -494,37 +486,6 @@ function UserMenu({ user, displayName, roleLabel }) {
   )
 }
 
-// ---------- bottom tab bar (employees only) --------------------------------
-
-const BOTTOM_TABS = [
-  { key: 'dashboard', label: 'Dashboard',  to: '/dashboard', icon: IconDashboard },
-  { key: 'forms',     label: 'Forms',      to: '/forms',     icon: IconForms },
-  { key: 'requests',  label: 'Requests',   to: '/tasks',     icon: IconTasks },
-  { key: 'profile',   label: 'My profile', to: '/profile',   icon: IconUser },
-]
-
-function BottomTabBar({ unreadCount }) {
-  const { pathname } = useLocation()
-  return (
-    <nav className="fixed bottom-6 left-[15%] right-[15%] z-30 bg-white border border-black  rounded-xl shadow-lg shadow-slate-300/50 flex items-stretch h-16">
-      {BOTTOM_TABS.map((tab) => {
-        const Icon = tab.icon
-        const isActive = pathname === tab.to || pathname.startsWith(tab.to + '/')
-        return (
-          <Link
-            key={tab.key}
-            to={tab.to}
-            className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition ${isActive ? 'text-indigo-700' : 'text-gray-500 hover:text-gray-900'}`}
-          >
-            <Icon className="w-5 h-5" />
-            <span className="text-[10px] font-medium">{tab.label}</span>
-          </Link>
-        )
-      })}
-    </nav>
-  )
-}
-
 // ---------- AppShell -----------------------------------------------------
 
 export default function AppShell({
@@ -549,18 +510,16 @@ export default function AppShell({
   )
 
   const hasTitleRow = title || subtitle || actions || back
-  const empMode = isEmployee(user)
 
   return (
     <div className="min-h-screen flex bg-gray-50/80 text-gray-800">
-      {/* Floating icon dock — shown for non-employees only */}
-      {!empMode && <IconDock user={user} pendingCount={pendingCount} />}
+      {/* Floating icon dock — shown for all roles */}
+      <IconDock user={user} pendingCount={pendingCount} />
 
-      <div className={`flex-1 flex flex-col min-w-0 ${!empMode ? 'pl-14' : ''}`}>
+      <div className="flex-1 flex flex-col min-w-0 pl-14">
         <TopBar user={user} unreadCount={unreadCount} />
 
-        {/* Extra bottom padding for employees so content isn't hidden behind the tab bar */}
-        <main className={empMode ? `${mainClass} pb-20` : mainClass}>
+        <main className={mainClass}>
           {hasTitleRow && (
             <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-5">
               <div className="min-w-0">
@@ -595,8 +554,8 @@ export default function AppShell({
         </main>
       </div>
 
-      {/* Bottom tab bar — shown for employees only */}
-      {empMode && <BottomTabBar unreadCount={unreadCount} />}
+      {/* Floating AI assistant — hidden automatically when no LLM is configured */}
+      <AssistantWidget />
     </div>
   )
 }
@@ -623,9 +582,6 @@ function IconAudit(p) { return (
 )}
 function IconAdmin(p) { return (
   <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="3" /><path strokeLinecap="round" strokeLinejoin="round" d="M4 20c0-3 4-5 8-5s8 2 8 5" /></svg>
-)}
-function IconUser(p) { return (
-  <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="7" r="4" /><path strokeLinecap="round" strokeLinejoin="round" d="M5.5 21a6.5 6.5 0 0113 0" /></svg>
 )}
 function IconRouting(p) { return (
   <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><circle cx="6" cy="6" r="2.5" /><circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="12" r="2.5" /><path strokeLinecap="round" strokeLinejoin="round" d="M8.5 6H13a2.5 2.5 0 012.5 2.5M8.5 18H13a2.5 2.5 0 002.5-2.5" /></svg>

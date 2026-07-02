@@ -86,6 +86,12 @@ export const tasksStore = {
     await api.post(`/api/tasks/${id}/review`, { outcome, comment })
     return fetchOne(id)
   },
+  // Submitter cancels their whole in-flight request (execution-level). Only
+  // works when the workflow enabled advanced.allowCancel (enforced server-side).
+  async cancel(executionId) {
+    await api.post(`/api/workflows/executions/${executionId}/cancel`)
+    return fetchMyTasks()
+  },
   clear() {
     cache = []
     cacheById = new Map()

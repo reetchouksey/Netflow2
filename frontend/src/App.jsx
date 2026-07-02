@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { authStore, useUser } from './utils/auth'
 import { getToken } from './utils/api'
-import { canCreateWorkflow, canViewReports, canEditWorkflow, canEditForm } from './utils/permissions'
+import { canCreateWorkflow, canViewReports, canEditWorkflow, canEditForm, canCreateForm } from './utils/permissions'
 
 // Self-registration disabled — admins create users via the Admin Panel.
 // import Register from './pages/Register'
@@ -16,6 +16,8 @@ import NewWorkflow from './pages/NewWorkflow'
 import Forms from './pages/Forms'
 import NewForm from './pages/NewForm'
 import FillForm from './pages/FillForm'
+import FormResponses from './pages/FormResponses'
+import PublicForm from './pages/PublicForm'
 import TaskInbox from './pages/TaskInbox'
 import TaskDetail from './pages/TaskDetail'
 import Analytics from './pages/Analytics'
@@ -90,10 +92,14 @@ function App() {
         {/* <Route path="/register" element={<PublicOnly><Register /></PublicOnly>} /> */}
         <Route path="/login"    element={<PublicOnly><Login /></PublicOnly>} />
 
+        {/* Public, unauthenticated form link (share with non-users). */}
+        <Route path="/f/:token" element={<PublicForm />} />
+
         <Route path="/dashboard"     element={<RequireAuth><Dashboard /></RequireAuth>} />
         <Route path="/forms"          element={<RequireAuth><Forms /></RequireAuth>} />
         <Route path="/forms/new"      element={<RequireAuth><NewForm /></RequireAuth>} />
         <Route path="/forms/:id/fill" element={<RequireAuth><FillForm /></RequireAuth>} />
+        <Route path="/forms/:id/responses" element={<RequireRole can={canCreateForm}><FormResponses /></RequireRole>} />
         <Route path="/tasks"         element={<RequireAuth><TaskInbox /></RequireAuth>} />
         <Route path="/tasks/:id"     element={<RequireAuth><TaskDetail /></RequireAuth>} />
         <Route path="/analytics"     element={<RequireAuth><Analytics /></RequireAuth>} />

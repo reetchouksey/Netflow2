@@ -91,6 +91,16 @@ export const formsStore = {
   async submit(id, formData) {
     return api.post(`/api/forms/${id}/submit`, { formData })
   },
+  async setPublic(id, enabled) {
+    const { form } = await api.post(`/api/forms/${id}/public`, { enabled })
+    const adapted = adaptForm(form)
+    cache = cache.map((f) => (f.id === id ? adapted : f))
+    emit()
+    return adapted
+  },
+  async responses(id) {
+    return api.get(`/api/forms/${id}/responses`)
+  },
   clear() {
     cache = []
     lastFetchedAt = 0

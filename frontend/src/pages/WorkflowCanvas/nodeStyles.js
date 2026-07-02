@@ -124,7 +124,7 @@ export const NODE_DEFAULTS = {
     waitValue: 1,
     waitUnit: "Hours",
   },
-  end: { title: "End", subtitle: "Finish" },
+  end: { title: "End", subtitle: "Finish", generatePdf: false },
 };
 
 let _nextId = 1;

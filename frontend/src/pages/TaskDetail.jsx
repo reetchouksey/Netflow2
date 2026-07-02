@@ -682,6 +682,19 @@ function TaskDetail() {
     commentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
+  const handleCancel = async () => {
+    if (!window.confirm('Cancel this request? This stops the approval and notifies anyone it was waiting on.')) return
+    setBusy('cancel')
+    setError('')
+    try {
+      await tasksStore.cancel(task.executionId)
+      setTimeout(() => navigate('/tasks'), 400)
+    } catch (err) {
+      setError(err.message || 'Could not cancel the request')
+      setBusy(null)
+    }
+  }
+
   // Only the assignee (or an elevated approver) can act — matches the backend.
   const meId = me?._id ? String(me._id) : null
   const isAssignee = meId && String(task.assignedToId) === meId
@@ -740,6 +753,19 @@ function TaskDetail() {
                   ? `This request has been ${reqStatus.toLowerCase()}.`
                   : `This request is awaiting approval${currentApprover ? ` from ${currentApprover}` : ''}. You'll be notified when there's an update.`}
               </p>
+              {task.canCancel && !reqResolved && (
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={handleCancel}
+                    disabled={busy === 'cancel'}
+                    className="px-4 py-1.5 text-xs font-medium rounded-md border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50 transition"
+                  >
+                    {busy === 'cancel' ? 'Cancelling…' : 'Cancel request'}
+                  </button>
+                  {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+                </div>
+              )}
             </section>
           )}
           <SubmittedForm task={task} />

@@ -9,6 +9,11 @@ import AppShell from '../components/AppShell'
 import { api } from '../utils/api'
 import { useUser, initials, ROLE_LABELS } from '../utils/auth'
 
+const toDateInput = (d) => {
+  if (!d) return ''
+  try { return new Date(d).toISOString().slice(0, 10) } catch { return '' }
+}
+
 function Row({ label, value, hint }) {
   return (
     <div className="grid grid-cols-3 gap-4 py-3">
@@ -27,6 +32,12 @@ function Profile() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
 
+  // Out-of-office state (seeded from the loaded profile).
+  const [ooo, setOoo] = useState({ enabled: false, from: '', until: '', note: '', delegateId: '' })
+  const [oooSaving, setOooSaving] = useState(false)
+  const [oooMsg, setOooMsg] = useState('')
+  const [activeUsers, setActiveUsers] = useState([])
+
   useEffect(() => {
     let cancelled = false
     api.get('/api/users/me/profile')
@@ -34,9 +45,22 @@ function Profile() {
         if (cancelled) return
         setProfile(data.user)
         setReports(data.reports || [])
+        const o = data.user?.outOfOffice || {}
+        setOoo({
+          enabled: !!o.enabled,
+          from: toDateInput(o.from),
+          until: toDateInput(o.until),
+          note: o.note || '',
+          delegateId: typeof o.delegateId === 'object' ? (o.delegateId?._id || '') : (o.delegateId || '')
+        })
       })
       .catch((e) => { if (!cancelled) setError(e.message || 'Failed to load profile') })
       .finally(() => { if (!cancelled) setLoading(false) })
+
+    api.get('/api/users?isActive=true&limit=1000')
+      .then((data) => { if (!cancelled) setActiveUsers(data.users || []) })
+      .catch((e) => console.error('Failed to load active users:', e))
+
     return () => { cancelled = true }
   }, [])
 
@@ -45,6 +69,33 @@ function Profile() {
   const roleLabel = roleName ? (ROLE_LABELS[roleName] || roleName) : '—'
   const manager = user?.managerId && typeof user.managerId === 'object' ? user.managerId : null
   const hr = user?.hrId && typeof user.hrId === 'object' ? user.hrId : null
+
+  const saveOoo = async (next = ooo) => {
+    setOooSaving(true)
+    setOooMsg('')
+    try {
+      const data = await api.put('/api/users/me/out-of-office', {
+        enabled: next.enabled,
+        from: next.from || null,
+        until: next.until || null,
+        note: next.note || null,
+        delegateId: next.delegateId || null
+      })
+      setProfile(data.user)
+      setOooMsg('Saved')
+      setTimeout(() => setOooMsg(''), 2500)
+    } catch (e) {
+      setOooMsg(e.message || 'Could not save')
+    } finally {
+      setOooSaving(false)
+    }
+  }
+
+  const toggleOoo = () => {
+    const next = { ...ooo, enabled: !ooo.enabled }
+    setOoo(next)
+    saveOoo(next)
+  }
 
   const joined = user?.createdAt
     ? new Date(user.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
@@ -87,6 +138,103 @@ function Profile() {
             <Row label="Member since" value={joined} hint={loading ? 'Loading…' : 'Unknown'} />
             <Row label="Last login" value={lastLogin} hint={loading ? 'Loading…' : 'Never'} />
           </dl>
+        </section>
+
+        <section className="bg-white border border-gray-200 rounded-xl px-6 py-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-gray-800">Out of office</h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                While you&rsquo;re away, new approvals assigned to you will be routed to your chosen delegate.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={ooo.enabled}
+              onClick={toggleOoo}
+              disabled={oooSaving}
+              title={ooo.enabled ? 'Turn off' : 'Turn on'}
+              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:opacity-60 ${ooo.enabled ? 'bg-indigo-600' : 'bg-gray-300'}`}
+            >
+              <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${ooo.enabled ? 'translate-x-5' : 'translate-x-1'}`} />
+            </button>
+          </div>
+
+          {ooo.enabled && (
+            <div className="mt-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-xs font-medium text-gray-600">
+                  From (optional)
+                  <input
+                    type="date"
+                    value={ooo.from}
+                    onChange={(e) => setOoo((p) => ({ ...p, from: e.target.value }))}
+                    className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  />
+                </label>
+                <label className="block text-xs font-medium text-gray-600">
+                  Until (optional)
+                  <input
+                    type="date"
+                    value={ooo.until}
+                    onChange={(e) => setOoo((p) => ({ ...p, until: e.target.value }))}
+                    className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  />
+                </label>
+              </div>
+              <label className="block text-xs font-medium text-gray-600">
+                Note (optional)
+                <input
+                  type="text"
+                  value={ooo.note}
+                  onChange={(e) => setOoo((p) => ({ ...p, note: e.target.value }))}
+                  placeholder="e.g. On annual leave"
+                  className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                />
+              </label>
+
+              <label className="block text-xs font-medium text-gray-600">
+                Delegate
+                <select
+                  value={ooo.delegateId}
+                  onChange={(e) => setOoo((p) => ({ ...p, delegateId: e.target.value }))}
+                  className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 bg-white"
+                >
+                  <option value="">Select a delegate...</option>
+                  {activeUsers.filter(u => u._id !== user?._id).map(u => (
+                    <option key={u._id} value={u._id}>{u.name} ({u.email})</option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="rounded-md border border-gray-100 bg-gray-50 px-3 py-2 text-xs">
+                {ooo.delegateId ? (
+                  <span className="text-gray-600">
+                    Approvals will be routed to your selected delegate.
+                  </span>
+                ) : (
+                  <span className="text-amber-700">
+                    You have no delegate set. Approvals will not be redirected. Please select a delegate.
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => saveOoo()}
+                  disabled={oooSaving}
+                  className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-60"
+                >
+                  {oooSaving ? 'Saving…' : 'Save dates'}
+                </button>
+                {oooMsg && <span className="text-xs text-gray-500">{oooMsg}</span>}
+              </div>
+            </div>
+          )}
+
+          {!ooo.enabled && oooMsg && <p className="mt-2 text-xs text-gray-500">{oooMsg}</p>}
         </section>
 
         <section className="bg-white border border-gray-200 rounded-xl px-6 py-5">

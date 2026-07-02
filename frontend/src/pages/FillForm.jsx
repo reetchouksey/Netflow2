@@ -2,10 +2,11 @@
 // Render a published form by id, validate required fields, POST to
 // /api/forms/:id/submit, and surface whether the linked workflow fired.
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import { api, toAbsoluteUrl } from '../utils/api'
+import { useUser } from '../utils/auth'
 import { formsStore } from '../lib/formsStore'
 import { fieldMaxMb, MAX_UPLOAD_MB } from '../utils/uploads'
 
@@ -14,6 +15,29 @@ const inputCls =
 
 const inputErrorCls =
   'border-red-400 focus:ring-red-200 focus:border-red-400'
+
+// Heuristic prefill: match a text field's label to the signed-in user's own
+// details so they don't retype their name/email/department every time. The
+// exclude-list keeps it from grabbing "Manager name", "Company name", etc.
+function buildUserPrefill(fields, me) {
+  if (!me) return {}
+  const role = me.role?.name
+  const seed = {}
+  for (const f of fields || []) {
+    if (f.type !== 'text') continue
+    const l = (f.label || '').toLowerCase()
+    let v
+    if (/e-?mail/.test(l)) v = me.email
+    else if (l.includes('department') || l.includes('dept')) v = me.department
+    else if (l.includes('designation') || l.includes('role')) v = role
+    else if (
+      l.includes('name') &&
+      !/(company|manager|supervisor|project|product|brand|supplier|vendor|contact|father|spouse|guardian|account)/.test(l)
+    ) v = me.name
+    if (v) seed[f.id] = v
+  }
+  return seed
+}
 
 // Uploads the chosen file to /api/uploads and stores { name, url, mime, size }
 // as the field value, so the approver can later open the actual attachment.
@@ -291,6 +315,9 @@ function FillForm() {
   const [submitError, setSubmitError] = useState('')
   const [result, setResult] = useState(null)
 
+  const me = useUser()
+  const prefilled = useRef(false)
+
   useEffect(() => {
     let cancelled = false
     api.get(`/api/forms/${id}`)
@@ -307,6 +334,17 @@ function FillForm() {
       })
     return () => { cancelled = true }
   }, [id])
+
+  // Auto-fill fields that look like the signed-in user's own details. Runs once
+  // when the form + user are ready, and never overwrites anything already typed.
+  useEffect(() => {
+    if (prefilled.current || !form || !me) return
+    const seed = buildUserPrefill(form.fields || [], me)
+    if (Object.keys(seed).length) {
+      setValues((prev) => ({ ...seed, ...prev }))
+    }
+    prefilled.current = true
+  }, [form, me])
 
   const visibleFields = useMemo(() => {
     if (!form?.fields) return []

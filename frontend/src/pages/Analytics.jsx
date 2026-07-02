@@ -1,8 +1,11 @@
 // M3 - Phase 2 - Analytics.jsx - Live from /api/analytics/*
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import AppShell from '../components/AppShell'
 import { api } from '../utils/api'
+import * as XLSX from 'xlsx'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
 // `days` drives the from/to window for the summary / approval / department
 // endpoints; `months` and `weeks` set the granularity for the two time-series
@@ -191,6 +194,45 @@ function SlaBreachTrend({ data, loading }) {
   )
 }
 
+// Small dropdown that groups the CSV / Excel / PDF export actions.
+function ExportMenu({ onCsv, onXlsx, onPdf, disabled }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [open])
+
+  const pick = (fn) => () => { fn(); setOpen(false) }
+  const item = 'w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40'
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        disabled={disabled}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-gray-200 hover:bg-gray-50 text-sm font-medium text-gray-700 transition disabled:opacity-50"
+      >
+        Export
+        <svg xmlns="http://www.w3.org/2000/svg" className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-1 w-40 bg-white border border-gray-200 rounded-md shadow-lg z-20 py-1">
+          <button type="button" className={item} onClick={pick(onCsv)}>CSV (.csv)</button>
+          <button type="button" className={item} onClick={pick(onXlsx)}>Excel (.xlsx)</button>
+          <button type="button" className={item} onClick={pick(onPdf)}>PDF (.pdf)</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Analytics() {
   const [range, setRange] = useState(RANGES[1])
   const [loading, setLoading] = useState(true)
@@ -336,6 +378,58 @@ function Analytics() {
     URL.revokeObjectURL(url)
   }
 
+  const fileBase = `analytics-${range.label.toLowerCase().replaceAll(' ', '-')}`
+
+  // Real multi-sheet .xlsx — one sheet per section so it opens cleanly in Excel.
+  const exportXlsx = () => {
+    const wb = XLSX.utils.book_new()
+    const add = (name, rows) =>
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), name)
+
+    add('Summary', [['Metric', 'Value'], ...kpis.map((k) => [k.label, k.value])])
+    add('Completion', [['Month', 'Avg completion (h)'], ...completion.map((c) => [c.month, Number(c.hours.toFixed(1))])])
+    add('Outcomes', [['Outcome', 'Percentage'], ...outcomes.map((o) => [o.label, Number(o.pct.toFixed(1))])])
+    if (departments.length) {
+      add('Departments', [['Department', 'Approval rate (%)'], ...departments.map((d) => [d.name, Number(d.pct.toFixed(1))])])
+    }
+    if (slaTrend.length) {
+      add('SLA Breaches', [['Week', 'Breaches'], ...slaTrend.map((s) => [s.week, s.value])])
+    }
+    XLSX.writeFile(wb, `${fileBase}.xlsx`)
+  }
+
+  // Tabular PDF report (jsPDF + autotable). autotable handles page breaks itself.
+  const exportPdf = () => {
+    const doc = new jsPDF()
+    doc.setFontSize(16)
+    doc.text('NetFlow — Analytics Report', 14, 18)
+    doc.setFontSize(10)
+    doc.setTextColor(120)
+    doc.text(`Range: ${range.label}     Generated: ${new Date().toLocaleString()}`, 14, 25)
+    doc.setTextColor(0)
+
+    const section = (head, body, fillColor) => {
+      autoTable(doc, {
+        startY: (doc.lastAutoTable?.finalY ?? 30) + 8,
+        head: [head],
+        body,
+        styles: { fontSize: 9 },
+        headStyles: { fillColor },
+      })
+    }
+
+    section(['Metric', 'Value'], kpis.map((k) => [k.label, String(k.value)]), [99, 102, 241])
+    section(['Month', 'Avg completion (h)'], completion.map((c) => [c.month, c.hours.toFixed(1)]), [59, 130, 246])
+    section(['Outcome', 'Percentage'], outcomes.map((o) => [o.label, `${o.pct.toFixed(1)}%`]), [34, 197, 94])
+    if (departments.length) {
+      section(['Department', 'Approval rate'], departments.map((d) => [d.name, `${d.pct.toFixed(1)}%`]), [139, 92, 246])
+    }
+    if (slaTrend.length) {
+      section(['Week', 'SLA breaches'], slaTrend.map((s) => [s.week, String(s.value)]), [239, 68, 68])
+    }
+    doc.save(`${fileBase}.pdf`)
+  }
+
   const actions = (
     <>
       <select
@@ -345,12 +439,12 @@ function Analytics() {
       >
         {RANGES.map((r) => <option key={r.label}>{r.label}</option>)}
       </select>
-      <button
-        onClick={exportCsv}
-        className="px-3 py-1.5 rounded-md border border-gray-200 hover:bg-gray-50 text-sm font-medium text-gray-700 transition"
-      >
-        Export CSV
-      </button>
+      <ExportMenu
+        onCsv={exportCsv}
+        onXlsx={exportXlsx}
+        onPdf={exportPdf}
+        disabled={loading}
+      />
     </>
   )
 

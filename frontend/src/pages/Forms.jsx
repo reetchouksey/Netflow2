@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppShell from '../components/AppShell'
+import NewFormModal from '../components/NewFormModal'
 import { useForms, formsStore, FORM_CATEGORIES } from '../lib/formsStore'
 import { useUser } from '../utils/auth'
 import { canCreateForm, canSubmitForms, canEditForm } from '../utils/permissions'
@@ -37,6 +38,31 @@ function Forms() {
   const canSubmit = canSubmitForms(me)
   const canEdit = canEditForm(me)
   const [search, setSearch] = useState('')
+  const [newOpen, setNewOpen] = useState(false)
+
+  const buildUrl = (token) => `${window.location.origin}/f/${token}`
+  const copyText = async (text) => {
+    try { await navigator.clipboard.writeText(text); return true } catch { return false }
+  }
+  const shareForm = async (f) => {
+    try {
+      const target = f.isPublic && f.publicToken ? f : await formsStore.setPublic(f.id, true)
+      const url = buildUrl(target.publicToken)
+      const ok = await copyText(url)
+      window.prompt(ok ? 'Public link (copied to clipboard):' : 'Public link — copy it:', url)
+    } catch (err) {
+      window.alert(err.message || 'Could not create a public link.')
+    }
+  }
+  const copyLink = async (f) => {
+    const url = buildUrl(f.publicToken)
+    const ok = await copyText(url)
+    if (!ok) window.prompt('Public link — copy it:', url)
+  }
+  const stopSharing = async (f) => {
+    if (!window.confirm('Stop sharing? The public link will stop working until you share again.')) return
+    try { await formsStore.setPublic(f.id, false) } catch (err) { window.alert(err.message || 'Failed to update sharing.') }
+  }
   const [categoryFilter, setCategoryFilter] = useState('All categories')
   const [statusFilter, setStatusFilter] = useState('All status')
 
@@ -58,7 +84,7 @@ function Forms() {
   const subtitle = `${forms.length} total · ${published} published · ${totalSubmissions} submissions`
   const actions = canCreate ? (
     <button
-      onClick={() => navigate('/forms/new')}
+      onClick={() => setNewOpen(true)}
       className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium shadow-sm transition"
     >
       New form
@@ -113,7 +139,7 @@ function Forms() {
                 </p>
                 {forms.length === 0 && canCreate && (
                   <button
-                    onClick={() => navigate('/forms/new')}
+                    onClick={() => setNewOpen(true)}
                     className="mt-4 px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium shadow-sm transition"
                   >
                     Create form
@@ -138,7 +164,14 @@ function Forms() {
                     {filtered.map((f) => (
                       <tr key={f.id} className="hover:bg-gray-50/60 transition">
                         <td className="px-5 py-4">
-                          <p className="font-medium text-gray-800">{f.name}</p>
+                          <p className="font-medium text-gray-800 flex items-center gap-1.5">
+                            {f.name}
+                            {f.isPublic && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700">
+                                Public
+                              </span>
+                            )}
+                          </p>
                           {f.description && (
                             <p className="text-xs text-gray-500 mt-0.5">{f.description}</p>
                           )}
@@ -199,6 +232,43 @@ function Forms() {
                                 Fill
                               </span>
                             )}
+                            {canCreate && (
+                              <button
+                                onClick={() => navigate(`/forms/${f.id}/responses`)}
+                                title="View collected responses"
+                                className="px-2.5 py-1 rounded-md text-xs font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition"
+                              >
+                                Responses
+                              </button>
+                            )}
+                            {canCreate && f.status === 'Published' && (
+                              f.isPublic ? (
+                                <>
+                                  <button
+                                    onClick={() => copyLink(f)}
+                                    title="Copy the public link"
+                                    className="px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition"
+                                  >
+                                    Copy link
+                                  </button>
+                                  <button
+                                    onClick={() => stopSharing(f)}
+                                    title="Stop sharing"
+                                    className="px-2 py-1 rounded-md text-xs font-medium text-gray-400 hover:text-red-600 hover:bg-red-50 transition"
+                                  >
+                                    Stop
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  onClick={() => shareForm(f)}
+                                  title="Create a public share link"
+                                  className="px-2.5 py-1 rounded-md text-xs font-medium border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition"
+                                >
+                                  Share
+                                </button>
+                              )
+                            )}
                             {canEdit && (
                               <button
                                 onClick={() => navigate(`/forms/${f.id}/edit`)}
@@ -230,6 +300,7 @@ function Forms() {
               </div>
             )}
       </div>
+      <NewFormModal open={newOpen} onClose={() => setNewOpen(false)} />
     </AppShell>
   )
 }
