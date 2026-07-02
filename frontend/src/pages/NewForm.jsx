@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { formsStore, FORM_CATEGORIES } from '../lib/formsStore'
+import { formsStore } from '../lib/formsStore'
 import { FORM_TEMPLATES } from '../lib/formTemplates'
 import { api } from '../utils/api'
 import { fieldMaxMb, MAX_UPLOAD_MB } from '../utils/uploads'
@@ -716,7 +716,6 @@ function NewForm() {
     if (aiMode || blankMode) return ''
     return 'Leave Request Form'
   })
-  const [category, setCategory] = useState(() => (template ? template.category : 'Company-wide'))
   const [fields, setFields] = useState(() => {
     if (isEditMode || aiMode || blankMode) return []
     if (template) {
@@ -748,7 +747,6 @@ function NewForm() {
       try {
         const { form } = await api.get(`/api/forms/${editId}`)
         setName(form.title || '')
-        setCategory(form.department || 'Company-wide')
         setFields(Array.isArray(form.fields) ? form.fields : [])
       } catch (err) {
         setLoadError(err.message || 'Could not load form')
@@ -939,7 +937,6 @@ function NewForm() {
       const payload = {
         name: name.trim(),
         description: `${fields.length} field form`,
-        category,
         fields,
       }
       let saved
@@ -989,16 +986,6 @@ function NewForm() {
             placeholder="Form name"
             className="text-sm font-medium text-gray-800 bg-transparent border border-transparent hover:border-gray-200 focus:border-indigo-300 focus:bg-white px-2 py-1 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-200 transition min-w-0 max-w-xs"
           />
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            title="Category only — it does not restrict who can submit. Approvals always route to each submitter's own manager/HR. Use 'Company-wide' for forms everyone uses."
-            className="text-xs px-2 py-1 rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-200 transition"
-          >
-            {FORM_CATEGORIES.map((c) => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button

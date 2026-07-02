@@ -426,6 +426,13 @@ function Step3Settings({ data, setData, forms }) {
   const removeInitiator = (id) =>
     update({ allowedInitiators: allowedInitiators.filter((x) => x !== id) })
 
+  const visibleTo = settings.visibleTo || []
+  const addVisiblePerson = (id) => {
+    if (id && !visibleTo.includes(id)) update({ visibleTo: [...visibleTo, id] })
+  }
+  const removeVisiblePerson = (id) =>
+    update({ visibleTo: visibleTo.filter((x) => x !== id) })
+
   const publishedForms = forms.filter((f) => f.status === 'Published')
 
   const toggleDept = (dept) => {
@@ -589,49 +596,102 @@ function Step3Settings({ data, setData, forms }) {
           )}
         </div>
         <div>
-          <p className="block text-sm font-medium text-gray-700 mb-1">Visible to departments</p>
-          <div className="flex flex-wrap gap-2">
-            {DEPARTMENTS.map((d) => {
-              const on = settings.visibleDepartments.includes(d)
-              return (
-                <button
-                  key={d}
-                  type="button"
-                  onClick={() => toggleDept(d)}
-                  className={`px-3 py-1.5 text-xs rounded-md border transition flex items-center gap-1.5 ${
-                    on
-                      ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
-                      : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  <span
-                    className={`w-3.5 h-3.5 rounded-sm flex items-center justify-center ${
-                      on ? 'bg-indigo-600 text-white' : 'border border-gray-300'
+          <label className="block text-sm font-medium text-gray-700 mb-1">Visibility</label>
+          <p className="text-xs text-gray-500 mb-1.5">Who can see and open this form.</p>
+          <select
+            value={settings.visibility}
+            onChange={(e) => update({ visibility: e.target.value })}
+            className={inputCls}
+          >
+            <option value="company">Company-wide (everyone)</option>
+            <option value="departments">Specific departments</option>
+            <option value="people">Specific people</option>
+          </select>
+
+          {settings.visibility === 'departments' && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {DEPARTMENTS.map((d) => {
+                const on = settings.visibleDepartments.includes(d)
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => toggleDept(d)}
+                    className={`px-3 py-1.5 text-xs rounded-md border transition flex items-center gap-1.5 ${
+                      on
+                        ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
+                        : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
                     }`}
                   >
-                    {on && (
-                      <svg xmlns="http://www.w3.org/2000/svg" className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                      </svg>
-                    )}
-                  </span>
-                  {d}
-                </button>
-              )
-            })}
-            <button
-              type="button"
-              onClick={() =>
-                update({
-                  visibleDepartments:
-                    settings.visibleDepartments.length === DEPARTMENTS.length ? [] : [...DEPARTMENTS],
-                })
-              }
-              className="px-3 py-1.5 text-xs rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition"
-            >
-              All departments
-            </button>
-          </div>
+                    <span
+                      className={`w-3.5 h-3.5 rounded-sm flex items-center justify-center ${
+                        on ? 'bg-indigo-600 text-white' : 'border border-gray-300'
+                      }`}
+                    >
+                      {on && (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </span>
+                    {d}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          {settings.visibility === 'people' && (
+            <div className="mt-2 space-y-2">
+              <select
+                value=""
+                onChange={(e) => {
+                  addVisiblePerson(e.target.value)
+                  e.target.value = ''
+                }}
+                className={inputCls}
+              >
+                <option value="">+ Add a person…</option>
+                {users
+                  .filter((u) => !visibleTo.includes(String(u._id)))
+                  .map((u) => (
+                    <option key={u._id} value={u._id}>
+                      {u.name}
+                      {u.department ? ` · ${u.department}` : ''}
+                    </option>
+                  ))}
+              </select>
+
+              {visibleTo.length === 0 ? (
+                <p className="text-[11px] text-amber-600">
+                  Add at least one person, otherwise the form stays visible to everyone.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {visibleTo.map((id) => {
+                    const u = users.find((x) => String(x._id) === String(id))
+                    return (
+                      <span
+                        key={id}
+                        className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 text-xs rounded-md border border-indigo-300 bg-indigo-50 text-indigo-700"
+                      >
+                        {u ? u.name : 'Unknown user'}
+                        <button
+                          type="button"
+                          onClick={() => removeVisiblePerson(id)}
+                          className="w-4 h-4 rounded hover:bg-indigo-200 flex items-center justify-center text-indigo-500"
+                          aria-label="Remove person"
+                        >
+                          &times;
+                        </button>
+                      </span>
+                    )
+                  })}
+                </div>
+              )}
+              <p className="text-[11px] text-gray-500">Only these people can see and open this form.</p>
+            </div>
+          )}
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -760,7 +820,12 @@ function Step4Review({ data, forms }) {
             ['Category', settings.category],
             ['Linked form', linkedFormTitle],
             ['Trigger', settings.triggerOn],
-            ['Departments', settings.visibleDepartments.join(', ') || 'None'],
+            ['Visibility',
+              settings.visibility === 'company'
+                ? 'Company-wide'
+                : settings.visibility === 'departments'
+                  ? (settings.visibleDepartments.join(', ') || 'No departments')
+                  : `${(settings.visibleTo || []).length} specific ${(settings.visibleTo || []).length === 1 ? 'person' : 'people'}`],
             ['Who can submit', settings.whoCanSubmit],
             ...(settings.whoCanSubmit === 'Specific people'
               ? [[
@@ -891,6 +956,8 @@ function NewWorkflow() {
         whoCanSubmit: 'All employees',
         visibleDepartments: [...WORKFLOW_CATEGORIES],
         allowedInitiators: [],
+        visibility: 'company',
+        visibleTo: [],
         notifyOnSlaBreach: 'Always',
         advanced: {
           allowCancel: false,
@@ -925,6 +992,10 @@ function NewWorkflow() {
               ? workflow.access.departments
               : d.settings.visibleDepartments,
             allowedInitiators: (workflow.access?.allowedInitiators || []).map((x) => String(x)),
+            visibility:
+              workflow.access?.visibility ||
+              (workflow.access?.departments?.length ? 'departments' : 'company'),
+            visibleTo: (workflow.access?.visibleTo || []).map((x) => String(x)),
             triggerOn: TRIGGER_OPTIONS.includes(workflow.triggerOn)
               ? workflow.triggerOn
               : d.settings.triggerOn,
@@ -991,16 +1062,20 @@ function NewWorkflow() {
         linkedFormId: data.settings.linkedFormId || undefined,
         access: {
           whoCanSubmit: data.settings.whoCanSubmit,
-          // "All departments" selected → store [] (unrestricted) so users whose
-          // department isn't one of the standard categories aren't blocked.
-          departments:
-            (data.settings.visibleDepartments || []).length >= WORKFLOW_CATEGORIES.length
-              ? []
-              : data.settings.visibleDepartments,
           allowedInitiators:
             data.settings.whoCanSubmit === 'Specific people'
               ? data.settings.allowedInitiators || []
               : [],
+          visibility: data.settings.visibility,
+          // departments only apply in 'departments' mode; "all selected" → [] (open).
+          departments:
+            data.settings.visibility !== 'departments'
+              ? []
+              : (data.settings.visibleDepartments || []).length >= WORKFLOW_CATEGORIES.length
+                ? []
+                : data.settings.visibleDepartments,
+          visibleTo:
+            data.settings.visibility === 'people' ? data.settings.visibleTo || [] : [],
         },
         triggerOn: data.settings.triggerOn,
         preventDuplicates: data.settings.preventDuplicates === true,
