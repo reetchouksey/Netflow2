@@ -75,7 +75,11 @@ const workflowSchema = new mongoose.Schema({
   access: {
     whoCanSubmit: { type: String, default: 'All employees' },
     departments: [{ type: String }],
-    allowedInitiators: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
+    allowedInitiators: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    // Visibility = who can SEE/open the linked form (independent of whoCanSubmit):
+    //   'company' (everyone) | 'departments' (listed depts) | 'people' (visibleTo).
+    visibility: { type: String, default: 'company' },
+    visibleTo: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
   },
   // Trigger + submission behaviour set on the workflow's settings page.
   //   triggerOn: 'Every form submission' (auto-fire) | 'Manual trigger only' (only /execute)

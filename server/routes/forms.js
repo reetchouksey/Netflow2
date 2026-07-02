@@ -29,6 +29,26 @@ const userIsManager = async (user) => {
   return !!(await User.exists({ managerId: user._id }))
 }
 
+// Can this user SEE a form, given its linked workflow's access config?
+//   company     → everyone
+//   departments → only the listed departments
+//   people      → only the listed users (access.visibleTo)
+// Back-compat: workflows saved before the visibility field infer it from departments.
+const canSeeWorkflowForm = (access, user) => {
+  if (!access) return true
+  let vis = access.visibility
+  if (!vis) vis = (access.departments || []).length ? 'departments' : 'company'
+  if (vis === 'departments') {
+    const depts = access.departments || []
+    return depts.length === 0 || depts.includes(user.department)
+  }
+  if (vis === 'people') {
+    const people = (access.visibleTo || []).map(String)
+    return people.length === 0 || people.includes(String(user._id))
+  }
+  return true
+}
+
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 // ---------- AI Form Builder helpers ----------
@@ -151,8 +171,8 @@ router.get('/', protect, async (req, res, next) => {
       .sort({ updatedAt: -1 })
       .lean()
 
-    // Department visibility: non-builders only see forms whose linked published
-    // workflow has no department restriction OR includes their department.
+    // Visibility: non-builders only see forms their linked published workflow
+    // makes visible to them (company-wide / their department / them specifically).
     // Forms with no linked workflow stay visible to everyone.
     let visible = forms
     if (!isBuilder(req.user) && forms.length) {
@@ -160,15 +180,13 @@ router.get('/', protect, async (req, res, next) => {
         linkedFormId: { $in: forms.map((f) => f._id) },
         status: 'published'
       }).select('linkedFormId access').lean()
-      const restrictByForm = new Map()
+      const accessByForm = new Map()
       for (const w of wfs) {
-        const depts = w.access?.departments || []
-        if (depts.length) restrictByForm.set(String(w.linkedFormId), depts)
+        if (w.access) accessByForm.set(String(w.linkedFormId), w.access)
       }
-      visible = forms.filter((f) => {
-        const depts = restrictByForm.get(String(f._id))
-        return !depts || depts.includes(req.user.department)
-      })
+      visible = forms.filter((f) =>
+        canSeeWorkflowForm(accessByForm.get(String(f._id)), req.user)
+      )
     }
 
     // Attach a real submission count per form so the list can display it.
@@ -240,6 +258,18 @@ router.get('/:id', protect, async (req, res, next) => {
     // Hide draft / archived forms from non-admins
     if (!isBuilder(req.user) && form.status !== 'published') {
       return sendError(res, 'Form not found', 'FORM_NOT_FOUND', 404)
+    }
+
+    // Visibility: block direct-URL access for non-builders the linked published
+    // workflow doesn't make visible to them.
+    if (!isBuilder(req.user)) {
+      const wf = await Workflow.findOne({
+        linkedFormId: form._id,
+        status: 'published'
+      }).select('access').lean()
+      if (wf && !canSeeWorkflowForm(wf.access, req.user)) {
+        return sendError(res, 'Form not found', 'FORM_NOT_FOUND', 404)
+      }
     }
 
     return sendSuccess(res, { form })
@@ -411,13 +441,12 @@ router.post('/:id/submit', protect, roleGuard(...BUILDER_ROLES, 'Employee'), asy
     if (linkedWorkflow && !isBuilder(req.user)) {
       const access = linkedWorkflow.access || {}
 
-      // Department restriction: a non-empty list restricts to those departments.
-      // (When "all departments" is chosen the client stores an empty list.)
-      const deptList = access.departments || []
-      if (deptList.length && !deptList.includes(req.user.department)) {
-        return sendError(res, 'This request is not available for your department', 'DEPARTMENT_NOT_ALLOWED', 403)
+      // Visibility gate — you must be able to see a form to submit it.
+      if (!canSeeWorkflowForm(access, req.user)) {
+        return sendError(res, 'This request is not available to you', 'NOT_VISIBLE', 403)
       }
 
+      // Who-can-submit gate (independent of visibility).
       if (access.whoCanSubmit === 'Specific people') {
         const allowed = (access.allowedInitiators || []).map(String)
         if (allowed.length && !allowed.includes(String(req.user._id))) {
