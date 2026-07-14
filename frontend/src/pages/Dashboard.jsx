@@ -5,8 +5,10 @@ import AppShell from '../components/AppShell'
 import { api } from '../utils/api'
 import { useUser } from '../utils/auth'
 import { canViewReports } from '../utils/permissions'
-import { useWorkflows } from '../lib/workflowsStore'
-import { useTasks } from '../lib/tasksStore'
+import { useWorkflows, workflowsStore } from '../lib/workflowsStore'
+import { useTasks, tasksStore } from '../lib/tasksStore'
+import { Skeleton, StatCardSkeleton, ListRowSkeleton } from '../components/Skeleton'
+import EmptyState from '../components/EmptyState'
 
 // ---------- helpers -------------------------------------------------------
 
@@ -38,13 +40,13 @@ const RANGE_OPTIONS = [
 
 function StatCard5({ icon: Icon, iconBg, iconColor, label, value }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5 flex items-start gap-4">
+    <div className="bg-surface border border-line rounded-xl p-5 flex items-start gap-4">
       <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${iconBg}`}>
         <Icon className={`w-5 h-5 ${iconColor}`} />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-xs text-gray-500 mb-0.5">{label}</p>
-        <p className="text-2xl font-bold text-gray-900 leading-tight">{value}</p>
+        <p className="text-xs text-fg-muted mb-0.5">{label}</p>
+        <p className="text-2xl font-bold text-fg leading-tight">{value}</p>
       </div>
     </div>
   )
@@ -68,7 +70,9 @@ function TopStats({ summary }) {
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
-      {cards.map((c) => <StatCard5 key={c.label} {...c} />)}
+      {summary == null
+        ? Array.from({ length: 5 }).map((_, i) => <StatCardSkeleton key={i} />)
+        : cards.map((c) => <StatCard5 key={c.label} {...c} />)}
     </div>
   )
 }
@@ -82,8 +86,8 @@ function MultiLineChart({ series }) {
 
   if (!series || series.length === 0) {
     return (
-      <div className="flex items-center justify-center h-40 text-xs text-gray-400">
-        No activity data for this period
+      <div className="flex items-center justify-center h-40 text-xs text-fg-subtle">
+        No activity in this period yet
       </div>
     )
   }
@@ -123,7 +127,7 @@ function MultiLineChart({ series }) {
       {/* Legend */}
       <div className="flex items-center gap-5 mb-3">
         {lines.map((l) => (
-          <span key={l.key} className="flex items-center gap-1.5 text-xs text-gray-600">
+          <span key={l.key} className="flex items-center gap-1.5 text-xs text-fg-muted">
             <span className="w-2 h-2 rounded-full inline-block" style={{ background: l.color }} />
             {l.label}
           </span>
@@ -172,13 +176,13 @@ function MultiLineChart({ series }) {
         {tooltip !== null && (() => {
           const row = series[tooltip.i]
           return (
-            <div className="absolute pointer-events-none z-10 bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-xs"
+            <div className="absolute pointer-events-none z-10 bg-surface border border-line rounded-lg shadow-lg px-3 py-2 text-xs"
               style={{ top: '8px', left: `calc(${(xs[tooltip.i] / W) * 100}% + 8px)` }}>
-              <p className="font-semibold text-gray-800 mb-1">{row.label}</p>
+              <p className="font-semibold text-fg mb-1">{row.label}</p>
               {lines.map((l) => (
-                <p key={l.key} className="flex items-center gap-2 text-gray-600">
+                <p key={l.key} className="flex items-center gap-2 text-fg-muted">
                   <span className="w-2 h-2 rounded-full inline-block" style={{ background: l.color }} />
-                  {l.label}: <span className="font-semibold text-gray-900 ml-auto pl-2">{row[l.key]}</span>
+                  {l.label}: <span className="font-semibold text-fg ml-auto pl-2">{row[l.key]}</span>
                 </p>
               ))}
             </div>
@@ -192,22 +196,22 @@ function MultiLineChart({ series }) {
 function WorkflowActivityCard({ series, days, onDaysChange, loading }) {
   const selectedLabel = RANGE_OPTIONS.find((o) => o.days === days)?.label ?? 'Last 7 days'
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5">
+    <div className="bg-surface border border-line rounded-xl p-5">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold text-gray-800">Workflow Activity</h2>
+        <h2 className="text-sm font-semibold text-fg">Workflow Activity</h2>
         <select
           value={selectedLabel}
           onChange={(e) => {
             const opt = RANGE_OPTIONS.find((o) => o.label === e.target.value)
             if (opt) onDaysChange(opt.days)
           }}
-          className="text-xs border border-gray-200 rounded-md px-2 py-1 text-gray-600 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300"
+          className="text-xs border border-line rounded-md px-2 py-1 text-fg-muted bg-surface focus:outline-none focus:ring-1 focus:ring-indigo-300"
         >
           {RANGE_OPTIONS.map((o) => <option key={o.days}>{o.label}</option>)}
         </select>
       </div>
       {loading ? (
-        <div className="flex items-center justify-center h-40 text-xs text-gray-400">Loading…</div>
+        <Skeleton className="h-40 w-full rounded-lg" />
       ) : (
         <MultiLineChart series={series} />
       )}
@@ -239,7 +243,7 @@ function requestDisplayStatus(task) {
   return 'In Review'
 }
 
-function RecentRequests({ tasks }) {
+function RecentRequests({ tasks, loading }) {
   const navigate = useNavigate()
   const recent = useMemo(() => {
     return [...tasks]
@@ -248,17 +252,28 @@ function RecentRequests({ tasks }) {
   }, [tasks])
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl flex flex-col h-full">
-      <div className="px-5 py-4 flex items-center justify-between border-b border-gray-100">
-        <h2 className="text-sm font-semibold text-gray-800">Recent Requests</h2>
+    <div className="bg-surface border border-line rounded-xl flex flex-col h-full">
+      <div className="px-5 py-4 flex items-center justify-between border-b border-line">
+        <h2 className="text-sm font-semibold text-fg">Recent Requests</h2>
         <Link to="/tasks" className="text-xs font-medium text-indigo-600 hover:text-indigo-700">View all</Link>
       </div>
-      {recent.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center py-12 text-xs text-gray-400">
-          No requests yet
+      {loading && recent.length === 0 ? (
+        <div className="divide-y divide-line flex-1">
+          {Array.from({ length: 5 }).map((_, i) => <ListRowSkeleton key={i} />)}
         </div>
+      ) : recent.length === 0 ? (
+        <EmptyState
+          className="flex-1"
+          title="No requests yet"
+          description="Fill out a form to submit your first request — it'll show up here."
+          action={
+            <Link to="/forms" className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium shadow-sm transition">
+              Browse forms
+            </Link>
+          }
+        />
       ) : (
-        <ul className="divide-y divide-gray-50 flex-1">
+        <ul className="divide-y divide-line flex-1">
           {recent.map((t) => {
             const status = requestDisplayStatus(t)
             const styles = STATUS_STYLES[status] || STATUS_STYLES.default
@@ -266,18 +281,18 @@ function RecentRequests({ tasks }) {
               <li key={t.id}>
                 <button
                   onClick={() => navigate(`/tasks/${t.id}`)}
-                  className="w-full text-left px-5 py-3 hover:bg-gray-50 transition flex items-center gap-3"
+                  className="w-full text-left px-5 py-3 hover:bg-surface-2 transition flex items-center gap-3"
                 >
                   <span className={`w-2 h-2 rounded-full shrink-0 ${styles.dot}`} />
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs font-medium text-gray-800 truncate">{t.title}</p>
-                    <p className="text-[10px] text-gray-400 truncate mt-0.5">{t._raw?.workflowExecutionId ? `EX-${String(t._raw.workflowExecutionId).slice(-6).toUpperCase()}` : `T-${String(t.id).slice(-6).toUpperCase()}`}</p>
+                    <p className="text-xs font-medium text-fg truncate">{t.title}</p>
+                    <p className="text-[10px] text-fg-subtle truncate mt-0.5">{t._raw?.workflowExecutionId ? `EX-${String(t._raw.workflowExecutionId).slice(-6).toUpperCase()}` : `T-${String(t.id).slice(-6).toUpperCase()}`}</p>
                   </div>
                   <div className="shrink-0 text-right">
                     <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${styles.badge}`}>
                       {status}
                     </span>
-                    <p className="text-[10px] text-gray-400 mt-1">{timeAgo(t.createdAt)}</p>
+                    <p className="text-[10px] text-fg-subtle mt-1">{timeAgo(t.createdAt)}</p>
                   </div>
                 </button>
               </li>
@@ -341,16 +356,16 @@ function TasksOverviewCard({ tasks }) {
   }, [tasks])
   const total = segs.reduce((s, x) => s + x.value, 0)
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5">
-      <p className="text-xs font-semibold text-gray-700 mb-4">Tasks Overview</p>
+    <div className="bg-surface border border-line rounded-xl p-5">
+      <p className="text-xs font-semibold text-fg mb-4">Tasks Overview</p>
       <div className="flex items-center gap-4">
         <DonutChart segments={segs} total={total} />
-        <ul className="space-y-1.5 text-xs text-gray-600">
+        <ul className="space-y-1.5 text-xs text-fg-muted">
           {segs.map((s) => (
             <li key={s.label} className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
               <span className="flex-1">{s.label}</span>
-              <span className="text-gray-400 font-medium ml-2">{s.value}</span>
+              <span className="text-fg-subtle font-medium ml-2">{s.value}</span>
             </li>
           ))}
         </ul>
@@ -377,11 +392,11 @@ function SemiGauge({ pct }) {
 function ApprovalRateCard({ approvalRate }) {
   const rate = approvalRate ?? null
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5">
-      <p className="text-xs font-semibold text-gray-700 mb-2">Approval Rate</p>
+    <div className="bg-surface border border-line rounded-xl p-5">
+      <p className="text-xs font-semibold text-fg mb-2">Approval Rate</p>
       <SemiGauge pct={rate} />
       <div className="mt-1 text-center">
-        {rate !== null && <p className="text-[10px] text-gray-400">vs target 90%</p>}
+        {rate !== null && <p className="text-[10px] text-fg-subtle">vs target 90%</p>}
         <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-emerald-600 mt-0.5">
           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg>
           {Math.max(0, rate - 90).toFixed(1)}% above target
@@ -394,15 +409,15 @@ function ApprovalRateCard({ approvalRate }) {
 function CompletionTimeCard({ avgDays }) {
   const val = avgDays != null ? avgDays.toFixed(1) : '—'
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col">
-      <p className="text-xs font-semibold text-gray-700 mb-3">Average Completion Time</p>
+    <div className="bg-surface border border-line rounded-xl p-5 flex flex-col">
+      <p className="text-xs font-semibold text-fg mb-3">Average Completion Time</p>
       <div className="flex items-center gap-3 flex-1">
         <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center shrink-0">
           <IconClock className="w-5 h-5 text-indigo-600" />
         </div>
         <div>
-          <p className="text-2xl font-bold text-gray-900">{val !== '—' ? `${val} days` : ''}</p>
-          {val !== '—' && <p className="text-[11px] text-gray-400 mt-0.5">vs last week</p>}
+          <p className="text-2xl font-bold text-fg">{val !== '—' ? `${val} days` : ''}</p>
+          {val !== '—' && <p className="text-[11px] text-fg-subtle mt-0.5">vs last week</p>}
         </div>
       </div>
     </div>
@@ -412,14 +427,14 @@ function CompletionTimeCard({ avgDays }) {
 function ActiveWorkflowsCard({ workflows }) {
   const active = workflows.filter((w) => w.status === 'Active').length
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col">
-      <p className="text-xs font-semibold text-gray-700 mb-3">Active Workflows</p>
+    <div className="bg-surface border border-line rounded-xl p-5 flex flex-col">
+      <p className="text-xs font-semibold text-fg mb-3">Active Workflows</p>
       <div className="flex items-center gap-3 flex-1">
         <div className="w-10 h-10 rounded-full bg-violet-50 flex items-center justify-center shrink-0">
           <IconLayers className="w-5 h-5 text-violet-600" />
         </div>
         <div>
-          <p className="text-2xl font-bold text-gray-900">{active}</p>
+          <p className="text-2xl font-bold text-fg">{active}</p>
         </div>
       </div>
     </div>
@@ -451,6 +466,7 @@ function BuilderDashboard() {
   const [approvalDist, setApprovalDist]     = useState([])
   const [activityRaw, setActivityRaw]       = useState([])
   const [activityLoading, setActivityLoading] = useState(true)
+  const [booting, setBooting]               = useState(true)
 
   // Fetch global stats once on mount (no date filter tied to badge).
   useEffect(() => {
@@ -475,6 +491,12 @@ function BuilderDashboard() {
       .catch(() => setActivityRaw([]))
       .finally(() => setActivityLoading(false))
   }, [chartDays])
+
+  // First-load flag: once the core stores respond, request lists can show
+  // skeletons instead of an empty state during the initial fetch.
+  useEffect(() => {
+    Promise.all([tasksStore.refresh(), workflowsStore.refresh()]).finally(() => setBooting(false))
+  }, [])
 
   const builderView = canViewReports(user)
   const firstName = (user?.name || 'there').split(' ')[0]
@@ -512,8 +534,8 @@ function BuilderDashboard() {
 
   return (
     <AppShell
-      // title={<>Welcome back, {firstName} </>}
-      // subtitle={builderView ? "Here's what's happening with your workflows today." : "Here's what's happening with your requests today."}
+      title={<>Welcome back, {firstName}</>}
+      subtitle={builderView ? "Here's what's happening with your workflows today." : "Here's what's happening with your requests today."}
     >
       <div className="space-y-5">
         {/* Row 1 — 5 stat cards */}
@@ -530,7 +552,7 @@ function BuilderDashboard() {
             />
           </div>
           <div className="xl:col-span-1">
-            <RecentRequests tasks={tasks} />
+            <RecentRequests tasks={tasks} loading={booting} />
           </div>
         </div>
 
@@ -622,7 +644,7 @@ const ACTIVITY_VERB = {
 }
 
 // Top 5 stat cards for an employee — all from their own requests.
-function EmployeeStats({ requests, needsAttention }) {
+function EmployeeStats({ requests, needsAttention, loading }) {
   const now = new Date()
   const isThisMonth = (iso) => {
     if (!iso) return false
@@ -643,34 +665,49 @@ function EmployeeStats({ requests, needsAttention }) {
   ]
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
-      {cards.map((c) => <StatCard5 key={c.label} {...c} />)}
+      {loading && requests.length === 0
+        ? Array.from({ length: 5 }).map((_, i) => <StatCardSkeleton key={i} />)
+        : cards.map((c) => <StatCard5 key={c.label} {...c} />)}
     </div>
   )
 }
 
-function MyRequestsList({ requests }) {
+function MyRequestsList({ requests, loading }) {
   const navigate = useNavigate()
   const rows = requests.slice(0, 6)
   return (
-    <div className="bg-white border border-gray-200 rounded-xl flex flex-col">
-      <div className="px-5 py-4 flex items-center justify-between border-b border-gray-100">
-        <h2 className="text-sm font-semibold text-gray-800">My Requests</h2>
+    <div className="bg-surface border border-line rounded-xl flex flex-col">
+      <div className="px-5 py-4 flex items-center justify-between border-b border-line">
+        <h2 className="text-sm font-semibold text-fg">My Requests</h2>
         <Link to="/tasks" className="text-xs font-medium text-indigo-600 hover:text-indigo-700">View all</Link>
       </div>
-      {rows.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center py-12 text-xs text-gray-400">No requests yet</div>
+      {loading && rows.length === 0 ? (
+        <ul className="divide-y divide-line">
+          {Array.from({ length: 5 }).map((_, i) => <li key={i}><ListRowSkeleton /></li>)}
+        </ul>
+      ) : rows.length === 0 ? (
+        <EmptyState
+          className="flex-1"
+          title="No requests yet"
+          description="Fill out a form to submit your first request — it'll show up here."
+          action={
+            <Link to="/forms" className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium shadow-sm transition">
+              Browse forms
+            </Link>
+          }
+        />
       ) : (
-        <ul className="divide-y divide-gray-50">
+        <ul className="divide-y divide-line">
           {rows.map((r) => {
             const styles = STATUS_STYLES[r.status] || STATUS_STYLES.default
             return (
               <li key={r.key}>
                 <button onClick={() => navigate(`/tasks/${r.latestTaskId}`)}
-                  className="w-full text-left px-5 py-3 hover:bg-gray-50 transition flex items-center gap-3">
+                  className="w-full text-left px-5 py-3 hover:bg-surface-2 transition flex items-center gap-3">
                   <span className={`w-2 h-2 rounded-full shrink-0 ${styles.dot}`} />
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs font-medium text-gray-800 truncate">{r.title}</p>
-                    <p className="text-[10px] text-gray-400 truncate mt-0.5">{r.refId} · {timeAgo(r.createdAt)}</p>
+                    <p className="text-xs font-medium text-fg truncate">{r.title}</p>
+                    <p className="text-[10px] text-fg-subtle truncate mt-0.5">{r.refId} · {timeAgo(r.createdAt)}</p>
                   </div>
                   <span className={`shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded border ${styles.badge}`}>{r.status}</span>
                 </button>
@@ -683,13 +720,22 @@ function MyRequestsList({ requests }) {
   )
 }
 
-function MyProgressCard({ requests }) {
+function MyProgressCard({ requests, loading }) {
   const rows = requests.slice(0, 5)
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5">
-      <h2 className="text-sm font-semibold text-gray-800 mb-4">My Request Progress</h2>
-      {rows.length === 0 ? (
-        <div className="flex items-center justify-center py-10 text-xs text-gray-400">Nothing in progress</div>
+    <div className="bg-surface border border-line rounded-xl p-5">
+      <h2 className="text-sm font-semibold text-fg mb-4">My Request Progress</h2>
+      {loading && rows.length === 0 ? (
+        <div className="space-y-3.5">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="space-y-1.5">
+              <Skeleton className="h-3 w-1/2" />
+              <Skeleton className="h-1.5 w-full rounded-full" />
+            </div>
+          ))}
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="flex items-center justify-center py-10 text-xs text-fg-subtle">Nothing in progress</div>
       ) : (
         <ul className="space-y-3.5">
           {rows.map((r) => {
@@ -697,10 +743,10 @@ function MyProgressCard({ requests }) {
             return (
               <li key={r.key}>
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-medium text-gray-700 truncate pr-2">{r.title}</span>
+                  <span className="text-xs font-medium text-fg truncate pr-2">{r.title}</span>
                   <span className={`shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded border ${styles.badge}`}>{r.status}</span>
                 </div>
-                <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
+                <div className="h-1.5 w-full rounded-full bg-surface-3 overflow-hidden">
                   <div className={`h-full rounded-full ${barColor(r.status)}`} style={{ width: `${r.progress}%` }} />
                 </div>
               </li>
@@ -719,7 +765,7 @@ function statusVisual(s) {
     case 'rejected':  return { ring: 'bg-rose-500 border-rose-500 text-white',       icon: 'x' }
     case 'escalated': return { ring: 'bg-orange-500 border-orange-500 text-white',    icon: 'up' }
     case 'pending':   return { ring: 'bg-blue-500 border-blue-500 text-white',        icon: 'dot' }
-    default:          return { ring: 'bg-white border-gray-300 text-gray-300',        icon: 'dot' }
+    default:          return { ring: 'bg-surface border-line text-fg-subtle',        icon: 'dot' }
   }
 }
 
@@ -768,9 +814,18 @@ function TrackStatusCard({ requests }) {
 
   if (!active) {
     return (
-      <div className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col">
-        <h2 className="text-sm font-semibold text-gray-800 mb-4">Track Status</h2>
-        <div className="flex-1 flex items-center justify-center py-10 text-xs text-gray-400">No requests to track</div>
+      <div className="bg-surface border border-line rounded-xl p-5 flex flex-col">
+        <h2 className="text-sm font-semibold text-fg mb-4">Track Status</h2>
+        <EmptyState
+          className="flex-1"
+          title="Nothing to track yet"
+          description="Submit a request to follow its approval progress here."
+          action={
+            <Link to="/forms" className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium shadow-sm transition">
+              Browse forms
+            </Link>
+          }
+        />
       </div>
     )
   }
@@ -778,9 +833,9 @@ function TrackStatusCard({ requests }) {
   const styles = STATUS_STYLES[active.status] || STATUS_STYLES.default
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col">
+    <div className="bg-surface border border-line rounded-xl p-5 flex flex-col">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-semibold text-gray-800">Track Status</h2>
+        <h2 className="text-sm font-semibold text-fg">Track Status</h2>
         <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${styles.badge}`}>{active.status}</span>
       </div>
 
@@ -788,7 +843,7 @@ function TrackStatusCard({ requests }) {
         <select
           value={active.key}
           onChange={(e) => setSelectedKey(e.target.value)}
-          className="mb-4 w-full text-xs border border-gray-200 rounded-lg px-2.5 py-2 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200"
+          className="mb-4 w-full text-xs border border-line rounded-lg px-2.5 py-2 text-fg bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200"
         >
           {requests.map((r) => (
             <option key={r.key} value={r.key}>{r.title} · {r.refId}</option>
@@ -799,18 +854,18 @@ function TrackStatusCard({ requests }) {
       <ol className="flex-1">
         {steps.map((st, i) => (
           <li key={st.key} className="relative pl-7 pb-4 last:pb-0">
-            {i < steps.length - 1 && <span className="absolute left-[8px] top-5 bottom-0 w-px bg-gray-200" />}
+            {i < steps.length - 1 && <span className="absolute left-[8px] top-5 bottom-0 w-px bg-line" />}
             <span className={`absolute left-0 top-0.5 w-[18px] h-[18px] rounded-full border flex items-center justify-center ${st.vis.ring} ${st.current ? 'ring-2 ring-blue-100' : ''}`}>
               <StepIcon kind={st.vis.icon} />
             </span>
-            <p className="text-xs font-medium text-gray-800 leading-tight">{st.title}</p>
-            <p className="text-[10px] text-gray-400 mt-0.5">{st.sub}</p>
+            <p className="text-xs font-medium text-fg leading-tight">{st.title}</p>
+            <p className="text-[10px] text-fg-subtle mt-0.5">{st.sub}</p>
           </li>
         ))}
       </ol>
 
       <button onClick={() => navigate(`/tasks/${active.latestTaskId}`)}
-        className="mt-2 w-full py-2 rounded-lg border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition">
+        className="mt-2 w-full py-2 rounded-lg border border-line text-xs font-medium text-fg-muted hover:bg-surface-2 transition">
         View details
       </button>
     </div>
@@ -820,10 +875,13 @@ function TrackStatusCard({ requests }) {
 function RecentActivityCard({ requests }) {
   const items = requests.slice(0, 5)
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5">
-      <h2 className="text-sm font-semibold text-gray-800 mb-4">Recent Activity</h2>
+    <div className="bg-surface border border-line rounded-xl p-5">
+      <h2 className="text-sm font-semibold text-fg mb-4">Recent Activity</h2>
       {items.length === 0 ? (
-        <div className="flex items-center justify-center py-10 text-xs text-gray-400">No activity yet</div>
+        <EmptyState
+          title="No activity yet"
+          description="Your recent requests and approvals will appear here."
+        />
       ) : (
         <ul className="space-y-3">
           {items.map((r) => {
@@ -832,10 +890,10 @@ function RecentActivityCard({ requests }) {
               <li key={r.key} className="flex items-start gap-3">
                 <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${styles.dot}`} />
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs text-gray-700 leading-snug">
+                  <p className="text-xs text-fg leading-snug">
                     <span className="font-medium">{r.title}</span> {ACTIVITY_VERB[r.status] || 'updated'}
                   </p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">{timeAgo(r.latestAt)}</p>
+                  <p className="text-[10px] text-fg-subtle mt-0.5">{timeAgo(r.latestAt)}</p>
                 </div>
               </li>
             )
@@ -856,16 +914,16 @@ function RequestSummaryCard({ requests }) {
   ]), [requests])
   const total = segs.reduce((s, x) => s + x.value, 0)
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5">
-      <h2 className="text-sm font-semibold text-gray-800 mb-4">Request Summary</h2>
+    <div className="bg-surface border border-line rounded-xl p-5">
+      <h2 className="text-sm font-semibold text-fg mb-4">Request Summary</h2>
       <div className="flex items-center gap-4">
         <DonutChart segments={segs} total={total} />
-        <ul className="space-y-1.5 text-xs text-gray-600 flex-1">
+        <ul className="space-y-1.5 text-xs text-fg-muted flex-1">
           {segs.map((s) => (
             <li key={s.label} className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
               <span className="flex-1">{s.label}</span>
-              <span className="text-gray-400 font-medium ml-2">
+              <span className="text-fg-subtle font-medium ml-2">
                 {s.value}{total > 0 ? ` (${Math.round((s.value / total) * 100)}%)` : ''}
               </span>
             </li>
@@ -873,7 +931,7 @@ function RequestSummaryCard({ requests }) {
         </ul>
       </div>
       <button onClick={() => navigate('/tasks')}
-        className="mt-4 w-full py-2 rounded-lg border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition">
+        className="mt-4 w-full py-2 rounded-lg border border-line text-xs font-medium text-fg-muted hover:bg-surface-2 transition">
         View all requests
       </button>
     </div>
@@ -887,25 +945,25 @@ function NeedsAttentionCard({ rejected, approvals }) {
     ...approvals.map((t) => ({ key: `a-${t.id}`, title: (t.title || 'Task').replace(/\s*—\s*Approval Required\s*$/i, ''), note: 'Awaiting your approval', taskId: t.id, tone: 'amber' })),
   ]
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5">
-      <h2 className="text-sm font-semibold text-gray-800 mb-4">Needs Your Attention</h2>
+    <div className="bg-surface border border-line rounded-xl p-5">
+      <h2 className="text-sm font-semibold text-fg mb-4">Needs Your Attention</h2>
       {items.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-10 text-center">
           <IconCheck className="w-6 h-6 text-emerald-500 mb-2" />
-          <p className="text-xs text-gray-400">You're all caught up</p>
+          <p className="text-xs text-fg-subtle">You're all caught up</p>
         </div>
       ) : (
         <ul className="space-y-2">
           {items.slice(0, 5).map((it) => (
             <li key={it.key}>
               <button onClick={() => navigate(`/tasks/${it.taskId}`)}
-                className="w-full text-left flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition">
+                className="w-full text-left flex items-center gap-3 p-2.5 rounded-lg hover:bg-surface-2 transition">
                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${it.tone === 'rose' ? 'bg-rose-500' : 'bg-amber-400'}`} />
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-gray-800 truncate">{it.title}</p>
+                  <p className="text-xs font-medium text-fg truncate">{it.title}</p>
                   <p className={`text-[10px] mt-0.5 ${it.tone === 'rose' ? 'text-rose-600' : 'text-amber-600'}`}>{it.note}</p>
                 </div>
-                <span className="text-gray-300 text-xs">›</span>
+                <span className="text-fg-subtle text-xs">›</span>
               </button>
             </li>
           ))}
@@ -918,6 +976,7 @@ function NeedsAttentionCard({ rejected, approvals }) {
 function EmployeeDashboard({ user }) {
   const tasks = useTasks()
   const myId = user?._id || user?.id || null
+  const firstName = (user?.name || 'there').split(' ')[0]
 
   const requests = useMemo(() => groupRequests(tasks, myId), [tasks, myId])
   const myApprovals = useMemo(
@@ -927,14 +986,20 @@ function EmployeeDashboard({ user }) {
   const rejected = useMemo(() => requests.filter((r) => r.status === 'Rejected'), [requests])
   const needsAttention = rejected.length + myApprovals.length
 
+  const [booting, setBooting] = useState(true)
+  useEffect(() => { tasksStore.refresh().finally(() => setBooting(false)) }, [])
+
   return (
-    <AppShell>
+    <AppShell
+      title={<>Welcome back, {firstName}</>}
+      subtitle="Here's what's happening with your requests today."
+    >
       <div className="space-y-5">
-        <EmployeeStats requests={requests} needsAttention={needsAttention} />
+        <EmployeeStats requests={requests} needsAttention={needsAttention} loading={booting} />
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-          <MyRequestsList requests={requests} />
-          <MyProgressCard requests={requests} />
+          <MyRequestsList requests={requests} loading={booting} />
+          <MyProgressCard requests={requests} loading={booting} />
           <TrackStatusCard requests={requests} />
         </div>
 

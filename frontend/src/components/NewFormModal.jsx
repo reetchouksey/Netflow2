@@ -62,15 +62,15 @@ export default function NewFormModal({ open, onClose }) {
       onClick={onClose}
     >
       <div
-        className="my-6 w-full max-w-3xl rounded-xl bg-white shadow-2xl"
+        className="my-6 w-full max-w-3xl rounded-xl bg-surface shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+        <div className="flex items-center justify-between border-b border-line px-6 py-4">
           <div className="flex items-center gap-3 min-w-0">
             {view !== 'home' && (
               <button
                 onClick={() => setView('home')}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-fg-subtle transition hover:bg-surface-3 hover:text-fg-muted"
                 aria-label="Back"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -79,13 +79,13 @@ export default function NewFormModal({ open, onClose }) {
               </button>
             )}
             <div className="min-w-0">
-              <h2 className="text-lg font-semibold text-gray-900">Create a new form</h2>
-              <p className="mt-0.5 text-xs text-gray-500">{SUBTITLES[view]}</p>
+              <h2 className="text-lg font-semibold text-fg">Create a new form</h2>
+              <p className="mt-0.5 text-xs text-fg-muted">{SUBTITLES[view]}</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-fg-subtle transition hover:bg-surface-3 hover:text-fg-muted"
             aria-label="Close"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -100,35 +100,35 @@ export default function NewFormModal({ open, onClose }) {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <button
                 onClick={() => setView('templates')}
-                className="group rounded-xl border border-gray-200 p-5 text-left transition hover:border-indigo-300 hover:bg-indigo-50/30 hover:shadow-sm"
+                className="group rounded-xl border border-line p-5 text-left transition hover:border-indigo-300 hover:bg-indigo-50/30 hover:shadow-sm"
               >
                 <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v3H4V5zM4 10h7v9H5a1 1 0 01-1-1v-8zM13 10h7v8a1 1 0 01-1 1h-6v-9z" />
                   </svg>
                 </div>
-                <h3 className="text-base font-semibold text-gray-900 group-hover:text-indigo-700">Pre-built template</h3>
-                <p className="mt-1 text-sm text-gray-500">
+                <h3 className="text-base font-semibold text-fg group-hover:text-indigo-700">Pre-built template</h3>
+                <p className="mt-1 text-sm text-fg-muted">
                   Start from a ready-made form like Leave Approval or Purchase Request.
                 </p>
-                <p className="mt-2 text-[11px] font-medium text-gray-400">{FORM_TEMPLATES.length} templates</p>
+                <p className="mt-2 text-[11px] font-medium text-fg-subtle">{FORM_TEMPLATES.length} templates</p>
               </button>
 
               <button
                 onClick={startAI}
                 disabled={!aiAvailable}
-                className="group rounded-xl border border-gray-200 p-5 text-left transition hover:border-indigo-300 hover:bg-indigo-50/30 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-gray-200 disabled:hover:bg-white disabled:hover:shadow-none"
+                className="group rounded-xl border border-line p-5 text-left transition hover:border-indigo-300 hover:bg-indigo-50/30 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-line disabled:hover:bg-surface disabled:hover:shadow-none"
               >
                 <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M11 2.5a.6.6 0 0 1 1.13 0l1.32 3.43a3 3 0 0 0 1.72 1.72l3.43 1.32a.6.6 0 0 1 0 1.13l-3.43 1.32a3 3 0 0 0-1.72 1.72l-1.32 3.43a.6.6 0 0 1-1.13 0l-1.32-3.43a3 3 0 0 0-1.72-1.72L4.26 11.2a.6.6 0 0 1 0-1.13l3.43-1.32a3 3 0 0 0 1.72-1.72L11 2.5Z" />
                   </svg>
                 </div>
-                <h3 className="text-base font-semibold text-gray-900 group-hover:text-indigo-700">Build with AI</h3>
-                <p className="mt-1 text-sm text-gray-500">
+                <h3 className="text-base font-semibold text-fg group-hover:text-indigo-700">Build with AI</h3>
+                <p className="mt-1 text-sm text-fg-muted">
                   Describe the form requirements and AI generates the form fields.
                 </p>
-                <p className="mt-2 text-[11px] font-medium text-gray-400">
+                <p className="mt-2 text-[11px] font-medium text-fg-subtle">
                   {aiAvailable ? 'Powered by your AI provider' : 'AI is not configured'}
                 </p>
               </button>
@@ -147,7 +147,7 @@ export default function NewFormModal({ open, onClose }) {
         {view === 'templates' && (
           <div className="px-6 py-5">
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-800">Start from a template</h3>
+              <h3 className="text-sm font-semibold text-fg">Start from a template</h3>
               <button
                 onClick={startBlank}
                 className="text-xs font-medium text-indigo-600 transition hover:text-indigo-700"
@@ -160,16 +160,16 @@ export default function NewFormModal({ open, onClose }) {
                 <button
                   key={t.id}
                   onClick={() => startTemplate(t.id)}
-                  className="group rounded-lg border border-gray-200 p-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50/30"
+                  className="group rounded-lg border border-line p-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50/30"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium text-gray-800 group-hover:text-indigo-700">{t.name}</span>
-                    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${categoryStyles[t.category] || 'bg-gray-100 text-gray-600'}`}>
+                    <span className="text-sm font-medium text-fg group-hover:text-indigo-700">{t.name}</span>
+                    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${categoryStyles[t.category] || 'bg-surface-3 text-fg-muted'}`}>
                       {t.category}
                     </span>
                   </div>
-                  <p className="mt-1 text-xs text-gray-500">{t.description}</p>
-                  <p className="mt-1 text-[11px] text-gray-400">{t.fields.length} fields</p>
+                  <p className="mt-1 text-xs text-fg-muted">{t.description}</p>
+                  <p className="mt-1 text-[11px] text-fg-subtle">{t.fields.length} fields</p>
                 </button>
               ))}
             </div>

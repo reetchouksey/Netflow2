@@ -105,7 +105,7 @@ function AuditLog() {
   const actions = (
     <button
       onClick={exportCsv}
-      className="px-3 py-1.5 rounded-md border border-gray-200 hover:bg-gray-50 text-sm font-medium text-gray-700 transition"
+      className="px-3 py-1.5 rounded-md border border-line hover:bg-surface-2 text-sm font-medium text-fg transition"
     >
       Export CSV
     </button>
@@ -117,10 +117,10 @@ function AuditLog() {
       subtitle={`${total} ${total === 1 ? 'entry' : 'entries'}`}
       actions={actions}
     >
-      <div className="bg-white border border-gray-200 rounded-lg">
-            <div className="px-5 py-4 flex flex-col md:flex-row gap-3 md:items-center border-b border-gray-100">
+      <div className="bg-surface border border-line rounded-lg">
+            <div className="px-5 py-4 flex flex-col md:flex-row gap-3 md:items-center border-b border-line">
               <div className="relative flex-1 max-w-xs">
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-fg-subtle absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
                 <input
@@ -128,20 +128,20 @@ function AuditLog() {
                   value={search}
                   onChange={(e) => { setSearch(e.target.value); setPage(1) }}
                   placeholder="Search target or details..."
-                  className="pl-9 pr-3 py-2 w-full text-sm rounded-md border border-gray-200 bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition"
+                  className="pl-9 pr-3 py-2 w-full text-sm rounded-md border border-line bg-surface-2 focus:bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition"
                 />
               </div>
               <select
                 value={actionFilter}
                 onChange={(e) => { setActionFilter(e.target.value); setPage(1) }}
-                className="text-sm px-3 py-2 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 transition"
+                className="text-sm px-3 py-2 rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 transition"
               >
                 {ACTION_FILTERS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
               </select>
               <select
                 value={department}
                 onChange={(e) => { setDepartment(e.target.value); setPage(1) }}
-                className="text-sm px-3 py-2 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 transition"
+                className="text-sm px-3 py-2 rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 transition"
               >
                 <option value="">All departments</option>
                 {['HR', 'Finance', 'IT', 'Operations', 'Sales', 'Legal'].map((d) =>
@@ -157,27 +157,27 @@ function AuditLog() {
             )}
 
             {loading ? (
-              <div className="px-5 py-16 text-center text-sm text-gray-400">Loading audit log...</div>
+              <div className="px-5 py-16 text-center text-sm text-fg-subtle">Loading audit log...</div>
             ) : logs.length === 0 ? (
-              <div className="px-5 py-16 text-center text-sm text-gray-400">No entries match these filters.</div>
+              <div className="px-5 py-16 text-center text-sm text-fg-subtle">No entries match these filters.</div>
             ) : (
-              <ul className="divide-y divide-gray-100">
+              <ul className="divide-y divide-line">
                 {logs.map((l) => (
-                  <li key={l._id} className="px-5 py-3 flex items-start gap-3 hover:bg-gray-50 transition">
+                  <li key={l._id} className="px-5 py-3 flex items-start gap-3 hover:bg-surface-2 transition">
                     <span className={`w-2 h-2 rounded-full mt-2 shrink-0 ${ACTION_DOT[l.action] || 'bg-gray-400'}`} />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-800">
+                      <p className="text-sm text-fg">
                         <span className="font-medium">{l.userId?.name || 'System'}</span>
-                        <span className="text-gray-500"> · {titleCase(l.action)}</span>
+                        <span className="text-fg-muted"> · {titleCase(l.action)}</span>
                         {l.targetEntity && (
                           <>
-                            <span className="text-gray-400"> → </span>
-                            <span className="font-medium text-gray-700">{l.targetEntity}</span>
+                            <span className="text-fg-subtle"> → </span>
+                            <span className="font-medium text-fg">{l.targetEntity}</span>
                           </>
                         )}
                       </p>
-                      {l.details && <p className="text-xs text-gray-500 mt-0.5 whitespace-pre-wrap break-words">{l.details}</p>}
-                      <p className="text-[11px] text-gray-400 mt-0.5">
+                      {l.details && <p className="text-xs text-fg-muted mt-0.5 whitespace-pre-wrap break-words">{l.details}</p>}
+                      <p className="text-[11px] text-fg-subtle mt-0.5">
                         {new Date(l.createdAt).toLocaleString()} · {relativeTime(l.createdAt)}
                         {l.userId?.department ? ` · ${l.userId.department}` : ''}
                       </p>
@@ -188,20 +188,20 @@ function AuditLog() {
             )}
 
             {totalPages > 1 && (
-              <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
-                <p className="text-xs text-gray-500">Page {page} of {totalPages}</p>
+              <div className="px-5 py-3 border-t border-line flex items-center justify-between">
+                <p className="text-xs text-fg-muted">Page {page} of {totalPages}</p>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
                     disabled={page === 1}
-                    className="px-3 py-1 text-xs rounded-md border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="px-3 py-1 text-xs rounded-md border border-line hover:bg-surface-2 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Previous
                   </button>
                   <button
                     onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                     disabled={page === totalPages}
-                    className="px-3 py-1 text-xs rounded-md border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="px-3 py-1 text-xs rounded-md border border-line hover:bg-surface-2 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Next
                   </button>

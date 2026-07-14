@@ -1,9 +1,11 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import { useWorkflows, workflowsStore, WORKFLOW_CATEGORIES } from '../lib/workflowsStore'
+import { TableRowSkeleton } from '../components/Skeleton'
 import { useUser } from '../utils/auth'
 import { canCreateWorkflow, canEditWorkflow } from '../utils/permissions'
+import { confirm } from '../lib/confirmStore'
 
 const categoryStyles = {
   HR: 'bg-pink-50 text-pink-700',
@@ -37,6 +39,8 @@ function Workflows() {
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('All categories')
   const [statusFilter, setStatusFilter] = useState('All status')
+  const [booting, setBooting] = useState(true)
+  useEffect(() => { workflowsStore.refresh().finally(() => setBooting(false)) }, [])
 
   const filtered = useMemo(() => {
     return workflows.filter((w) => {
@@ -62,10 +66,10 @@ function Workflows() {
 
   return (
     <AppShell title="Workflows" subtitle={subtitle} actions={actions}>
-      <div className="bg-white border border-gray-200 rounded-lg">
-            <div className="px-5 py-4 flex flex-col md:flex-row gap-3 md:items-center border-b border-gray-100">
+      <div className="bg-surface border border-line rounded-lg">
+            <div className="px-5 py-4 flex flex-col md:flex-row gap-3 md:items-center border-b border-line">
               <div className="relative flex-1 max-w-xs">
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-fg-subtle absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
                 <input
@@ -73,13 +77,13 @@ function Workflows() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search workflows..."
-                  className="w-full pl-9 pr-3 py-2 text-sm rounded-md border border-gray-200 bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition"
+                  className="w-full pl-9 pr-3 py-2 text-sm rounded-md border border-line bg-surface-2 focus:bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition"
                 />
               </div>
               <select
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="px-3 py-2 text-sm rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition"
+                className="px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition"
               >
                 <option>All categories</option>
                 {WORKFLOW_CATEGORIES.map((c) => (
@@ -89,7 +93,7 @@ function Workflows() {
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-2 text-sm rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition"
+                className="px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition"
               >
                 <option>All status</option>
                 <option>Active</option>
@@ -97,9 +101,17 @@ function Workflows() {
               </select>
             </div>
 
-            {filtered.length === 0 ? (
+            {booting && workflows.length === 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <tbody className="divide-y divide-line">
+                    {Array.from({ length: 6 }).map((_, i) => <TableRowSkeleton key={i} cols={6} />)}
+                  </tbody>
+                </table>
+              </div>
+            ) : filtered.length === 0 ? (
               <div className="px-5 py-16 text-center">
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-fg-muted">
                   {workflows.length === 0
                     ? canCreate
                       ? 'No workflows yet. Create your first one to get started.'
@@ -119,7 +131,7 @@ function Workflows() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-left text-[11px] font-semibold tracking-wider text-gray-400 uppercase border-b border-gray-100">
+                    <tr className="text-left text-[11px] font-semibold tracking-wider text-fg-subtle uppercase border-b border-line">
                       <th className="px-5 py-3">Workflow</th>
                       <th className="px-5 py-3">Category</th>
                       <th className="px-5 py-3">Steps</th>
@@ -128,25 +140,25 @@ function Workflows() {
                       <th className="px-5 py-3">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-line">
                     {filtered.map((w) => (
-                      <tr key={w.id} className="hover:bg-gray-50/60 transition">
+                      <tr key={w.id} className="hover:bg-surface-2/60 transition">
                         <td className="px-5 py-4">
-                          <p className="font-medium text-gray-800">{w.name}</p>
+                          <p className="font-medium text-fg">{w.name}</p>
                           {w.description && (
-                            <p className="text-xs text-gray-500 mt-0.5">{w.description}</p>
+                            <p className="text-xs text-fg-muted mt-0.5">{w.description}</p>
                           )}
                         </td>
                         <td className="px-5 py-4">
                           <span
                             className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                              categoryStyles[w.category] || 'bg-gray-100 text-gray-600'
+                              categoryStyles[w.category] || 'bg-surface-3 text-fg-muted'
                             }`}
                           >
                             {w.category}
                           </span>
                         </td>
-                        <td className="px-5 py-4 text-gray-700">{w.steps}</td>
+                        <td className="px-5 py-4 text-fg">{w.steps}</td>
                         <td className="px-5 py-4">
                           {canCreate ? (
                             <button
@@ -155,7 +167,7 @@ function Workflows() {
                               className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium transition ${
                                 w.status === 'Active'
                                   ? 'bg-green-50 text-green-600 hover:bg-green-100'
-                                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                  : 'bg-surface-3 text-fg-muted hover:bg-line'
                               }`}
                             >
                               {w.status}
@@ -165,14 +177,14 @@ function Workflows() {
                               className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
                                 w.status === 'Active'
                                   ? 'bg-green-50 text-green-600'
-                                  : 'bg-gray-100 text-gray-500'
+                                  : 'bg-surface-3 text-fg-muted'
                               }`}
                             >
                               {w.status}
                             </span>
                           )}
                         </td>
-                        <td className="px-5 py-4 text-xs text-gray-500">{formatDate(w.createdAt)}</td>
+                        <td className="px-5 py-4 text-xs text-fg-muted">{formatDate(w.createdAt)}</td>
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-2">
                             {canEdit && (
@@ -188,7 +200,7 @@ function Workflows() {
                             )}
                             {canCreate && (
                               <button
-                                onClick={() => { if (window.confirm('Permanently delete this workflow and its runs and tasks? This cannot be undone.')) workflowsStore.remove(w.id) }}
+                                onClick={async () => { if (await confirm({ title: 'Delete workflow?', message: 'This permanently deletes the workflow and its runs and tasks. This cannot be undone.', confirmLabel: 'Delete', danger: true })) workflowsStore.remove(w.id) }}
                                 title="Delete workflow permanently"
                                 className="w-9 h-7 rounded-md border border-red-200 bg-red-50 hover:bg-red-100 flex items-center justify-center text-red-500 transition"
                               >
@@ -197,7 +209,7 @@ function Workflows() {
                                 </svg>
                               </button>
                             )}
-                            {!canEdit && !canCreate && <span className="text-xs text-gray-300">—</span>}
+                            {!canEdit && !canCreate && <span className="text-xs text-fg-subtle">—</span>}
                           </div>
                         </td>
                       </tr>

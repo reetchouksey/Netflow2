@@ -3,11 +3,13 @@
 // GET /api/roles. Admins can invite, change role, change department, and
 // deactivate / reactivate users. Non-admins see a friendly forbidden screen.
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import AppShell from '../components/AppShell'
 import { api } from '../utils/api'
 import { useUser, DEPARTMENTS, initials } from '../utils/auth'
 import { canManageUsers } from '../utils/permissions'
+import { parseCsv, buildTemplate } from '../utils/csv'
+import { confirm } from '../lib/confirmStore'
 
 const AVATAR_PALETTE = [
   'bg-pink-100 text-pink-700',
@@ -112,7 +114,7 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
         password: form.password
       }
       const data = await api.post('/api/users', payload)
-      onCreated(data.user)
+      onCreated(data.user, data.domainWarning)
     } catch (err) {
       setError(err.message || 'Failed to create user')
     } finally {
@@ -126,20 +128,20 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md bg-white rounded-xl shadow-xl border border-gray-200"
+        className="w-full max-w-md bg-surface rounded-xl shadow-xl border border-line"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-line flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-gray-800">Create a user</h2>
-            <p className="text-[11px] text-gray-500 mt-0.5">
+            <h2 className="text-sm font-semibold text-fg">Create a user</h2>
+            <p className="text-[11px] text-fg-muted mt-0.5">
               You set the role, department and initial password. Share the credentials with the user.
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="w-7 h-7 rounded-md hover:bg-gray-100 text-gray-400 flex items-center justify-center transition"
+            className="w-7 h-7 rounded-md hover:bg-surface-3 text-fg-subtle flex items-center justify-center transition"
             aria-label="Close"
           >
             ×
@@ -154,36 +156,36 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
           )}
 
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Full name</label>
+            <label className="block text-xs font-medium text-fg-muted mb-1">Full name</label>
             <input
               name="name"
               value={form.name}
               onChange={handleChange}
               placeholder="e.g. Arjun Kumar"
-              className="w-full px-3 py-2 text-sm rounded-md border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+              className="w-full px-3 py-2 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Work email</label>
+            <label className="block text-xs font-medium text-fg-muted mb-1">Work email</label>
             <input
               name="email"
               type="email"
               value={form.email}
               onChange={handleChange}
               placeholder="arjun@company.com"
-              className="w-full px-3 py-2 text-sm rounded-md border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+              className="w-full px-3 py-2 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Role</label>
+              <label className="block text-xs font-medium text-fg-muted mb-1">Role</label>
               <select
                 name="roleId"
                 value={form.roleId}
                 onChange={handleChange}
-                className="w-full px-3 py-2 text-sm rounded-md border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+                className="w-full px-3 py-2 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
               >
                 {sortedRoles.map((r) => (
                   <option key={r._id} value={r._id}>{r.name}</option>
@@ -191,12 +193,12 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Department</label>
+              <label className="block text-xs font-medium text-fg-muted mb-1">Department</label>
               <select
                 name="department"
                 value={form.department}
                 onChange={handleChange}
-                className="w-full px-3 py-2 text-sm rounded-md border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+                className="w-full px-3 py-2 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
               >
                 {DEPARTMENTS.map((d) => <option key={d}>{d}</option>)}
               </select>
@@ -204,12 +206,12 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Reporting manager</label>
+            <label className="block text-xs font-medium text-fg-muted mb-1">Reporting manager</label>
             <select
               name="managerId"
               value={form.managerId}
               onChange={handleChange}
-              className="w-full px-3 py-2 text-sm rounded-md border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+              className="w-full px-3 py-2 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
             >
               <option value="">— No manager —</option>
               {(managers || []).map((m) => (
@@ -218,18 +220,18 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
                 </option>
               ))}
             </select>
-            <p className="text-[11px] text-gray-400 mt-1">
+            <p className="text-[11px] text-fg-subtle mt-1">
               Who this person reports to. You can change it later from the table.
             </p>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">HR partner</label>
+            <label className="block text-xs font-medium text-fg-muted mb-1">HR partner</label>
             <select
               name="hrId"
               value={form.hrId}
               onChange={handleChange}
-              className="w-full px-3 py-2 text-sm rounded-md border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+              className="w-full px-3 py-2 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
             >
               <option value="">— No HR —</option>
               {(hrPeople || []).map((h) => (
@@ -238,7 +240,7 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
                 </option>
               ))}
             </select>
-            <p className="text-[11px] text-gray-400 mt-1">
+            <p className="text-[11px] text-fg-subtle mt-1">
               {(hrPeople || []).length === 0
                 ? 'No HR-role users yet — create one to assign HR partners.'
                 : 'The HR person responsible for this user.'}
@@ -247,7 +249,7 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-medium text-gray-600">
+              <label className="block text-xs font-medium text-fg-muted">
                 Initial password <span className="text-rose-500">*</span>
               </label>
               <button
@@ -266,17 +268,17 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
                 onChange={handleChange}
                 placeholder="At least 6 characters"
                 autoComplete="new-password"
-                className="w-full px-3 py-2 pr-16 text-sm rounded-md border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+                className="w-full px-3 py-2 pr-16 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((s) => !s)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-[11px] font-medium text-gray-500 hover:text-gray-700"
+                className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-[11px] font-medium text-fg-muted hover:text-fg"
               >
                 {showPassword ? 'Hide' : 'Show'}
               </button>
             </div>
-            <p className="text-[11px] text-gray-400 mt-1">
+            <p className="text-[11px] text-fg-subtle mt-1">
               Share this password securely. The user can change it after their first login.
             </p>
           </div>
@@ -285,7 +287,7 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
             <button
               type="button"
               onClick={onClose}
-              className="px-3 py-2 rounded-md border border-gray-200 hover:bg-gray-50 text-sm font-medium text-gray-700 transition"
+              className="px-3 py-2 rounded-md border border-line hover:bg-surface-2 text-sm font-medium text-fg transition"
             >
               Cancel
             </button>
@@ -374,20 +376,20 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md bg-white rounded-xl shadow-xl border border-gray-200"
+        className="w-full max-w-md bg-surface rounded-xl shadow-xl border border-line"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-line flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-gray-800">Edit user</h2>
-            <p className="text-[11px] text-gray-500 mt-0.5">
+            <h2 className="text-sm font-semibold text-fg">Edit user</h2>
+            <p className="text-[11px] text-fg-muted mt-0.5">
               Update name, email, role, department, manager &amp; HR partner, or reset the password.
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="w-7 h-7 rounded-md hover:bg-gray-100 text-gray-400 flex items-center justify-center transition"
+            className="w-7 h-7 rounded-md hover:bg-surface-3 text-fg-subtle flex items-center justify-center transition"
             aria-label="Close"
           >
             ×
@@ -402,18 +404,18 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
           )}
 
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Full name</label>
+            <label className="block text-xs font-medium text-fg-muted mb-1">Full name</label>
             <input
               name="name"
               value={form.name}
               onChange={handleChange}
               placeholder="e.g. Arjun Kumar"
-              className="w-full px-3 py-2 text-sm rounded-md border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+              className="w-full px-3 py-2 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Work email</label>
+            <label className="block text-xs font-medium text-fg-muted mb-1">Work email</label>
             <input
               name="email"
               type="email"
@@ -421,9 +423,9 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
               onChange={handleChange}
               placeholder="arjun@company.com"
               autoComplete="off"
-              className="w-full px-3 py-2 text-sm rounded-md border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+              className="w-full px-3 py-2 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
             />
-            <p className="text-[11px] text-gray-400 mt-1">
+            <p className="text-[11px] text-fg-subtle mt-1">
               The user signs in with this email — changing it updates their login.
             </p>
           </div>
@@ -431,19 +433,19 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
           {orgExempt ? (
             <>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Role</label>
+                <label className="block text-xs font-medium text-fg-muted mb-1">Role</label>
                 <select
                   name="roleId"
                   value={form.roleId}
                   onChange={handleChange}
                   disabled
                   title="System admin roles are managed separately"
-                  className="w-full px-3 py-2 text-sm rounded-md border border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed focus:outline-none"
+                  className="w-full px-3 py-2 text-sm rounded-md border border-line bg-surface-2 text-fg-muted cursor-not-allowed focus:outline-none"
                 >
                   {sortedRoles.map((r) => <option key={r._id} value={r._id}>{r.name}</option>)}
                 </select>
               </div>
-              <div className="p-2.5 rounded-md bg-gray-50 border border-gray-200 text-[11px] text-gray-500">
+              <div className="p-2.5 rounded-md bg-surface-2 border border-line text-[11px] text-fg-muted">
                 System admins sit outside the org chart, so they have no department, reporting manager or HR partner.
               </div>
             </>
@@ -451,25 +453,25 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Role</label>
+                  <label className="block text-xs font-medium text-fg-muted mb-1">Role</label>
                   <select
                     name="roleId"
                     value={form.roleId}
                     onChange={handleChange}
                     disabled={isSelf}
                     title={isSelf ? "You can't change your own role" : ''}
-                    className="w-full px-3 py-2 text-sm rounded-md border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="w-full px-3 py-2 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {sortedRoles.map((r) => <option key={r._id} value={r._id}>{r.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Department</label>
+                  <label className="block text-xs font-medium text-fg-muted mb-1">Department</label>
                   <select
                     name="department"
                     value={form.department}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 text-sm rounded-md border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+                    className="w-full px-3 py-2 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
                   >
                     {DEPARTMENTS.map((d) => <option key={d}>{d}</option>)}
                   </select>
@@ -477,12 +479,12 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Reporting manager</label>
+                <label className="block text-xs font-medium text-fg-muted mb-1">Reporting manager</label>
                 <select
                   name="managerId"
                   value={form.managerId}
                   onChange={handleChange}
-                  className="w-full px-3 py-2 text-sm rounded-md border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+                  className="w-full px-3 py-2 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
                 >
                   <option value="">— No manager —</option>
                   {(managers || []).filter((m) => m._id !== user._id).map((m) => (
@@ -494,12 +496,12 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">HR partner</label>
+                <label className="block text-xs font-medium text-fg-muted mb-1">HR partner</label>
                 <select
                   name="hrId"
                   value={form.hrId}
                   onChange={handleChange}
-                  className="w-full px-3 py-2 text-sm rounded-md border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+                  className="w-full px-3 py-2 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
                 >
                   <option value="">— No HR —</option>
                   {(hrPeople || []).filter((h) => h._id !== user._id).map((h) => (
@@ -508,7 +510,7 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
                     </option>
                   ))}
                 </select>
-                <p className="text-[11px] text-gray-400 mt-1">
+                <p className="text-[11px] text-fg-subtle mt-1">
                   {(hrPeople || []).length === 0
                     ? 'No HR-role users yet — create one to assign HR partners.'
                     : 'The HR person who handles this user’s people processes.'}
@@ -518,7 +520,7 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
           )}
 
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">New password</label>
+            <label className="block text-xs font-medium text-fg-muted mb-1">New password</label>
             <div className="relative">
               <input
                 name="password"
@@ -527,7 +529,7 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
                 onChange={handleChange}
                 placeholder="Leave blank to keep current"
                 autoComplete="new-password"
-                className="w-full px-3 py-2 pr-14 text-sm rounded-md border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+                className="w-full px-3 py-2 pr-14 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
               />
               <button
                 type="button"
@@ -538,7 +540,7 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
                 {showPw ? 'Hide' : 'Show'}
               </button>
             </div>
-            <p className="text-[11px] text-gray-400 mt-1">
+            <p className="text-[11px] text-fg-subtle mt-1">
               Optional — sets a new sign-in password (min 6 characters). Leave blank to keep the current one.
             </p>
           </div>
@@ -547,7 +549,7 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
             <button
               type="button"
               onClick={onClose}
-              className="px-3 py-2 rounded-md border border-gray-200 hover:bg-gray-50 text-sm font-medium text-gray-700 transition"
+              className="px-3 py-2 rounded-md border border-line hover:bg-surface-2 text-sm font-medium text-fg transition"
             >
               Cancel
             </button>
@@ -579,6 +581,7 @@ function AdminPanel() {
   const [roleFilter, setRoleFilter] = useState('All roles')
   const [deptFilter, setDeptFilter] = useState('All departments')
   const [createOpen, setCreateOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [editUser, setEditUser] = useState(null)
   const [busy, setBusy] = useState({}) // { [userId]: 'role' | 'department' | 'deactivate' }
   const [feedback, setFeedback] = useState('')
@@ -655,11 +658,15 @@ function AdminPanel() {
       setError('You cannot delete your own account.')
       return
     }
-    const ok = window.confirm(
-      `Permanently delete ${user.name} (${user.email})?\n\n` +
-      'This removes the account from the database and cannot be undone. ' +
-      'Anyone who reports to them — or has them set as HR partner — will be detached.'
-    )
+    const ok = await confirm({
+      title: 'Delete user?',
+      message:
+        `Permanently delete ${user.name} (${user.email})?\n\n` +
+        'This removes the account from the database and cannot be undone. ' +
+        'Anyone who reports to them — or has them set as HR partner — will be detached.',
+      confirmLabel: 'Delete',
+      danger: true,
+    })
     if (!ok) return
     setBusyKey(user._id, 'delete')
     setError('')
@@ -674,9 +681,13 @@ function AdminPanel() {
     }
   }
 
-  const handleCreated = (user) => {
+  const handleCreated = (user, domainWarning) => {
     setCreateOpen(false)
-    setFeedback(`Created ${user.name} (${user.role?.name || 'no role'}). They can log in with the password you set.`)
+    setFeedback(
+      domainWarning
+        ? `Created ${user.name}. Warning: ${domainWarning}`
+        : `Created ${user.name} (${user.role?.name || 'no role'}). They can log in with the password you set.`
+    )
     loadUsers()
   }
 
@@ -717,14 +728,14 @@ function AdminPanel() {
   if (!isAdmin) {
     return (
       <AppShell title="Admin Panel">
-        <div className="max-w-md mx-auto bg-white border border-gray-200 rounded-lg p-8 text-center">
+        <div className="max-w-md mx-auto bg-surface border border-line rounded-lg p-8 text-center">
           <div className="mx-auto w-12 h-12 rounded-full bg-rose-100 flex items-center justify-center mb-3">
             <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 4h.01M5 19h14a2 2 0 001.85-2.74L13.85 4.74a2 2 0 00-3.7 0L3.15 16.26A2 2 0 005 19z" />
             </svg>
           </div>
-          <p className="text-base font-semibold text-gray-800">Admins only</p>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-base font-semibold text-fg">Admins only</p>
+          <p className="text-sm text-fg-muted mt-1">
             You need an Admin role to manage users.
           </p>
         </div>
@@ -733,13 +744,22 @@ function AdminPanel() {
   }
 
   const actions = (
-    <button
-      onClick={() => setCreateOpen(true)}
-      disabled={roles.length === 0}
-      className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium shadow-sm transition"
-    >
-      + New user
-    </button>
+    <div className="flex items-center gap-2">
+      <button
+        onClick={() => setImportOpen(true)}
+        disabled={roles.length === 0}
+        className="px-4 py-2 rounded-md border border-line hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed text-fg text-sm font-medium transition"
+      >
+        Import users
+      </button>
+      <button
+        onClick={() => setCreateOpen(true)}
+        disabled={roles.length === 0}
+        className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium shadow-sm transition"
+      >
+        + New user
+      </button>
+    </div>
   )
 
   return (
@@ -765,10 +785,10 @@ function AdminPanel() {
         </div>
       )}
 
-      <div className="bg-white border border-gray-200 rounded-lg">
-        <div className="px-5 py-4 flex flex-col md:flex-row gap-3 md:items-center border-b border-gray-100">
-          <div className="relative flex-1 max-w-xs">
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+      <div className="bg-surface border border-line rounded-lg">
+        <div className="px-5 py-4 flex flex-col md:flex-row gap-3 md:items-center border-b border-line">
+          <div className="relative flex-1 md:max-w-xs">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-fg-subtle absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
@@ -776,13 +796,13 @@ function AdminPanel() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by name or email…"
-              className="w-full pl-9 pr-3 py-2 text-sm rounded-md border border-gray-200 bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition"
+              className="w-full pl-9 pr-3 py-2 text-sm rounded-md border border-line bg-surface-2 focus:bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition"
             />
           </div>
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
-            className="px-3 py-2 text-sm rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+            className="px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
           >
             <option>All roles</option>
             {roles.map((r) => <option key={r._id}>{r.name}</option>)}
@@ -790,7 +810,7 @@ function AdminPanel() {
           <select
             value={deptFilter}
             onChange={(e) => setDeptFilter(e.target.value)}
-            className="px-3 py-2 text-sm rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+            className="px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
           >
             <option>All departments</option>
             {DEPARTMENTS.map((d) => <option key={d}>{d}</option>)}
@@ -800,7 +820,7 @@ function AdminPanel() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-[11px] font-semibold tracking-wider text-gray-400 uppercase border-b border-gray-100">
+              <tr className="text-left text-[11px] font-semibold tracking-wider text-fg-subtle uppercase border-b border-line">
                 <th className="px-5 py-3">User</th>
                 <th className="px-5 py-3">Role</th>
                 <th className="px-5 py-3">Status</th>
@@ -808,16 +828,16 @@ function AdminPanel() {
                 <th className="px-5 py-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-line">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-5 py-12 text-center text-sm text-gray-400">
+                  <td colSpan={5} className="px-5 py-12 text-center text-sm text-fg-subtle">
                     Loading users…
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-5 py-12 text-center text-sm text-gray-400">
+                  <td colSpan={5} className="px-5 py-12 text-center text-sm text-fg-subtle">
                     {users.length === 0
                       ? 'No users yet. Click "+ New user" to create your first teammate.'
                       : 'No users match your filters.'}
@@ -827,19 +847,19 @@ function AdminPanel() {
                 const isMe = u._id === me._id
                 const userBusy = busy[u._id]
                 return (
-                  <tr key={u._id} className="hover:bg-gray-50/60 transition">
+                  <tr key={u._id} className="hover:bg-surface-2/60 transition">
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
                         <div className={`w-9 h-9 rounded-md flex items-center justify-center text-xs font-semibold ${avatarClassFor(u.name)}`}>
                           {initials(u.name)}
                         </div>
                         <div className="leading-tight">
-                          <p className="font-medium text-gray-800">
+                          <p className="font-medium text-fg">
                             {u.name}
                             {isMe && <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">You</span>}
                             {u.isProtected && <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded" title="Protected system account">Locked</span>}
                           </p>
-                          <p className="text-xs text-gray-500">{u.email}</p>
+                          <p className="text-xs text-fg-muted">{u.email}</p>
                         </div>
                       </div>
                     </td>
@@ -853,13 +873,13 @@ function AdminPanel() {
                         className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
                           u.isActive
                             ? 'bg-green-50 text-green-700 border border-green-200'
-                            : 'bg-gray-100 text-gray-500 border border-gray-200'
+                            : 'bg-surface-3 text-fg-muted border border-line'
                         }`}
                       >
                         {u.isActive ? 'Active' : 'Inactive'}
                       </span>
                     </td>
-                    <td className="px-5 py-4 text-xs text-gray-500">
+                    <td className="px-5 py-4 text-xs text-fg-muted">
                       {u.department}
                     </td>
                     <td className="px-5 py-4">
@@ -868,7 +888,7 @@ function AdminPanel() {
                           onClick={() => setEditUser(u)}
                           disabled={!!userBusy || u.isProtected}
                           title={u.isProtected ? 'Protected account — cannot be edited' : 'Edit details, role & org placement'}
-                          className="px-3 py-1.5 text-xs font-medium rounded-md border border-gray-200 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 transition"
+                          className="px-3 py-1.5 text-xs font-medium rounded-md border border-line hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed text-fg transition"
                         >
                           Edit
                         </button>
@@ -882,7 +902,7 @@ function AdminPanel() {
                                 ? 'Protected account — cannot be deactivated'
                                 : u.isActive ? 'Deactivate user' : 'Reactivate user'
                           }
-                          className="px-3 py-1.5 text-xs font-medium rounded-md border border-gray-200 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 transition"
+                          className="px-3 py-1.5 text-xs font-medium rounded-md border border-line hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed text-fg transition"
                         >
                           {userBusy === 'deactivate'
                             ? '...'
@@ -928,6 +948,14 @@ function AdminPanel() {
         />
       )}
 
+      {importOpen && (
+        <ImportUsersDialog
+          roles={roles}
+          onClose={() => setImportOpen(false)}
+          onImported={() => { setFeedback('Bulk import finished.'); loadUsers() }}
+        />
+      )}
+
       {editUser && (
         <EditUserDialog
           user={editUser}
@@ -944,6 +972,264 @@ function AdminPanel() {
         />
       )}
     </AppShell>
+  )
+}
+
+// ---------- bulk import dialog ------------------------------------------
+
+const REQUIRED_COLUMNS = ['name', 'email', 'department', 'role']
+
+function ImportUsersDialog({ roles, onClose, onImported }) {
+  const [rows, setRows] = useState([])
+  const [fileName, setFileName] = useState('')
+  const [parseError, setParseError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [result, setResult] = useState(null)
+  const fileRef = useRef(null)
+
+  const roleNames = useMemo(
+    () => new Set((roles || []).map((r) => r.name.toLowerCase())),
+    [roles]
+  )
+  const deptSet = useMemo(() => new Set(DEPARTMENTS.map((d) => d.toLowerCase())), [])
+
+  // Client-side row validity hint (server re-validates authoritatively).
+  const rowIssue = (r) => {
+    if (!r.name || !r.email || !r.department || !r.role) return 'Missing required field'
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email)) return 'Invalid email'
+    if (!roleNames.has(String(r.role).toLowerCase())) return `Unknown role "${r.role}"`
+    if (!deptSet.has(String(r.department).toLowerCase())) return `Unknown department "${r.department}"`
+    return ''
+  }
+
+  const validCount = useMemo(() => rows.filter((r) => !rowIssue(r)).length, [rows]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleFile = (e) => {
+    setParseError('')
+    setResult(null)
+    const file = e.target.files?.[0]
+    if (!file) return
+    setFileName(file.name)
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const { headers, rows: parsed } = parseCsv(reader.result)
+        const missing = REQUIRED_COLUMNS.filter((c) => !headers.includes(c))
+        if (missing.length) {
+          setRows([])
+          setParseError(`CSV is missing column(s): ${missing.join(', ')}`)
+          return
+        }
+        setRows(parsed.map((r) => ({
+          name: r.name || '', email: r.email || '', department: r.department || '',
+          role: r.role || '', manager: r.manager || '', hr: r.hr || ''
+        })))
+      } catch {
+        setRows([])
+        setParseError('Could not parse this file. Make sure it is a valid CSV.')
+      }
+    }
+    reader.readAsText(file)
+  }
+
+  const downloadTemplate = () => {
+    const blob = new Blob([buildTemplate()], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'user-import-template.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const submit = async () => {
+    setSubmitting(true)
+    setResult(null)
+    try {
+      const data = await api.post('/api/users/import', { users: rows })
+      setResult(data)
+      onImported?.()
+    } catch (err) {
+      setParseError(err.message || 'Import failed')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const badgeFor = (status) =>
+    status === 'created' ? 'bg-emerald-100 text-emerald-700'
+      : status === 'skipped' ? 'bg-amber-100 text-amber-700'
+        : 'bg-red-100 text-red-700'
+
+  return (
+    <div
+      className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center px-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-2xl bg-surface rounded-xl shadow-xl border border-line flex flex-col max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 py-4 border-b border-line flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-fg">Import users from CSV</h2>
+            <p className="text-[11px] text-fg-muted mt-0.5">
+              Upload a CSV to invite many users at once. Each gets a temporary password by email.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-7 h-7 rounded-md hover:bg-surface-3 text-fg-subtle flex items-center justify-center transition"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="px-5 py-4 overflow-y-auto space-y-4">
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".csv,text/csv"
+            onChange={handleFile}
+            className="hidden"
+          />
+
+          {!result && (
+            fileName ? (
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-line bg-surface-2 px-3 py-2.5">
+                <div className="flex items-center gap-2 min-w-0">
+                  <svg className="w-4 h-4 text-indigo-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" />
+                  </svg>
+                  <span className="text-sm text-fg truncate">{fileName}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  className="text-[11px] font-medium text-indigo-600 hover:text-indigo-700 shrink-0"
+                >
+                  Replace
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="w-full flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-line px-4 py-7 text-center hover:border-indigo-300 hover:bg-indigo-50/40 transition"
+              >
+                <svg className="w-6 h-6 text-fg-subtle" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M17 8l-5-5-5 5" /><path d="M12 3v12" />
+                </svg>
+                <span className="text-sm font-medium text-fg">Choose CSV file</span>
+                <span className="text-[11px] text-fg-subtle">
+                  Columns: name, email, department, role (required), manager, hr (optional)
+                </span>
+              </button>
+            )
+          )}
+
+
+
+          {parseError && (
+            <div className="p-2 rounded-md bg-red-50 border border-red-200 text-xs text-red-700">{parseError}</div>
+          )}
+
+          {rows.length > 0 && !result && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-fg-muted">{rows.length} row{rows.length === 1 ? '' : 's'} found</span>
+                <span className="text-fg-muted">
+                  <span className="font-medium text-emerald-600">{validCount} valid</span>
+                  {rows.length - validCount > 0 && (
+                    <span className="text-red-500"> · {rows.length - validCount} with issues</span>
+                  )}
+                </span>
+              </div>
+              <div className="border border-line rounded-lg overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-surface-2 text-[10px] uppercase tracking-wide text-fg-subtle">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-medium">Name</th>
+                      <th className="text-left px-3 py-2 font-medium">Email</th>
+                      <th className="text-left px-3 py-2 font-medium">Dept</th>
+                      <th className="text-left px-3 py-2 font-medium">Role</th>
+                      <th className="text-left px-3 py-2 font-medium">Issue</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-line">
+                    {rows.slice(0, 20).map((r, i) => {
+                      const issue = rowIssue(r)
+                      return (
+                        <tr key={i} className={issue ? 'bg-red-50/60' : ''}>
+                          <td className="px-3 py-2 text-fg">{r.name}</td>
+                          <td className="px-3 py-2 text-fg">{r.email}</td>
+                          <td className="px-3 py-2 text-fg-muted">{r.department}</td>
+                          <td className="px-3 py-2 text-fg-muted">{r.role}</td>
+                          <td className="px-3 py-2 text-red-600">{issue}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+                {rows.length > 20 && (
+                  <p className="px-3 py-2 text-[11px] text-fg-subtle bg-surface-2/60">…and {rows.length - 20} more</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {result && (
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2 text-xs font-medium">
+                <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">{result.created} created</span>
+                <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-700">{result.skipped} skipped</span>
+                <span className="px-2.5 py-1 rounded-full bg-red-100 text-red-700">{result.failed} failed</span>
+              </div>
+              {(result.results || []).some((r) => r.status !== 'created' || r.reason) && (
+                <div className="border border-line rounded-lg max-h-60 overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <tbody className="divide-y divide-line">
+                      {(result.results || []).filter((r) => r.status !== 'created' || r.reason).map((r, i) => (
+                        <tr key={i}>
+                          <td className="px-3 py-2 text-fg-subtle w-10">#{r.row}</td>
+                          <td className="px-3 py-2 text-fg">{r.email}</td>
+                          <td className="px-3 py-2">
+                            <span className={`px-1.5 py-0.5 rounded text-[11px] ${badgeFor(r.status)}`}>{r.status}</span>
+                          </td>
+                          <td className="px-3 py-2 text-fg-muted">{r.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-4 border-t border-line flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-2 rounded-md border border-line hover:bg-surface-2 text-sm font-medium text-fg transition"
+          >
+            {result ? 'Close' : 'Cancel'}
+          </button>
+          {!result && (
+            <button
+              type="button"
+              onClick={submit}
+              disabled={submitting || rows.length === 0 || validCount === 0}
+              className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-semibold shadow-sm transition"
+            >
+              {submitting ? 'Importing…' : `Import ${validCount} user${validCount === 1 ? '' : 's'}`}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 

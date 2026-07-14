@@ -2,8 +2,8 @@ import { NODE_STYLES, NODE_TYPE_ORDER } from "./nodeStyles";
 
 export default function NodeTypesSidebar({ onAddNode }) {
   return (
-    <aside className="w-56 shrink-0 border-r border-gray-200 bg-white px-4 py-5">
-      <div className="text-[11px] font-semibold tracking-wider text-gray-500 mb-3">
+    <aside className="w-56 shrink-0 border-r border-line bg-surface px-4 py-5">
+      <div className="text-[11px] font-semibold tracking-wider text-fg-muted mb-3">
         NODE TYPES
       </div>
       <ul className="space-y-2">

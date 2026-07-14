@@ -62,7 +62,7 @@ function Register() {
   }
 
   const inputBase = 'w-full px-3 py-2.5 text-sm rounded-lg border focus:outline-none focus:ring-2 transition'
-  const inputOk   = 'border-gray-200 focus:ring-indigo-200 focus:border-indigo-400'
+  const inputOk   = 'border-line focus:ring-indigo-200 focus:border-indigo-400'
   const inputErr  = 'border-red-300 focus:ring-red-200 focus:border-red-400'
 
   return (
@@ -77,19 +77,19 @@ function Register() {
             </svg>
           </div>
           <div>
-            <span className="font-bold text-gray-900 text-lg leading-none">NetFlow</span>
-            <p className="text-[10px] text-gray-400 leading-none mt-0.5">Automate. Orchestrate. Scale.</p>
+            <span className="font-bold text-fg text-lg leading-none">NetFlow</span>
+            <p className="text-[10px] text-fg-subtle leading-none mt-0.5">Automate. Orchestrate. Scale.</p>
           </div>
         </div>
 
         {/* Hero text */}
         <div className="mb-10">
-          <h2 className="text-4xl font-extrabold text-gray-900 leading-tight mb-3">
+          <h2 className="text-4xl font-extrabold text-fg leading-tight mb-3">
             Join your team.<br />
             <span className="text-indigo-600">Build workflows.</span><br />
             Move faster.
           </h2>
-          <p className="text-gray-500 text-sm max-w-xs leading-relaxed">
+          <p className="text-fg-muted text-sm max-w-xs leading-relaxed">
             Create your account and start collaborating on automated approval workflows with your organization today.
           </p>
 
@@ -100,9 +100,9 @@ function Register() {
               { icon: '🔔', text: 'Real-time task notifications' },
               { icon: '📊', text: 'Analytics & SLA tracking' },
             ].map(({ icon, text }) => (
-              <div key={text} className="flex items-center gap-3 bg-white/70 rounded-xl px-4 py-3 shadow-sm w-fit">
+              <div key={text} className="flex items-center gap-3 bg-surface/70 rounded-xl px-4 py-3 shadow-sm w-fit">
                 <span className="text-lg">{icon}</span>
-                <span className="text-sm font-medium text-gray-700">{text}</span>
+                <span className="text-sm font-medium text-fg">{text}</span>
               </div>
             ))}
           </div>
@@ -110,7 +110,7 @@ function Register() {
       </div>
 
       {/* ── Right form panel ── */}
-      <div className="flex flex-1 items-center overflow-hidden justify-center px-6 py-12 bg-white lg:rounded-l-3xl shadow-2xl">
+      <div className="flex flex-1 items-center overflow-hidden justify-center px-6 py-12 bg-surface lg:rounded-l-3xl shadow-2xl">
         <div className="w-full max-w-sm">
           {/* Mobile logo */}
           <div className="flex items-center gap-2 mb-6 lg:hidden">
@@ -119,11 +119,11 @@ function Register() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
               </svg>
             </div>
-            <span className="font-bold text-gray-900">NetFlow</span>
+            <span className="font-bold text-fg">NetFlow</span>
           </div>
 
-          <h1 className="text-2xl font-bold text-gray-900">Create your account </h1>
-          <p className="text-sm text-gray-500 mt-1 mb-7">Start building approval workflows today.</p>
+          <h1 className="text-2xl font-bold text-fg">Create your account </h1>
+          <p className="text-sm text-fg-muted mt-1 mb-7">Start building approval workflows today.</p>
 
           {serverError && (
             <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
@@ -135,14 +135,14 @@ function Register() {
             {/* Name row */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-1.5">First name</label>
+                <label htmlFor="firstName" className="block text-sm font-medium text-fg mb-1.5">First name</label>
                 <input id="firstName" name="firstName" type="text" autoComplete="given-name"
                   value={form.firstName} onChange={handleChange} placeholder="Arjun"
                   className={`${inputBase} ${errors.firstName ? inputErr : inputOk}`} />
                 {errors.firstName && <p className="mt-1 text-xs text-red-600">{errors.firstName}</p>}
               </div>
               <div>
-                <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-1.5">Last name</label>
+                <label htmlFor="lastName" className="block text-sm font-medium text-fg mb-1.5">Last name</label>
                 <input id="lastName" name="lastName" type="text" autoComplete="family-name"
                   value={form.lastName} onChange={handleChange} placeholder="Kumar"
                   className={`${inputBase} ${errors.lastName ? inputErr : inputOk}`} />
@@ -152,9 +152,9 @@ function Register() {
 
             {/* Email */}
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">Work email</label>
+              <label htmlFor="email" className="block text-sm font-medium text-fg mb-1.5">Work email</label>
               <div className="relative">
-                <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400">
+                <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-fg-subtle">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                   </svg>
@@ -168,18 +168,18 @@ function Register() {
 
             {/* Department */}
             <div>
-              <label htmlFor="department" className="block text-sm font-medium text-gray-700 mb-1.5">Department</label>
+              <label htmlFor="department" className="block text-sm font-medium text-fg mb-1.5">Department</label>
               <select id="department" name="department" value={form.department} onChange={handleChange}
-                className={`${inputBase} ${inputOk} bg-white`}>
+                className={`${inputBase} ${inputOk} bg-surface`}>
                 {DEPARTMENTS.map((d) => <option key={d}>{d}</option>)}
               </select>
             </div>
 
             {/* Password */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
+              <label htmlFor="password" className="block text-sm font-medium text-fg mb-1.5">Password</label>
               <div className="relative">
-                <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400">
+                <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-fg-subtle">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                   </svg>
@@ -199,9 +199,9 @@ function Register() {
 
             {/* Terms */}
             <div>
-              <label className="flex items-start gap-2 text-sm text-gray-600 select-none cursor-pointer">
+              <label className="flex items-start gap-2 text-sm text-fg-muted select-none cursor-pointer">
                 <input type="checkbox" name="agree" checked={form.agree} onChange={handleChange}
-                  className="w-4 h-4 mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-400 flex-shrink-0" />
+                  className="w-4 h-4 mt-0.5 rounded border-line text-indigo-600 focus:ring-indigo-400 flex-shrink-0" />
                 <span>
                   I agree to the{' '}
                   <a href="#" className="text-indigo-600 hover:text-indigo-800 font-medium">Terms of Service</a>
@@ -220,14 +220,14 @@ function Register() {
 
           {/* Divider */}
           <div className="flex items-center gap-3 my-5">
-            <hr className="flex-1 border-gray-200" />
-            <span className="text-xs text-gray-400">or</span>
-            <hr className="flex-1 border-gray-200" />
+            <hr className="flex-1 border-line" />
+            <span className="text-xs text-fg-subtle">or</span>
+            <hr className="flex-1 border-line" />
           </div>
 
  
 
-          <p className="text-center text-sm text-gray-500 mt-6">
+          <p className="text-center text-sm text-fg-muted mt-6">
             Already have an account?{' '}
             <Link to="/login" className="text-indigo-600 hover:text-indigo-800 font-semibold">Sign in</Link>
           </p>

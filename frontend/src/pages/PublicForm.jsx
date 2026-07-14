@@ -7,9 +7,10 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { API_BASE, toAbsoluteUrl } from '../utils/api'
 import { fieldMaxMb } from '../utils/uploads'
+import { isFieldVisible, stripHiddenValues, validateField } from '../components/FormFields'
 
 const inputCls =
-  'w-full px-3 py-2 text-sm rounded-md border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition'
+  'w-full px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition'
 const inputErrorCls = 'border-red-400 focus:ring-red-200 focus:border-red-400'
 
 // --- tiny fetch helpers (no auth headers, no redirect-on-401) ---------------
@@ -67,10 +68,10 @@ function FileField({ token, value, onChange, maxMb }) {
         type="file"
         onChange={handleFile}
         disabled={uploading}
-        className="block w-full text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 disabled:opacity-60"
+        className="block w-full text-sm text-fg-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 disabled:opacity-60"
       />
-      {!uploading && !uploadError && <p className="mt-1 text-xs text-gray-400">Max {maxMb} MB</p>}
-      {uploading && <p className="mt-1 text-xs text-gray-500">Uploading…</p>}
+      {!uploading && !uploadError && <p className="mt-1 text-xs text-fg-subtle">Max {maxMb} MB</p>}
+      {uploading && <p className="mt-1 text-xs text-fg-muted">Uploading…</p>}
       {uploadError && <p className="mt-1 text-xs text-red-600">{uploadError}</p>}
       {current && !uploading && (
         <p className="mt-1 text-xs text-green-700">
@@ -86,7 +87,7 @@ function FileField({ token, value, onChange, maxMb }) {
 
 function GridCell({ col, value, onChange }) {
   const cls =
-    'w-full px-2 py-1 text-sm rounded border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300'
+    'w-full px-2 py-1 text-sm rounded border border-line bg-surface focus:outline-none focus:ring-1 focus:ring-indigo-300'
   switch (col.type) {
     case 'number':
       return <input type="number" value={value ?? ''} onChange={(e) => onChange(e.target.value)} className={cls} />
@@ -117,22 +118,22 @@ function GridField({ field, value, onChange }) {
 
   return (
     <div>
-      <div className="overflow-x-auto border border-gray-200 rounded-md">
+      <div className="overflow-x-auto border border-line rounded-md">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-50">
+            <tr className="bg-surface-2">
               {cols.map((c) => (
-                <th key={c.id} className="px-2 py-1.5 text-left font-medium text-gray-600 border-b border-gray-200 whitespace-nowrap">
+                <th key={c.id} className="px-2 py-1.5 text-left font-medium text-fg-muted border-b border-line whitespace-nowrap">
                   {c.label}
                 </th>
               ))}
-              <th className="w-8 border-b border-gray-200" />
+              <th className="w-8 border-b border-line" />
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={cols.length + 1} className="px-2 py-3 text-center text-xs text-gray-400">
+                <td colSpan={cols.length + 1} className="px-2 py-3 text-center text-xs text-fg-subtle">
                   No rows yet — click “Add row”.
                 </td>
               </tr>
@@ -140,16 +141,16 @@ function GridField({ field, value, onChange }) {
             {rows.map((row, i) => (
               <tr key={i}>
                 {cols.map((c) => (
-                  <td key={c.id} className="px-2 py-1 border-b border-gray-100 align-top">
+                  <td key={c.id} className="px-2 py-1 border-b border-line align-top">
                     <GridCell col={c} value={row[c.id]} onChange={(v) => setCell(i, c.id, v)} />
                   </td>
                 ))}
-                <td className="px-1 py-1 border-b border-gray-100 text-center align-top">
+                <td className="px-1 py-1 border-b border-line text-center align-top">
                   <button
                     type="button"
                     onClick={() => removeRow(i)}
                     title="Remove row"
-                    className="text-gray-300 hover:text-red-500 transition"
+                    className="text-fg-subtle hover:text-red-500 transition"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -164,7 +165,7 @@ function GridField({ field, value, onChange }) {
       <button
         type="button"
         onClick={addRow}
-        className="mt-2 px-3 py-1.5 rounded-md border border-dashed border-gray-300 text-sm text-gray-600 hover:border-indigo-300 hover:text-indigo-700 transition"
+        className="mt-2 px-3 py-1.5 rounded-md border border-dashed border-line text-sm text-fg-muted hover:border-indigo-300 hover:text-indigo-700 transition"
       >
         + Add row
       </button>
@@ -194,8 +195,8 @@ function FieldRow({ token, field, value, onChange, error }) {
         )
       case 'checkbox':
         return (
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-400" />
+          <label className="flex items-center gap-2 text-sm text-fg">
+            <input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} className="w-4 h-4 rounded border-line text-indigo-600 focus:ring-indigo-400" />
             <span>{field.placeholder || 'Yes'}</span>
           </label>
         )
@@ -207,8 +208,8 @@ function FieldRow({ token, field, value, onChange, error }) {
         return (
           <div className="space-y-1.5">
             {(field.options || []).map((opt) => (
-              <label key={opt} className="flex items-center gap-2 text-sm text-gray-700">
-                <input type="radio" name={field.id} value={opt} checked={value === opt} onChange={(e) => onChange(e.target.value)} className="w-4 h-4 border-gray-300 text-indigo-600 focus:ring-indigo-400" />
+              <label key={opt} className="flex items-center gap-2 text-sm text-fg">
+                <input type="radio" name={field.id} value={opt} checked={value === opt} onChange={(e) => onChange(e.target.value)} className="w-4 h-4 border-line text-indigo-600 focus:ring-indigo-400" />
                 <span>{opt}</span>
               </label>
             ))}
@@ -217,7 +218,7 @@ function FieldRow({ token, field, value, onChange, error }) {
       case 'grid':
         return <GridField field={field} value={value} onChange={onChange} />
       case 'repeater':
-        return <div className="text-xs text-gray-500 italic">This field type isn&apos;t supported here.</div>
+        return <div className="text-xs text-fg-muted italic">This field type isn&apos;t supported here.</div>
       case 'text':
       default:
         return <input type="text" value={value ?? ''} onChange={(e) => onChange(e.target.value)} placeholder={field.placeholder || ''} className={cls} />
@@ -226,7 +227,7 @@ function FieldRow({ token, field, value, onChange, error }) {
 
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
+      <label className="block text-sm font-medium text-fg mb-1">
         {field.label}
         {field.required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
@@ -262,9 +263,10 @@ function PublicForm() {
     return () => { cancelled = true }
   }, [token])
 
+  // Recomputes on value change so conditional show/hide rules resolve live.
   const visibleFields = useMemo(
-    () => (form?.fields || []).filter((f) => f.type !== 'repeater'),
-    [form]
+    () => (form?.fields || []).filter((f) => f.type !== 'repeater' && isFieldVisible(f, values)),
+    [form, values]
   )
 
   const setFieldValue = (fieldId, v) => {
@@ -276,18 +278,25 @@ function PublicForm() {
   const validate = () => {
     const errs = {}
     for (const f of visibleFields) {
-      if (!f.required) continue
       const v = values[f.id]
-      if (f.type === 'grid') {
-        const rows = Array.isArray(v) ? v : []
-        const cols = f.columns || []
-        const cellEmpty = (cell) => cell === undefined || cell === null || String(cell).trim() === ''
-        if (rows.length === 0) errs[f.id] = `${f.label} needs at least one row`
-        else if (rows.some((r) => cols.some((c) => cellEmpty(r[c.id])))) errs[f.id] = `Fill every cell in ${f.label}`
-        continue
+      if (f.required) {
+        if (f.type === 'grid') {
+          const rows = Array.isArray(v) ? v : []
+          const cols = f.columns || []
+          const cellEmpty = (cell) => cell === undefined || cell === null || String(cell).trim() === ''
+          if (rows.length === 0) errs[f.id] = `${f.label} needs at least one row`
+          else if (rows.some((r) => cols.some((c) => cellEmpty(r[c.id])))) errs[f.id] = `Fill every cell in ${f.label}`
+          continue
+        }
+        const isEmpty = v === undefined || v === null || v === '' || (f.type === 'checkbox' && v === false)
+        if (isEmpty) {
+          errs[f.id] = `${f.label} is required`
+          continue
+        }
       }
-      const isEmpty = v === undefined || v === null || v === '' || (f.type === 'checkbox' && v === false)
-      if (isEmpty) errs[f.id] = `${f.label} is required`
+      // Advanced rules (length/range/pattern) apply to filled fields, required or not.
+      const adv = validateField(f, v)
+      if (adv) errs[f.id] = adv
     }
     return errs
   }
@@ -301,10 +310,13 @@ function PublicForm() {
 
     setSubmitting(true)
     try {
+      // Only send currently-visible fields (a value entered then hidden by a
+      // rule change must not leak into the response).
+      const payload = stripHiddenValues(visibleFields, values)
       const res = await fetch(`${API_BASE}/api/public/forms/${token}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formData: values, submitter: { name, email } })
+        body: JSON.stringify({ formData: payload, submitter: { name, email } })
       })
       await readJson(res)
       setDone(true)
@@ -327,30 +339,30 @@ function PublicForm() {
 
   // ---------- shells ----------
   const Page = ({ children }) => (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200">
+    <div className="min-h-screen bg-surface-2">
+      <header className="bg-surface border-b border-line">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-2">
           <div className="w-7 h-7 rounded-md bg-indigo-600 flex items-center justify-center text-white font-bold text-sm">N</div>
-          <span className="font-semibold text-gray-800">NetFlow</span>
+          <span className="font-semibold text-fg">NetFlow</span>
         </div>
       </header>
       <main className="max-w-2xl mx-auto px-4 py-8">{children}</main>
-      <footer className="max-w-2xl mx-auto px-4 pb-8 text-center text-xs text-gray-400">
+      <footer className="max-w-2xl mx-auto px-4 pb-8 text-center text-xs text-fg-subtle">
         Powered by NetFlow · Never submit passwords through this form.
       </footer>
     </div>
   )
 
   if (loading) {
-    return <Page><div className="bg-white border border-gray-200 rounded-lg p-8 text-center text-sm text-gray-500">Loading form…</div></Page>
+    return <Page><div className="bg-surface border border-line rounded-lg p-8 text-center text-sm text-fg-muted">Loading form…</div></Page>
   }
 
   if (loadError || !form) {
     return (
       <Page>
-        <div className="bg-white border border-gray-200 rounded-lg p-8 text-center">
-          <h1 className="text-lg font-semibold text-gray-900">Form unavailable</h1>
-          <p className="text-sm text-gray-500 mt-1">{loadError || 'This form is not available.'}</p>
+        <div className="bg-surface border border-line rounded-lg p-8 text-center">
+          <h1 className="text-lg font-semibold text-fg">Form unavailable</h1>
+          <p className="text-sm text-fg-muted mt-1">{loadError || 'This form is not available.'}</p>
         </div>
       </Page>
     )
@@ -359,18 +371,18 @@ function PublicForm() {
   if (done) {
     return (
       <Page>
-        <div className="bg-white border border-gray-200 rounded-lg p-8 text-center">
+        <div className="bg-surface border border-line rounded-lg p-8 text-center">
           <div className="mx-auto w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mb-3">
             <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h1 className="text-lg font-semibold text-gray-900">Thanks — your response was recorded</h1>
-          <p className="text-sm text-gray-500 mt-1">You can safely close this page.</p>
+          <h1 className="text-lg font-semibold text-fg">Thanks — your response was recorded</h1>
+          <p className="text-sm text-fg-muted mt-1">You can safely close this page.</p>
           <button
             type="button"
             onClick={resetForAnother}
-            className="mt-5 px-4 py-2 rounded-md border border-gray-200 hover:bg-gray-50 text-sm font-medium text-gray-700 transition"
+            className="mt-5 px-4 py-2 rounded-md border border-line hover:bg-surface-2 text-sm font-medium text-fg transition"
           >
             Submit another response
           </button>
@@ -381,24 +393,24 @@ function PublicForm() {
 
   return (
     <Page>
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="border-t-4 border-indigo-600 px-6 pt-5 pb-4 border-b border-gray-100">
-          <h1 className="text-xl font-semibold text-gray-900">{form.title}</h1>
-          {form.description && <p className="text-sm text-gray-500 mt-1 whitespace-pre-wrap">{form.description}</p>}
+      <div className="bg-surface border border-line rounded-lg overflow-hidden">
+        <div className="border-t-4 border-indigo-600 px-6 pt-5 pb-4 border-b border-line">
+          <h1 className="text-xl font-semibold text-fg">{form.title}</h1>
+          {form.description && <p className="text-sm text-fg-muted mt-1 whitespace-pre-wrap">{form.description}</p>}
         </div>
 
         <form onSubmit={handleSubmit} noValidate className="p-6 space-y-5">
           {visibleFields.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-4">This form has no fields to fill.</p>
+            <p className="text-sm text-fg-muted text-center py-4">This form has no fields to fill.</p>
           ) : (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-2 border-b border-gray-100">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-2 border-b border-line">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Your name <span className="text-gray-400 font-normal">(optional)</span></label>
+                  <label className="block text-sm font-medium text-fg mb-1">Your name <span className="text-fg-subtle font-normal">(optional)</span></label>
                   <input type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="e.g. Acme Supplies Ltd." />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Your email <span className="text-gray-400 font-normal">(optional)</span></label>
+                  <label className="block text-sm font-medium text-fg mb-1">Your email <span className="text-fg-subtle font-normal">(optional)</span></label>
                   <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} placeholder="you@company.com" />
                 </div>
               </div>
@@ -421,7 +433,7 @@ function PublicForm() {
           )}
 
           {visibleFields.length > 0 && (
-            <div className="flex items-center justify-end pt-2 border-t border-gray-100">
+            <div className="flex items-center justify-end pt-2 border-t border-line">
               <button
                 type="submit"
                 disabled={submitting}

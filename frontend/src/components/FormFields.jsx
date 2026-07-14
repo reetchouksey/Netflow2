@@ -7,7 +7,7 @@ import { api, toAbsoluteUrl } from '../utils/api'
 import { fieldMaxMb, MAX_UPLOAD_MB } from '../utils/uploads'
 
 const inputCls =
-  'w-full px-3 py-2 text-sm rounded-md border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition'
+  'w-full px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition'
 const inputErrorCls = 'border-red-400 focus:ring-red-200 focus:border-red-400'
 
 // Field types a designer can drop into a Submit-node form.
@@ -24,12 +24,16 @@ export const FORM_FIELD_TYPES = [
 let _fid = 0
 export const newFieldId = () => `f${Date.now().toString(36)}${(_fid++).toString(36)}`
 
+// Handwriting/signature fonts. These live on Adobe Fonts (Typekit), so they only
+// render when an Adobe Fonts kit exposing these families is loaded (see
+// index.html). Each falls back to the generic `cursive` so a script-like style
+// still shows if the kit isn't present.
 export const SIGNATURE_FONTS = [
-  { label: 'Arial', value: 'Arial, Helvetica, sans-serif' },
-  { label: 'Calibri', value: "Calibri, 'Segoe UI', sans-serif" },
-  { label: 'Georgia', value: "Georgia, 'Times New Roman', serif" },
-  { label: 'Helvetica', value: 'Helvetica, Arial, sans-serif' },
-  { label: 'Times New Roman', value: "'Times New Roman', Times, serif" },
+  { label: 'Lindsey', value: "lindsey, 'Lindsey', cursive" },
+  { label: 'Ernie', value: "adobe-handwriting-ernie, 'Ernie', cursive" },
+  { label: 'Frank', value: "adobe-handwriting-frank, 'Frank', cursive" },
+  { label: 'Tiffany', value: "adobe-handwriting-tiffany, 'Tiffany', cursive" },
+  { label: 'Fertigo', value: "fertigo-pro, 'Fertigo', cursive" },
 ]
 
 // Renders a stored signature: typed text in its chosen font, or an uploaded image.
@@ -40,14 +44,14 @@ export function SignatureMark({ signature, className = '' }) {
       <img
         src={toAbsoluteUrl(signature.url)}
         alt="e-signature"
-        className={`max-h-12 rounded border border-gray-200 bg-white p-0.5 ${className}`}
+        className={`max-h-12 rounded border border-line bg-surface p-0.5 ${className}`}
       />
     )
   }
   if (signature.kind === 'typed' && signature.text) {
     return (
       <span
-        className={`block text-gray-900 ${className}`}
+        className={`block text-fg ${className}`}
         style={{ fontFamily: signature.font || 'cursive', fontSize: '20px', lineHeight: 1.3 }}
       >
         {signature.text}
@@ -57,7 +61,7 @@ export function SignatureMark({ signature, className = '' }) {
   return null
 }
 
-// E-signature capture. Two modes: type a name in a corporate font, or upload an
+// E-signature capture. Two modes: type a name in a signature font, or upload an
 // image. Lifts the chosen signature up via onChange —
 // { kind:'typed', text, font } | { kind:'uploaded', url, name } | null.
 export function SignaturePad({ onChange, disabled, label }) {
@@ -103,13 +107,13 @@ export function SignaturePad({ onChange, disabled, label }) {
   }
 
   const tabCls = (m) =>
-    `px-2.5 py-1 transition ${mode === m ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`
+    `px-2.5 py-1 transition ${mode === m ? 'bg-indigo-600 text-white' : 'bg-surface text-fg-muted hover:bg-surface-2'}`
 
   return (
-    <div className="border border-gray-200 rounded-md p-3 bg-gray-50/60">
+    <div className="border border-line rounded-md p-3 bg-surface-2/60">
       <div className="flex items-center justify-between mb-2">
-        {label ? <span className="text-xs font-semibold text-gray-700">{label}</span> : <span />}
-        <div className="flex rounded-md border border-gray-200 overflow-hidden text-xs">
+        {label ? <span className="text-xs font-semibold text-fg">{label}</span> : <span />}
+        <div className="flex rounded-md border border-line overflow-hidden text-xs">
           <button type="button" onClick={() => setMode('type')} disabled={disabled} className={tabCls('type')}>
             Type
           </button>
@@ -140,8 +144,8 @@ export function SignaturePad({ onChange, disabled, label }) {
             ))}
           </select>
           {text.trim() && (
-            <div className="mt-2 px-3 py-2 bg-white border border-dashed border-gray-300 rounded-md">
-              <span style={{ fontFamily: font, fontSize: '26px', lineHeight: 1.2 }} className="text-gray-900">
+            <div className="mt-2 px-3 py-2 bg-surface border border-dashed border-line rounded-md">
+              <span style={{ fontFamily: font, fontSize: '26px', lineHeight: 1.2 }} className="text-fg">
                 {text}
               </span>
             </div>
@@ -150,11 +154,11 @@ export function SignaturePad({ onChange, disabled, label }) {
       ) : (
         <>
           <label className="flex items-center gap-3">
-            <span className="px-3 py-2 rounded-md border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 cursor-pointer">
+            <span className="px-3 py-2 rounded-md border border-line bg-surface text-sm font-medium text-fg hover:bg-surface-2 cursor-pointer">
               {uploading ? 'Uploading…' : uploaded ? 'Replace image' : 'Choose image'}
             </span>
             <input type="file" accept="image/*" onChange={handleFile} disabled={disabled || uploading} className="hidden" />
-            <span className="text-[11px] text-gray-400">Max {MAX_UPLOAD_MB} MB</span>
+            <span className="text-[11px] text-fg-subtle">Max {MAX_UPLOAD_MB} MB</span>
           </label>
           {uploaded && <SignatureMark signature={{ kind: 'uploaded', url: uploaded.url }} className="mt-2" />}
         </>
@@ -200,10 +204,10 @@ export function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB, disabled }) 
         type="file"
         onChange={handleFile}
         disabled={uploading || disabled}
-        className="block w-full text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 disabled:opacity-60"
+        className="block w-full text-sm text-fg-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 disabled:opacity-60"
       />
-      {!uploading && !uploadError && <p className="mt-1 text-xs text-gray-400">Max {maxMb} MB</p>}
-      {uploading && <p className="mt-1 text-xs text-gray-500">Uploading…</p>}
+      {!uploading && !uploadError && <p className="mt-1 text-xs text-fg-subtle">Max {maxMb} MB</p>}
+      {uploading && <p className="mt-1 text-xs text-fg-muted">Uploading…</p>}
       {uploadError && <p className="mt-1 text-xs text-red-600">{uploadError}</p>}
       {current && !uploading && (
         <p className="mt-1 text-xs text-green-700">
@@ -261,13 +265,13 @@ export function FieldRow({ field, value, onChange, error, richSignature = false,
         )
       case 'checkbox':
         return (
-          <label className="flex items-center gap-2 text-sm text-gray-700">
+          <label className="flex items-center gap-2 text-sm text-fg">
             <input
               type="checkbox"
               checked={!!value}
               disabled={disabled}
               onChange={(e) => onChange(e.target.checked)}
-              className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-400"
+              className="w-4 h-4 rounded border-line text-indigo-600 focus:ring-indigo-400"
             />
             <span>{field.placeholder || 'Yes'}</span>
           </label>
@@ -288,7 +292,7 @@ export function FieldRow({ field, value, onChange, error, richSignature = false,
       case 'file':
         return <FileField value={value} onChange={onChange} maxMb={fieldMaxMb(field)} disabled={disabled} />
       case 'repeater':
-        return <div className="text-xs text-gray-500 italic">Repeater fields aren&apos;t supported in this view.</div>
+        return <div className="text-xs text-fg-muted italic">Repeater fields aren&apos;t supported in this view.</div>
       case 'text':
       default:
         return (
@@ -306,7 +310,7 @@ export function FieldRow({ field, value, onChange, error, richSignature = false,
 
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
+      <label className="block text-sm font-medium text-fg mb-1">
         {field.label}
         {field.required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
@@ -316,17 +320,118 @@ export function FieldRow({ field, value, onChange, error, richSignature = false,
   )
 }
 
+// Conditional field logic: should a field be shown given the current answers?
+// A field carries `conditionalLogic: { enabled, dependsOn, operator, showWhen }`.
+// `dependsOn` is the id of an EARLIER field; when the rule doesn't match, the
+// field is hidden. Legacy data may store `conditionalLogic` as a bare boolean
+// (from the old builder) — that has no rule, so we treat it as always visible.
+export function isFieldVisible(field, values) {
+  const cl = field?.conditionalLogic
+  if (!cl || typeof cl !== 'object' || !cl.enabled || !cl.dependsOn) return true
+
+  const actual = values ? values[cl.dependsOn] : undefined
+  const expected = cl.showWhen
+
+  switch (cl.operator || 'eq') {
+    case 'neq':
+      return String(actual ?? '') !== String(expected ?? '')
+    case 'contains':
+      return String(actual ?? '').toLowerCase().includes(String(expected ?? '').toLowerCase())
+    case 'nonempty':
+      return !(actual === undefined || actual === null || actual === '' || actual === false)
+    case 'eq':
+    default:
+      return String(actual ?? '') === String(expected ?? '')
+  }
+}
+
+// Filter a field list down to the ones currently visible (conditional logic
+// applied). Recomputes from scratch on every call so chained rules resolve.
+export function visibleFields(fields, values) {
+  return (fields || []).filter((f) => isFieldVisible(f, values))
+}
+
+// Build a submit payload containing ONLY visible fields, so a value that was
+// entered and then hidden by a rule change doesn't leak into the response.
+export function stripHiddenValues(fields, values) {
+  const out = {}
+  for (const f of visibleFields(fields, values)) {
+    if (values[f.id] !== undefined) out[f.id] = values[f.id]
+  }
+  return out
+}
+
+// Ready-made format patterns exposed in the builder (plus a Custom option). The
+// key is stored on the field via `validation.pattern` + `validation.patternLabel`.
+export const PATTERN_PRESETS = {
+  email: { pattern: '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$', label: 'Please enter a valid email address' },
+  phone: { pattern: '^[+]?[0-9\\s()-]{7,15}$', label: 'Please enter a valid phone number' },
+  digits: { pattern: '^[0-9]+$', label: 'Only digits are allowed' },
+  alnum: { pattern: '^[a-zA-Z0-9]+$', label: 'Only letters and numbers are allowed' },
+}
+
+// Advanced per-field validation (length limits, numeric range, format pattern).
+// Reads the canonical nested `field.validation` object, falling back to legacy
+// flat props (maxLength/min/max) written by older builder versions. Empty values
+// are intentionally NOT validated here — the required-check owns emptiness — so
+// optional fields with a rule stay optional. Returns an error string or null.
+export function validateField(field, value) {
+  if (!field) return null
+  const v = field.validation || {}
+  const minLength = v.minLength != null ? v.minLength : field.minLength
+  const maxLength = v.maxLength != null ? v.maxLength : field.maxLength
+  const min = v.min != null ? v.min : field.min
+  const max = v.max != null ? v.max : field.max
+  const pattern = v.pattern
+  const patternLabel = v.patternLabel
+
+  const empty = value === undefined || value === null || value === ''
+  if (empty) return null
+
+  if (field.type === 'text' || field.type === 'textarea') {
+    const len = String(value).length
+    if (minLength != null && len < minLength) return `${field.label} must be at least ${minLength} characters`
+    if (maxLength != null && len > maxLength) return `${field.label} must be at most ${maxLength} characters`
+  }
+
+  if (field.type === 'number') {
+    const n = Number(value)
+    if (Number.isNaN(n)) return `${field.label} must be a number`
+    if (min != null && n < min) return `${field.label} must be at least ${min}`
+    if (max != null && n > max) return `${field.label} must be at most ${max}`
+  }
+
+  if (pattern && (field.type === 'text' || field.type === 'textarea')) {
+    try {
+      if (!new RegExp(pattern).test(String(value))) {
+        return patternLabel || `${field.label} is not in the expected format`
+      }
+    } catch {
+      // Malformed stored regex — never block submission on it.
+    }
+  }
+
+  return null
+}
+
 // Required-field validation shared by FillForm + Submit-node tasks. Returns a
-// map of { [fieldId]: errorMessage } for any empty required field.
+// map of { [fieldId]: errorMessage } for any empty required field, then layers
+// advanced validation (length/range/pattern) on top for filled fields.
 export function validateFields(fields, values) {
   const errs = {}
   for (const f of fields || []) {
-    if (!f.required) continue
     const v = values[f.id]
-    let empty = v === undefined || v === null || v === ''
-    if (!empty && f.type === 'checkbox') empty = v === false
-    if (!empty && f.type === 'signature' && typeof v === 'object') empty = !(v.text || v.url)
-    if (empty) errs[f.id] = `${f.label} is required`
+    if (f.required) {
+      let empty = v === undefined || v === null || v === ''
+      if (!empty && f.type === 'checkbox') empty = v === false
+      if (!empty && f.type === 'signature' && typeof v === 'object') empty = !(v.text || v.url)
+      if (empty) {
+        errs[f.id] = `${f.label} is required`
+        continue
+      }
+    }
+    const advanced = validateField(f, v)
+    if (advanced) errs[f.id] = advanced
   }
   return errs
 }
@@ -334,7 +439,7 @@ export function validateFields(fields, values) {
 // Read-only renderer for one submitted form value (shown to downstream viewers).
 export function FieldValueView({ field, value }) {
   if (value === undefined || value === null || value === '') {
-    return <span className="text-gray-400">—</span>
+    return <span className="text-fg-subtle">—</span>
   }
   if (field.type === 'file' && typeof value === 'object' && value.url) {
     return (
@@ -347,5 +452,5 @@ export function FieldValueView({ field, value }) {
     if (typeof value === 'object') return <SignatureMark signature={value} />
     return <span style={{ fontFamily: 'cursive' }}>{value}</span>
   }
-  return <span className="text-gray-800 whitespace-pre-wrap">{String(value)}</span>
+  return <span className="text-fg whitespace-pre-wrap">{String(value)}</span>
 }

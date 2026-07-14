@@ -47,7 +47,8 @@ const TASK_STATUS_MAP = {
   approved: 'Approved',
   rejected: 'Rejected',
   escalated: 'Escalated',
-  completed: 'Approved'
+  completed: 'Approved',
+  cancelled: 'Cancelled'
 }
 
 const ACTION_DOT = {
@@ -175,6 +176,7 @@ export const adaptTask = (apiTask) => {
     assignedToId: idOf(apiTask.assignedTo),
     submittedById: idOf(apiTask.submittedBy),
     executionId: idOf(apiTask.workflowExecutionId),
+    executionStatus: apiTask.executionStatus || null,
     canCancel: !!apiTask.canCancel,
     workflow: apiTask.workflowId?.title || apiTask.type || 'Standalone',
     initials: initials(submitter),
@@ -194,9 +196,28 @@ export const adaptTask = (apiTask) => {
       isCurrent: !!s.isCurrent,
       assignee: s.assignee?.name || null,
       decidedBy: s.decidedBy || null,
-      decidedAt: s.decidedAt ? new Date(s.decidedAt).toLocaleString() : null
+      decidedAt: s.decidedAt ? new Date(s.decidedAt).toLocaleString() : null,
+      quorum: s.quorum || null // { total, approved, required } for committee stages
     })),
     approvalSummary: apiTask.approvalSummary || null,
+    // Committee / quorum approval (multiApproval node): the roster of voters,
+    // each person's vote, and how many approvals are required (N of M).
+    isMultiApproval:
+      apiTask.approvalType === 'parallel' &&
+      Array.isArray(apiTask.parallelApprovers) &&
+      apiTask.parallelApprovers.length > 0,
+    requiredApprovals: apiTask.requiredApprovals || 1,
+    parallelApprovers: (apiTask.parallelApprovers || []).map((p) =>
+      p && typeof p === 'object'
+        ? { id: idOf(p), name: p.name || null, email: p.email || null }
+        : { id: p, name: null, email: null }
+    ),
+    parallelApprovals: (apiTask.parallelApprovals || []).map((p) => ({
+      id: idOf(p.userId),
+      name: p.userId?.name || null,
+      status: p.status || 'pending',
+      decidedAt: p.decidedAt ? new Date(p.decidedAt).toLocaleString() : null
+    })),
     sla: { totalHours, assignedHoursAgo },
     comments: []
   }
@@ -221,7 +242,7 @@ export const adaptNotification = (n) => ({
   read: n.isRead,
   type: n.type,
   taskId: n.taskId,
-  dotColor: NOTIF_DOT[n.type] || 'bg-gray-100'
+  dotColor: NOTIF_DOT[n.type] || 'bg-surface-3'
 })
 
 // ---------- forms ----------

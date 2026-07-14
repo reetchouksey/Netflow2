@@ -92,6 +92,12 @@ export const tasksStore = {
     await api.post(`/api/workflows/executions/${executionId}/cancel`)
     return fetchMyTasks()
   },
+  // Submitter permanently deletes one of their finished requests. Server removes
+  // the whole execution (all stage tasks + form response + notifications).
+  async deleteRequest(id) {
+    await api.delete(`/api/tasks/${id}`)
+    return fetchMyTasks()
+  },
   clear() {
     cache = []
     cacheById = new Map()

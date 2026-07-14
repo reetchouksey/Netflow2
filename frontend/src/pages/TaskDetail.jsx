@@ -6,7 +6,8 @@ import AppShell from '../components/AppShell'
 import { tasksStore, useTask } from '../lib/tasksStore'
 import { useUser } from '../utils/auth'
 import { toAbsoluteUrl } from '../utils/api'
-import { SignaturePad, SignatureMark, FieldRow, validateFields, FieldValueView } from '../components/FormFields'
+import { SignaturePad, SignatureMark, FieldRow, validateFields, FieldValueView, isFieldVisible, stripHiddenValues } from '../components/FormFields'
+import { confirm } from '../lib/confirmStore'
 
 const APPROVER_ROLES = new Set(['Admin', 'CEO', 'Manager', 'HR', 'VP'])
 
@@ -45,14 +46,14 @@ const requestStatus = (task) => {
 function GridValueTable({ grid }) {
   const cols = grid?.columns || []
   const rows = Array.isArray(grid?.rows) ? grid.rows : []
-  if (cols.length === 0) return <span className="text-gray-400">—</span>
+  if (cols.length === 0) return <span className="text-fg-subtle">—</span>
   return (
-    <div className="overflow-x-auto border border-gray-200 rounded-md">
+    <div className="overflow-x-auto border border-line rounded-md">
       <table className="w-full text-sm">
         <thead>
-          <tr className="bg-gray-50">
+          <tr className="bg-surface-2">
             {cols.map((c) => (
-              <th key={c.id} className="px-2 py-1.5 text-left font-medium text-gray-600 border-b border-gray-200 whitespace-nowrap">
+              <th key={c.id} className="px-2 py-1.5 text-left font-medium text-fg-muted border-b border-line whitespace-nowrap">
                 {c.label}
               </th>
             ))}
@@ -61,13 +62,13 @@ function GridValueTable({ grid }) {
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={cols.length} className="px-2 py-2 text-center text-xs text-gray-400">No rows</td>
+              <td colSpan={cols.length} className="px-2 py-2 text-center text-xs text-fg-subtle">No rows</td>
             </tr>
           ) : (
             rows.map((r, i) => (
               <tr key={i}>
                 {cols.map((c) => (
-                  <td key={c.id} className="px-2 py-1.5 border-b border-gray-100 text-gray-700 align-top">
+                  <td key={c.id} className="px-2 py-1.5 border-b border-line text-fg align-top">
                     {r?.[c.id] === undefined || r?.[c.id] === '' ? '—' : String(r[c.id])}
                   </td>
                 ))}
@@ -83,19 +84,19 @@ function GridValueTable({ grid }) {
 function SubmissionDetails({ task }) {
   const pill = statusPill(requestStatus(task))
   return (
-    <section className="bg-white border border-gray-200 rounded-lg px-6 py-5">
+    <section className="bg-surface border border-line rounded-lg px-6 py-5">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold text-gray-800">Submission details</h2>
+        <h2 className="text-sm font-semibold text-fg">Submission details</h2>
         <span className={`text-xs font-medium ${pill.cls}`}>{pill.label}</span>
       </div>
       {task.submission.length === 0 ? (
-        <p className="text-sm text-gray-400">No form data attached.</p>
+        <p className="text-sm text-fg-subtle">No form data attached.</p>
       ) : (
-        <dl className="divide-y divide-gray-100">
+        <dl className="divide-y divide-line">
           {task.submission.map((row, i) => (
-            <div key={`${row.label}-${i}`} className="grid grid-cols-3 gap-4 py-2.5">
-              <dt className="text-sm text-gray-500">{row.label}</dt>
-              <dd className="col-span-2 text-sm text-gray-800 font-medium break-words">
+            <div key={`${row.label}-${i}`} className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-4 py-2.5">
+              <dt className="text-sm text-fg-muted">{row.label}</dt>
+              <dd className="sm:col-span-2 text-sm text-fg font-medium break-words">
                 {row.grid ? (
                   <GridValueTable grid={row.grid} />
                 ) : row.href ? (
@@ -142,8 +143,8 @@ function ApprovalActions({ task, onAction, commentRef, busy, error }) {
   const blocked = isResolved || !!busy || (needsSig && !signature)
 
   return (
-    <section className="bg-white border border-gray-200 rounded-lg px-6 py-5 mt-4">
-      <h2 className="text-sm font-semibold text-gray-800 mb-3">Approval actions</h2>
+    <section className="bg-surface border border-line rounded-lg px-6 py-5 mt-4">
+      <h2 className="text-sm font-semibold text-fg mb-3">Approval actions</h2>
 
       <textarea
         ref={commentRef}
@@ -152,7 +153,7 @@ function ApprovalActions({ task, onAction, commentRef, busy, error }) {
         placeholder="Optional comment..."
         rows={2}
         disabled={isResolved || !!busy}
-        className="w-full px-3 py-2 text-sm rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition resize-none disabled:bg-gray-50 disabled:text-gray-400"
+        className="w-full px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition resize-none disabled:bg-surface-2 disabled:text-fg-subtle"
       />
 
       {needsSig && (
@@ -169,7 +170,7 @@ function ApprovalActions({ task, onAction, commentRef, busy, error }) {
         <p className="mt-2 text-xs text-red-600">{error || localErr}</p>
       )}
 
-      <div className="grid grid-cols-3 gap-3 mt-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 mt-3">
         <button
           type="button"
           disabled={blocked}
@@ -190,20 +191,20 @@ function ApprovalActions({ task, onAction, commentRef, busy, error }) {
           type="button"
           disabled={blocked}
           onClick={() => submit('changes')}
-          className="px-4 py-2 rounded-md border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-4 py-2 rounded-md border border-line bg-surface text-fg hover:bg-surface-2 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {busy === 'changes' ? 'Sending...' : 'Request changes'}
         </button>
       </div>
 
       {needsSig && !signature && !isResolved && (
-        <p className="mt-2 text-[11px] text-gray-400">
+        <p className="mt-2 text-[11px] text-fg-subtle">
           This step requires your e-signature before you can act.
         </p>
       )}
 
       {isResolved && (
-        <p className="mt-3 text-xs text-gray-400">
+        <p className="mt-3 text-xs text-fg-subtle">
           This task is {task.status.toLowerCase()} — no further action needed.
         </p>
       )}
@@ -222,6 +223,9 @@ function SubmitActions({ task, onSubmitted }) {
   const [error, setError] = useState('')
   const isResolved = task.status !== 'Pending'
 
+  // Conditional logic: only the fields whose show/hide rule currently passes.
+  const shownFields = fields.filter((f) => isFieldVisible(f, values))
+
   const setField = (id, v) => {
     setValues((prev) => ({ ...prev, [id]: v }))
     setErrors((prev) => (prev[id] ? { ...prev, [id]: undefined } : prev))
@@ -229,7 +233,7 @@ function SubmitActions({ task, onSubmitted }) {
 
   const doSubmit = async () => {
     setError('')
-    const errs = validateFields(fields, values)
+    const errs = validateFields(shownFields, values)
     if (Object.keys(errs).length) {
       setErrors(errs)
       setError('Please complete the required fields.')
@@ -237,7 +241,7 @@ function SubmitActions({ task, onSubmitted }) {
     }
     setBusy(true)
     try {
-      await tasksStore.submit(task.id, { comment, formData: values })
+      await tasksStore.submit(task.id, { comment, formData: stripHiddenValues(shownFields, values) })
       onSubmitted?.()
     } catch (err) {
       setError(err.message || 'Submit failed')
@@ -246,9 +250,9 @@ function SubmitActions({ task, onSubmitted }) {
   }
 
   return (
-    <section className="bg-white border border-gray-200 rounded-lg px-6 py-5 mt-4">
-      <h2 className="text-sm font-semibold text-gray-800 mb-1">Submit this step</h2>
-      <p className="text-sm text-gray-600 mb-4">
+    <section className="bg-surface border border-line rounded-lg px-6 py-5 mt-4">
+      <h2 className="text-sm font-semibold text-fg mb-1">Submit this step</h2>
+      <p className="text-sm text-fg-muted mb-4">
         {task.instructions
           ? task.instructions
           : fields.length
@@ -256,9 +260,9 @@ function SubmitActions({ task, onSubmitted }) {
           : 'Add an optional comment and submit to advance the workflow.'}
       </p>
 
-      {fields.length > 0 && (
+      {shownFields.length > 0 && (
         <div className="space-y-4 mb-4">
-          {fields.map((f) => (
+          {shownFields.map((f) => (
             <FieldRow
               key={f.id}
               field={f}
@@ -272,14 +276,14 @@ function SubmitActions({ task, onSubmitted }) {
         </div>
       )}
 
-      <label className="block text-sm font-medium text-gray-700 mb-1">Comment</label>
+      <label className="block text-sm font-medium text-fg mb-1">Comment</label>
       <textarea
         value={comment}
         onChange={(e) => setComment(e.target.value)}
         placeholder="Optional comment..."
         rows={2}
         disabled={isResolved || busy}
-        className="w-full px-3 py-2 text-sm rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition resize-none disabled:bg-gray-50 disabled:text-gray-400"
+        className="w-full px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition resize-none disabled:bg-surface-2 disabled:text-fg-subtle"
       />
 
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
@@ -294,7 +298,7 @@ function SubmitActions({ task, onSubmitted }) {
       </button>
 
       {isResolved && (
-        <p className="mt-3 text-xs text-gray-400">
+        <p className="mt-3 text-xs text-fg-subtle">
           This step has been submitted — no further action needed.
         </p>
       )}
@@ -328,9 +332,9 @@ function ReviewActions({ task, onReviewed }) {
   }
 
   return (
-    <section className="bg-white border border-gray-200 rounded-lg px-6 py-5 mt-4">
-      <h2 className="text-sm font-semibold text-gray-800 mb-1">Review</h2>
-      <p className="text-sm text-gray-600 mb-3">
+    <section className="bg-surface border border-line rounded-lg px-6 py-5 mt-4">
+      <h2 className="text-sm font-semibold text-fg mb-1">Review</h2>
+      <p className="text-sm text-fg-muted mb-3">
         {task.instructions
           ? task.instructions
           : 'Review the submission and documents above, then forward it or send it back for changes. This is a review checkpoint — not an approval.'}
@@ -342,7 +346,7 @@ function ReviewActions({ task, onReviewed }) {
         placeholder="Comment (required when requesting changes)..."
         rows={2}
         disabled={isResolved || !!busy}
-        className="w-full px-3 py-2 text-sm rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition resize-none disabled:bg-gray-50 disabled:text-gray-400"
+        className="w-full px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition resize-none disabled:bg-surface-2 disabled:text-fg-subtle"
       />
 
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
@@ -367,7 +371,7 @@ function ReviewActions({ task, onReviewed }) {
       </div>
 
       {isResolved && (
-        <p className="mt-3 text-xs text-gray-400">
+        <p className="mt-3 text-xs text-fg-subtle">
           This review is complete — no further action needed.
         </p>
       )}
@@ -380,8 +384,8 @@ function ReviewActions({ task, onReviewed }) {
 function SubmittedFiles({ task }) {
   if (!task.attachments || task.attachments.length === 0) return null
   return (
-    <section className="bg-white border border-gray-200 rounded-lg px-6 py-5 mt-4">
-      <h2 className="text-sm font-semibold text-gray-800 mb-3">Submitted files</h2>
+    <section className="bg-surface border border-line rounded-lg px-6 py-5 mt-4">
+      <h2 className="text-sm font-semibold text-fg mb-3">Submitted files</h2>
       <ul className="space-y-2">
         {task.attachments.map((a, i) => (
           <li key={`${a.url}-${i}`}>
@@ -409,8 +413,8 @@ function SubmittedFiles({ task }) {
 function PriorDocuments({ task }) {
   if (!task.priorDocuments || task.priorDocuments.length === 0) return null
   return (
-    <section className="bg-white border border-gray-200 rounded-lg px-6 py-5 mt-4">
-      <h2 className="text-sm font-semibold text-gray-800 mb-3">Documents from previous steps</h2>
+    <section className="bg-surface border border-line rounded-lg px-6 py-5 mt-4">
+      <h2 className="text-sm font-semibold text-fg mb-3">Documents from previous steps</h2>
       <ul className="space-y-2">
         {task.priorDocuments.map((d, i) => (
           <li key={`${d.url}-${i}`} className="flex items-center gap-2">
@@ -425,7 +429,7 @@ function PriorDocuments({ task }) {
               </svg>
               {d.name || 'Attachment'}
             </a>
-            {d.step && <span className="text-xs text-gray-400 truncate">— {d.step}</span>}
+            {d.step && <span className="text-xs text-fg-subtle truncate">— {d.step}</span>}
           </li>
         ))}
       </ul>
@@ -439,11 +443,11 @@ function SubmittedFormFields({ fields, data }) {
   const list = (fields || []).filter((f) => f.type !== 'file')
   if (!list.length) return null
   return (
-    <dl className="divide-y divide-gray-100">
+    <dl className="divide-y divide-line">
       {list.map((f) => (
-        <div key={f.id} className="py-2 grid grid-cols-3 gap-3">
-          <dt className="text-sm text-gray-500">{f.label}</dt>
-          <dd className="col-span-2 text-sm">
+        <div key={f.id} className="py-2 grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-3">
+          <dt className="text-sm text-fg-muted">{f.label}</dt>
+          <dd className="sm:col-span-2 text-sm">
             <FieldValueView field={f} value={data?.[f.id]} />
           </dd>
         </div>
@@ -458,8 +462,8 @@ function SubmittedForm({ task }) {
   const fields = Array.isArray(task.formFields) ? task.formFields : []
   if (!fields.some((f) => f.type !== 'file')) return null
   return (
-    <section className="bg-white border border-gray-200 rounded-lg px-6 py-5 mt-4">
-      <h2 className="text-sm font-semibold text-gray-800 mb-3">Submitted form</h2>
+    <section className="bg-surface border border-line rounded-lg px-6 py-5 mt-4">
+      <h2 className="text-sm font-semibold text-fg mb-3">Submitted form</h2>
       <SubmittedFormFields fields={fields} data={task.formData} />
     </section>
   )
@@ -473,12 +477,12 @@ function PriorForms({ task }) {
     : []
   if (!forms.length) return null
   return (
-    <section className="bg-white border border-gray-200 rounded-lg px-6 py-5 mt-4">
-      <h2 className="text-sm font-semibold text-gray-800 mb-3">Form data from previous steps</h2>
+    <section className="bg-surface border border-line rounded-lg px-6 py-5 mt-4">
+      <h2 className="text-sm font-semibold text-fg mb-3">Form data from previous steps</h2>
       <div className="space-y-4">
         {forms.map((f, i) => (
           <div key={`${f.nodeId}-${i}`}>
-            {f.step && <p className="text-xs font-medium text-gray-400 mb-1">{f.step}</p>}
+            {f.step && <p className="text-xs font-medium text-fg-subtle mb-1">{f.step}</p>}
             <SubmittedFormFields fields={f.fields} data={f.data} />
           </div>
         ))}
@@ -492,7 +496,68 @@ const STAGE_META = {
   rejected:  { dot: 'bg-red-500',    text: 'text-red-600',    label: 'Rejected' },
   escalated: { dot: 'bg-orange-500', text: 'text-orange-600', label: 'Escalated' },
   pending:   { dot: 'bg-blue-500',   text: 'text-blue-600',   label: 'Awaiting approval' },
-  upcoming:  { dot: 'bg-gray-300',   text: 'text-gray-400',   label: 'Not started' }
+  upcoming:  { dot: 'bg-gray-300',   text: 'text-fg-subtle',   label: 'Not started' }
+}
+
+const VOTE_META = {
+  approved: { dot: 'bg-green-500', text: 'text-green-600', label: 'Approved' },
+  rejected: { dot: 'bg-red-500', text: 'text-red-600', label: 'Rejected' },
+  pending: { dot: 'bg-gray-300', text: 'text-fg-subtle', label: 'Awaiting' }
+}
+
+// Committee / quorum panel: shows "N of M approved", a progress bar, and each
+// approver's vote. Only rendered for multiApproval tasks.
+function CommitteeApprovals({ task }) {
+  if (!task.isMultiApproval) return null
+
+  const voters = task.parallelApprovers || []
+  const voteById = new Map((task.parallelApprovals || []).map((p) => [String(p.id), p]))
+  const required = task.requiredApprovals || 1
+  const total = voters.length
+  const approved = (task.parallelApprovals || []).filter((p) => p.status === 'approved').length
+  const rejected = (task.parallelApprovals || []).filter((p) => p.status === 'rejected').length
+  const met = approved >= required
+  const failed = total - rejected < required
+  const pct = Math.min(100, Math.round((approved / Math.max(1, required)) * 100))
+
+  return (
+    <section className="bg-surface border border-line rounded-lg px-5 py-4">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-sm font-semibold text-fg">Committee approval</h2>
+        <span className={`text-xs font-semibold ${met ? 'text-green-600' : failed ? 'text-red-600' : 'text-indigo-600'}`}>
+          {approved} of {required} approved
+        </span>
+      </div>
+      <p className="text-[11px] text-fg-muted mb-2">
+        {met
+          ? `Quorum reached — only ${required} of ${total} approval${required === 1 ? '' : 's'} were needed.`
+          : failed
+          ? 'Too many rejections — this stage can no longer reach quorum.'
+          : `Needs ${required} of ${total} approvals to pass. ${rejected > 0 ? `${rejected} rejected so far.` : ''}`}
+      </p>
+      <div className="h-1.5 rounded-full bg-surface-3 overflow-hidden mb-3">
+        <div className={`h-full ${met ? 'bg-green-500' : failed ? 'bg-red-500' : 'bg-indigo-500'}`} style={{ width: `${pct}%` }} />
+      </div>
+      <ul className="space-y-2">
+        {voters.map((v) => {
+          const vote = voteById.get(String(v.id))
+          const meta = VOTE_META[vote?.status] || VOTE_META.pending
+          return (
+            <li key={v.id} className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2 min-w-0">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${meta.dot}`} />
+                <span className="text-sm text-fg truncate">{v.name || 'Approver'}</span>
+              </span>
+              <span className={`text-[11px] font-medium shrink-0 ${meta.text}`}>
+                {meta.label}
+                {vote?.decidedAt ? ` · ${vote.decidedAt}` : ''}
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
 }
 
 function ApprovalChain({ task }) {
@@ -512,11 +577,11 @@ function ApprovalChain({ task }) {
   }
 
   return (
-    <section className="bg-white border border-gray-200 rounded-lg px-5 py-4">
+    <section className="bg-surface border border-line rounded-lg px-5 py-4">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-semibold text-gray-800">Approval chain</h2>
+        <h2 className="text-sm font-semibold text-fg">Approval chain</h2>
         {summary && (
-          <span className="text-xs font-medium text-gray-500">
+          <span className="text-xs font-medium text-fg-muted">
             {summary.approved} of {summary.required} approved
           </span>
         )}
@@ -528,7 +593,7 @@ function ApprovalChain({ task }) {
           return (
             <li key={s.nodeId} className="relative pl-6 pb-4 last:pb-0">
               {!isLast && (
-                <span className="absolute left-[5px] top-3.5 bottom-0 w-px bg-gray-200" />
+                <span className="absolute left-[5px] top-3.5 bottom-0 w-px bg-line" />
               )}
               <span
                 className={`absolute left-0 top-1.5 w-[11px] h-[11px] rounded-full ${meta.dot} ${
@@ -537,7 +602,7 @@ function ApprovalChain({ task }) {
               />
               <div className="leading-tight">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-gray-800">
+                  <p className="text-sm font-medium text-fg">
                     {s.title}
                     {s.isCurrent && (
                       <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-blue-600">
@@ -547,9 +612,9 @@ function ApprovalChain({ task }) {
                   </p>
                   <span className={`text-[11px] font-medium shrink-0 ${meta.text}`}>{meta.label}</span>
                 </div>
-                <p className="text-xs text-gray-500 mt-0.5">{stageLine(s)}</p>
+                <p className="text-xs text-fg-muted mt-0.5">{stageLine(s)}</p>
                 {s.decidedAt && (
-                  <p className="text-[11px] text-gray-400 mt-0.5">{s.decidedAt}</p>
+                  <p className="text-[11px] text-fg-subtle mt-0.5">{s.decidedAt}</p>
                 )}
               </div>
             </li>
@@ -562,19 +627,19 @@ function ApprovalChain({ task }) {
 
 function ApprovalHistory({ task }) {
   return (
-    <section className="bg-white border border-gray-200 rounded-lg px-5 py-4">
-      <h2 className="text-sm font-semibold text-gray-800 mb-3">Approval history</h2>
+    <section className="bg-surface border border-line rounded-lg px-5 py-4">
+      <h2 className="text-sm font-semibold text-fg mb-3">Approval history</h2>
       {task.history.length === 0 ? (
-        <p className="text-sm text-gray-400">No history yet.</p>
+        <p className="text-sm text-fg-subtle">No activity on this request yet.</p>
       ) : (
         <ul className="space-y-3">
           {task.history.map((step, idx) => (
             <li key={idx} className="flex items-start gap-2.5">
               <span className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${step.dotColor}`} />
               <div className="leading-tight">
-                <p className="text-sm text-gray-800">{step.label}</p>
+                <p className="text-sm text-fg">{step.label}</p>
                 {step.signature && <SignatureMark signature={step.signature} className="mt-1" />}
-                <p className="text-xs text-gray-400 mt-0.5">{step.time}</p>
+                <p className="text-xs text-fg-subtle mt-0.5">{step.time}</p>
               </div>
             </li>
           ))}
@@ -601,15 +666,15 @@ function SlaStatus({ task }) {
     : 'bg-green-500'
 
   return (
-    <section className="bg-white border border-gray-200 rounded-lg px-5 py-4">
-      <h2 className="text-sm font-semibold text-gray-800 mb-3">SLA status</h2>
-      <p className={`text-sm font-medium ${breached ? 'text-red-600' : 'text-gray-800'}`}>
+    <section className="bg-surface border border-line rounded-lg px-5 py-4">
+      <h2 className="text-sm font-semibold text-fg mb-3">SLA status</h2>
+      <p className={`text-sm font-medium ${breached ? 'text-red-600' : 'text-fg'}`}>
         {remainingLabel}
       </p>
-      <div className="mt-2 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+      <div className="mt-2 h-1.5 rounded-full bg-surface-3 overflow-hidden">
         <div className={`h-full ${barColor} transition-all`} style={{ width: `${Math.max(0, pct)}%` }} />
       </div>
-      <p className="text-xs text-gray-400 mt-2">
+      <p className="text-xs text-fg-subtle mt-2">
         Assigned {assignedHoursAgo}h ago · {totalHours}h SLA
       </p>
     </section>
@@ -642,7 +707,7 @@ function TaskDetail() {
   if (loading && !task) {
     return (
       <AppShell title="Loading task…" back={{ to: '/tasks', label: 'Back to inbox' }}>
-        <p className="text-sm text-gray-500">Please wait while we fetch this task.</p>
+        <p className="text-sm text-fg-muted">Please wait while we fetch this task.</p>
       </AppShell>
     )
   }
@@ -650,8 +715,8 @@ function TaskDetail() {
   if (!task) {
     return (
       <AppShell title="Task unavailable" back={{ to: '/tasks', label: 'Back to inbox' }}>
-        <div className="bg-white border border-gray-200 rounded-lg p-8 text-center max-w-md mx-auto">
-          <p className="text-sm text-gray-500">{error || 'Task not found.'}</p>
+        <div className="bg-surface border border-line rounded-lg p-8 text-center max-w-md mx-auto">
+          <p className="text-sm text-fg-muted">{error || 'Task not found.'}</p>
           <Link to="/tasks" className="mt-3 inline-block text-sm text-indigo-600 hover:text-indigo-700 font-medium">
             Back to inbox
           </Link>
@@ -683,7 +748,14 @@ function TaskDetail() {
   }
 
   const handleCancel = async () => {
-    if (!window.confirm('Cancel this request? This stops the approval and notifies anyone it was waiting on.')) return
+    const ok = await confirm({
+      title: 'Cancel request?',
+      message: 'This stops the approval and notifies anyone it was waiting on.',
+      confirmLabel: 'Cancel request',
+      cancelLabel: 'Keep it',
+      danger: true,
+    })
+    if (!ok) return
     setBusy('cancel')
     setError('')
     try {
@@ -698,7 +770,15 @@ function TaskDetail() {
   // Only the assignee (or an elevated approver) can act — matches the backend.
   const meId = me?._id ? String(me._id) : null
   const isAssignee = meId && String(task.assignedToId) === meId
-  const canAct = isAssignee || APPROVER_ROLES.has(me?.role?.name)
+  // For committee tasks, any listed voter can act (not just the representative
+  // assignee). Their vote is hidden once cast so they can't double-vote.
+  const isCommitteeVoter =
+    task.isMultiApproval && (task.parallelApprovers || []).some((p) => String(p.id) === meId)
+  const myVote =
+    task.isMultiApproval
+      ? (task.parallelApprovals || []).find((p) => String(p.id) === meId && p.status !== 'pending')
+      : null
+  const canAct = isAssignee || isCommitteeVoter || APPROVER_ROLES.has(me?.role?.name)
 
   // Request-level status (the whole chain) drives the requester's summary text.
   const reqStatus = requestStatus(task)
@@ -714,7 +794,7 @@ function TaskDetail() {
       actions={
         <button
           onClick={focusComment}
-          className="px-3 py-1.5 rounded-md border border-gray-200 hover:bg-gray-50 text-sm font-medium text-gray-700 transition"
+          className="px-3 py-1.5 rounded-md border border-line hover:bg-surface-2 text-sm font-medium text-fg transition"
         >
           Comment
         </button>
@@ -725,7 +805,15 @@ function TaskDetail() {
           <SubmissionDetails task={task} />
           <PriorForms task={task} />
           <PriorDocuments task={task} />
-          {canAct ? (
+          {canAct && myVote ? (
+            <section className="bg-surface border border-line rounded-lg px-6 py-5 mt-4">
+              <h2 className="text-sm font-semibold text-fg mb-1">Your decision</h2>
+              <p className="text-sm text-fg-muted">
+                You have already <span className={myVote.status === 'approved' ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>{myVote.status}</span> this
+                committee task. It stays open until the required number of approvals is reached.
+              </p>
+            </section>
+          ) : canAct ? (
             task.actionType === 'submit' ? (
               <SubmitActions
                 task={task}
@@ -746,9 +834,9 @@ function TaskDetail() {
               />
             )
           ) : (
-            <section className="bg-white border border-gray-200 rounded-lg px-6 py-5 mt-4">
-              <h2 className="text-sm font-semibold text-gray-800 mb-1">Your request</h2>
-              <p className="text-sm text-gray-500">
+            <section className="bg-surface border border-line rounded-lg px-6 py-5 mt-4">
+              <h2 className="text-sm font-semibold text-fg mb-1">Your request</h2>
+              <p className="text-sm text-fg-muted">
                 {reqResolved
                   ? `This request has been ${reqStatus.toLowerCase()}.`
                   : `This request is awaiting approval${currentApprover ? ` from ${currentApprover}` : ''}. You'll be notified when there's an update.`}
@@ -773,6 +861,7 @@ function TaskDetail() {
         </div>
 
         <aside className="space-y-4">
+          <CommitteeApprovals task={task} />
           <ApprovalChain task={task} />
           <ApprovalHistory task={task} />
           <SlaStatus task={task} />

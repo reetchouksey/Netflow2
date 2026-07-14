@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NODE_STYLES } from "./nodeStyles";
-import { FORM_FIELD_TYPES, newFieldId } from "../../components/FormFields";
+import { FORM_FIELD_TYPES, newFieldId, PATTERN_PRESETS } from "../../components/FormFields";
 import { api } from "../../utils/api";
 
 const SLA_UNITS = ["Minutes", "Hours", "Days"];
@@ -66,11 +66,11 @@ export default function NodeConfig({
 }) {
   if (!node) {
     return (
-      <aside className="w-80 shrink-0 border-l border-gray-200 bg-white px-5 py-6">
-        <div className="text-[11px] font-semibold tracking-wider text-gray-500 mb-3">
+      <aside className="w-80 shrink-0 border-l border-line bg-surface px-5 py-6">
+        <div className="text-[11px] font-semibold tracking-wider text-fg-muted mb-3">
           NODE CONFIG
         </div>
-        <div className="text-sm text-gray-400 mt-10 text-center">
+        <div className="text-sm text-fg-subtle mt-10 text-center">
           Select a node on the canvas to configure it.
         </div>
       </aside>
@@ -81,8 +81,8 @@ export default function NodeConfig({
   const update = (patch) => onChange({ ...node, ...patch });
 
   return (
-    <aside className="w-80 shrink-0 border-l border-gray-200 bg-white px-5 py-6 overflow-y-auto">
-      <div className="text-[11px] font-semibold tracking-wider text-gray-500 mb-3">
+    <aside className="w-80 shrink-0 border-l border-line bg-surface px-5 py-6 overflow-y-auto">
+      <div className="text-[11px] font-semibold tracking-wider text-fg-muted mb-3">
         NODE CONFIG
       </div>
 
@@ -111,6 +111,10 @@ export default function NodeConfig({
 
       {node.type === "approval" && (
         <ApprovalConfig node={node} update={update} />
+      )}
+
+      {node.type === "multiApproval" && (
+        <MultiApprovalConfig node={node} update={update} />
       )}
 
       {node.type === "submit" && (
@@ -156,6 +160,8 @@ export default function NodeConfig({
         </Field>
       )}
 
+      {node.type === "api" && <ApiConfig node={node} update={update} />}
+
       {node.type === "timer" && (
         <Field label="Wait duration">
           <div className="flex gap-2">
@@ -186,7 +192,7 @@ export default function NodeConfig({
             onChange={(v) => update({ generatePdf: v })}
             label="Generate signed PDF on completion"
           />
-          <p className="mt-1 ml-6 text-[11px] text-gray-400">
+          <p className="mt-1 ml-6 text-[11px] text-fg-subtle">
             When on, finishing here auto-produces a signed PDF (form data + the
             full approval trail with e-signatures) and attaches it to the request
             for the submitter and approvers to download.
@@ -244,7 +250,7 @@ function DecisionConfig({ node, nodes, connections, onConnectionsChange }) {
 
   return (
     <>
-      <div className="mb-3 text-[11px] text-gray-500">
+      <div className="mb-3 text-[11px] text-fg-muted">
         This Decision routes based on whether the previous approval was
         approved or rejected.
       </div>
@@ -347,7 +353,7 @@ function ApprovalConfig({ node, update }) {
                 </option>
               ))}
             </select>
-            <p className="mt-1.5 text-[11px] text-gray-500">
+            <p className="mt-1.5 text-[11px] text-fg-muted">
               {selectedPerson
                 ? `Always assigned to ${selectedPerson.name}, regardless of the submitter's org chart.`
                 : "This exact person will be assigned every time, regardless of who submits."}
@@ -355,8 +361,8 @@ function ApprovalConfig({ node, update }) {
           </div>
         ) : (
           <>
-            {roleHint && <p className="mt-1 text-[11px] text-gray-500">{roleHint}</p>}
-            <p className="mt-1.5 text-[11px] text-gray-400">
+            {roleHint && <p className="mt-1 text-[11px] text-fg-muted">{roleHint}</p>}
+            <p className="mt-1.5 text-[11px] text-fg-subtle">
               Auto-detected at submit time from the org chart.
             </p>
           </>
@@ -408,8 +414,117 @@ function ApprovalConfig({ node, update }) {
           onChange={(v) => update({ requireSignature: v })}
           label="Require e-signature on decision"
         />
-        <p className="mt-1 ml-6 text-[11px] text-gray-400">
+        <p className="mt-1 ml-6 text-[11px] text-fg-subtle">
           When on, the approver must add an e-signature (typed or uploaded) before they can approve, reject, or request changes.
+        </p>
+      </div>
+    </>
+  );
+}
+
+function MultiApprovalConfig({ node, update }) {
+  // Committee / quorum approval: pick several specific people, then set how many
+  // of them (N of M) must approve for the stage to pass. The stage passes as soon
+  // as N approve, and fails once enough reject that N is no longer reachable.
+  const users = useActiveUsers();
+  const selected = Array.isArray(node.approverIds) ? node.approverIds : [];
+  const required = Math.max(1, Number(node.requiredApprovals) || 1);
+  const M = selected.length;
+
+  const toggle = (userId) => {
+    const has = selected.some((id) => String(id) === String(userId));
+    const next = has
+      ? selected.filter((id) => String(id) !== String(userId))
+      : [...selected, userId];
+    // Keep the required count within 1..M as the roster changes.
+    const clamped = Math.min(Math.max(1, required), Math.max(1, next.length));
+    update({ approverIds: next, requiredApprovals: clamped });
+  };
+
+  return (
+    <>
+      <Field label="Approvers (pick the committee)">
+        <div className="max-h-56 overflow-y-auto rounded-md border border-line divide-y divide-line">
+          {users.length === 0 && (
+            <p className="px-3 py-2 text-[11px] text-fg-subtle">Loading users…</p>
+          )}
+          {users.map((u) => {
+            const checked = selected.some((id) => String(id) === String(u._id));
+            return (
+              <label
+                key={u._id}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-fg cursor-pointer hover:bg-indigo-50/50"
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggle(u._id)}
+                  className="w-4 h-4 rounded border-line accent-indigo-600"
+                />
+                <span className="truncate">
+                  {u.name}
+                  {u.department ? <span className="text-fg-subtle"> · {u.department}</span> : ""}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+        <p className="mt-1.5 text-[11px] text-fg-muted">
+          {M > 0 ? `${M} approver${M === 1 ? "" : "s"} selected.` : "Select the people who should receive this approval."}
+        </p>
+      </Field>
+
+      <Field label="Approvals required (N of M)">
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min={1}
+            max={Math.max(1, M)}
+            value={required}
+            onChange={(e) => {
+              const n = Math.min(Math.max(1, Number(e.target.value) || 1), Math.max(1, M));
+              update({ requiredApprovals: n });
+            }}
+            className={`${inputCls} w-24`}
+          />
+          <span className="text-sm text-fg-muted">of {Math.max(1, M)}</span>
+        </div>
+        <p className="mt-1.5 text-[11px] text-fg-muted">
+          {M > 0
+            ? `The stage passes as soon as ${required} of ${M} approve. It fails once ${M - required + 1} reject.`
+            : "Add approvers first, then choose how many must approve."}
+        </p>
+      </Field>
+
+      <Field label="SLA deadline">
+        <div className="flex gap-2">
+          <input
+            type="number"
+            min={1}
+            value={node.slaValue ?? 24}
+            onChange={(e) => update({ slaValue: Number(e.target.value) })}
+            className={`${inputCls} w-20`}
+          />
+          <select
+            value={node.slaUnit || "Hours"}
+            onChange={(e) => update({ slaUnit: e.target.value })}
+            className={`${inputCls} flex-1`}
+          >
+            {SLA_UNITS.map((u) => (
+              <option key={u}>{u}</option>
+            ))}
+          </select>
+        </div>
+      </Field>
+
+      <div className="mt-3">
+        <Checkbox
+          checked={!!node.requireSignature}
+          onChange={(v) => update({ requireSignature: v })}
+          label="Require e-signature on decision"
+        />
+        <p className="mt-1 ml-6 text-[11px] text-fg-subtle">
+          When on, each approver must add an e-signature before they can approve or reject.
         </p>
       </div>
     </>
@@ -453,9 +568,9 @@ function SubmitConfig({ node, update }) {
           ))}
         </select>
         {roleHint && (
-          <p className="mt-1 text-[11px] text-gray-500">{roleHint}</p>
+          <p className="mt-1 text-[11px] text-fg-muted">{roleHint}</p>
         )}
-        <p className="mt-1.5 text-[11px] text-gray-400">
+        <p className="mt-1.5 text-[11px] text-fg-subtle">
           This person fills the form below and clicks Submit to advance the workflow.
         </p>
       </Field>
@@ -499,6 +614,185 @@ function SubmitConfig({ node, update }) {
   );
 }
 
+const CONDITION_OPERATORS = [
+  { value: "eq", label: "equals" },
+  { value: "neq", label: "does not equal" },
+  { value: "contains", label: "contains" },
+  { value: "nonempty", label: "is filled in" },
+];
+
+// Per-field "show only when …" editor for Submit-node inline forms. `dependsOn`
+// can only reference an EARLIER field (no circular rules). Stores the object
+// shape { enabled, dependsOn, operator, showWhen } that the model + renderers use.
+function FieldConditionEditor({ field, earlier, onChange }) {
+  const cl = field.conditionalLogic && typeof field.conditionalLogic === "object" ? field.conditionalLogic : {};
+  const enabled = !!cl.enabled;
+  const operator = cl.operator || "eq";
+  const source = (earlier || []).find((f) => f.id === cl.dependsOn) || null;
+  const needsValue = operator !== "nonempty";
+  const sourceOptions = source && source.type === "dropdown" ? source.options || [] : null;
+
+  const setCL = (patch) => onChange({ enabled: true, operator: "eq", ...cl, ...patch });
+
+  return (
+    <div className="mt-2 pt-2 border-t border-line">
+      <label className="flex items-center gap-1.5 text-xs text-fg-muted">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => onChange({ ...cl, operator, enabled: e.target.checked })}
+          className="w-4 h-4 rounded border-line accent-teal-600"
+        />
+        Conditional logic
+      </label>
+
+      {enabled && (
+        (earlier || []).length === 0 ? (
+          <p className="mt-1.5 text-[11px] text-amber-700">Add a field above this one to use as the trigger.</p>
+        ) : (
+          <div className="mt-2 space-y-1.5">
+            <select
+              value={cl.dependsOn || ""}
+              onChange={(e) => setCL({ dependsOn: e.target.value })}
+              className={inputCls}
+            >
+              <option value="">— Show when field —</option>
+              {(earlier || []).map((f) => (
+                <option key={f.id} value={f.id}>{f.label || f.id}</option>
+              ))}
+            </select>
+            <select value={operator} onChange={(e) => setCL({ operator: e.target.value })} className={inputCls}>
+              {CONDITION_OPERATORS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            {needsValue && (
+              sourceOptions ? (
+                <select value={cl.showWhen || ""} onChange={(e) => setCL({ showWhen: e.target.value })} className={inputCls}>
+                  <option value="">— Select a value —</option>
+                  {sourceOptions.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={cl.showWhen || ""}
+                  onChange={(e) => setCL({ showWhen: e.target.value })}
+                  placeholder="value to match"
+                  className={inputCls}
+                />
+              )
+            )}
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+// Length / range / format-pattern editor for one Submit-node field. Writes into
+// the canonical nested `validation` object the model + renderers understand.
+function FieldValidationEditor({ field, onChange }) {
+  const isText = field.type === "text" || field.type === "textarea";
+  const isNum = field.type === "number";
+  if (!isText && !isNum) return null;
+
+  const v = field.validation && typeof field.validation === "object" ? field.validation : {};
+  const setV = (patch) => {
+    const next = { ...v, ...patch };
+    Object.keys(next).forEach((k) => {
+      if (next[k] === null || next[k] === "" || next[k] === undefined) delete next[k];
+    });
+    onChange(next);
+  };
+  const numOrNull = (s) => (s === "" ? null : Number(s));
+
+  const currentPreset = (() => {
+    if (!v.pattern) return "none";
+    for (const [key, p] of Object.entries(PATTERN_PRESETS)) if (p.pattern === v.pattern) return key;
+    return "custom";
+  })();
+
+  const onPresetChange = (key) => {
+    if (key === "none") return setV({ pattern: null, patternLabel: null });
+    if (key === "custom") return setV({ pattern: currentPreset === "custom" ? v.pattern : " ", patternLabel: null });
+    const p = PATTERN_PRESETS[key];
+    setV({ pattern: p.pattern, patternLabel: p.label });
+  };
+
+  return (
+    <div className="mt-2 pt-2 border-t border-line space-y-1.5">
+      {isText && (
+        <>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="number"
+              min="0"
+              value={v.minLength ?? ""}
+              onChange={(e) => setV({ minLength: numOrNull(e.target.value) })}
+              placeholder="Min len"
+              className={inputCls}
+            />
+            <input
+              type="number"
+              min="1"
+              value={v.maxLength ?? ""}
+              onChange={(e) => setV({ maxLength: numOrNull(e.target.value) })}
+              placeholder="Max len"
+              className={inputCls}
+            />
+          </div>
+          <select value={currentPreset} onChange={(e) => onPresetChange(e.target.value)} className={inputCls}>
+            <option value="none">No pattern</option>
+            <option value="email">Email</option>
+            <option value="phone">Phone number</option>
+            <option value="digits">Digits only</option>
+            <option value="alnum">Letters &amp; numbers</option>
+            <option value="custom">Custom regex…</option>
+          </select>
+          {currentPreset === "custom" && (
+            <>
+              <input
+                type="text"
+                value={v.pattern ?? ""}
+                onChange={(e) => setV({ pattern: e.target.value })}
+                placeholder="Regex e.g. ^[A-Z]{2}[0-9]{4}$"
+                className={`${inputCls} font-mono text-xs`}
+              />
+              <input
+                type="text"
+                value={v.patternLabel ?? ""}
+                onChange={(e) => setV({ patternLabel: e.target.value })}
+                placeholder="Error message (optional)"
+                className={inputCls}
+              />
+            </>
+          )}
+        </>
+      )}
+      {isNum && (
+        <div className="flex items-center gap-1.5">
+          <input
+            type="number"
+            value={v.min ?? ""}
+            onChange={(e) => setV({ min: numOrNull(e.target.value) })}
+            placeholder="Min"
+            className={inputCls}
+          />
+          <input
+            type="number"
+            value={v.max ?? ""}
+            onChange={(e) => setV({ max: numOrNull(e.target.value) })}
+            placeholder="Max"
+            className={inputCls}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Field-list editor for the Submit node's inline form. The designer adds the
 // fields (label, type, required, dropdown options) the assignee must fill.
 function SubmitFormBuilder({ fields, onChange }) {
@@ -525,18 +819,18 @@ function SubmitFormBuilder({ fields, onChange }) {
 
   return (
     <Field label="Form fields">
-      <p className="-mt-1 mb-2 text-[11px] text-gray-400">
+      <p className="-mt-1 mb-2 text-[11px] text-fg-subtle">
         The assignee fills these before submitting. File fields become attachments
         visible to later steps.
       </p>
 
       {list.length === 0 && (
-        <p className="mb-2 text-[11px] text-gray-400 italic">No fields yet.</p>
+        <p className="mb-2 text-[11px] text-fg-subtle italic">No fields yet.</p>
       )}
 
       <div className="space-y-2">
         {list.map((f, i) => (
-          <div key={f.id} className="border border-gray-200 rounded-md p-2.5 bg-gray-50/60">
+          <div key={f.id} className="border border-line rounded-md p-2.5 bg-surface-2/60">
             <div className="flex items-center gap-1.5 mb-2">
               <input
                 value={f.label || ""}
@@ -548,7 +842,7 @@ function SubmitFormBuilder({ fields, onChange }) {
                 type="button"
                 onClick={() => moveField(i, -1)}
                 disabled={i === 0}
-                className="px-1.5 py-1 text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                className="px-1.5 py-1 text-fg-subtle hover:text-fg-muted disabled:opacity-30"
                 title="Move up"
               >
                 ↑
@@ -557,7 +851,7 @@ function SubmitFormBuilder({ fields, onChange }) {
                 type="button"
                 onClick={() => moveField(i, 1)}
                 disabled={i === list.length - 1}
-                className="px-1.5 py-1 text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                className="px-1.5 py-1 text-fg-subtle hover:text-fg-muted disabled:opacity-30"
                 title="Move down"
               >
                 ↓
@@ -581,12 +875,12 @@ function SubmitFormBuilder({ fields, onChange }) {
                   <option key={t.type} value={t.type}>{t.label}</option>
                 ))}
               </select>
-              <label className="flex items-center gap-1.5 text-xs text-gray-600 whitespace-nowrap">
+              <label className="flex items-center gap-1.5 text-xs text-fg-muted whitespace-nowrap">
                 <input
                   type="checkbox"
                   checked={!!f.required}
                   onChange={(e) => updateField(i, { required: e.target.checked })}
-                  className="w-4 h-4 rounded border-gray-300 accent-blue-600"
+                  className="w-4 h-4 rounded border-line accent-blue-600"
                 />
                 Required
               </label>
@@ -603,6 +897,15 @@ function SubmitFormBuilder({ fields, onChange }) {
                 className={`${inputCls} mt-2`}
               />
             )}
+            <FieldValidationEditor
+              field={f}
+              onChange={(validation) => updateField(i, { validation })}
+            />
+            <FieldConditionEditor
+              field={f}
+              earlier={list.slice(0, i)}
+              onChange={(cl) => updateField(i, { conditionalLogic: cl })}
+            />
           </div>
         ))}
       </div>
@@ -610,7 +913,7 @@ function SubmitFormBuilder({ fields, onChange }) {
       <button
         type="button"
         onClick={addField}
-        className="mt-2 w-full px-3 py-2 text-sm rounded-md border border-dashed border-gray-300 text-gray-600 hover:border-teal-300 hover:text-teal-700 transition"
+        className="mt-2 w-full px-3 py-2 text-sm rounded-md border border-dashed border-line text-fg-muted hover:border-teal-300 hover:text-teal-700 transition"
       >
         + Add field
       </button>
@@ -675,9 +978,9 @@ function ReviewConfig({ node, update, nodes, connections, onConnectionsChange })
           ))}
         </select>
         {roleHint && (
-          <p className="mt-1 text-[11px] text-gray-500">{roleHint}</p>
+          <p className="mt-1 text-[11px] text-fg-muted">{roleHint}</p>
         )}
-        <p className="mt-1.5 text-[11px] text-gray-400">
+        <p className="mt-1.5 text-[11px] text-fg-subtle">
           The reviewer sees the submission + all earlier documents, then forwards
           it or sends it back — no approve/reject.
         </p>
@@ -718,13 +1021,170 @@ function ReviewConfig({ node, update, nodes, connections, onConnectionsChange })
   );
 }
 
+const API_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+
+// Config for the Integration / webhook node: an outbound HTTP call fired mid-flow.
+function ApiConfig({ node, update }) {
+  const headers = Array.isArray(node.apiHeaders) ? node.apiHeaders : [];
+  const auth = node.apiAuth || { mode: "none" };
+
+  const setHeader = (i, patch) => {
+    const next = headers.map((h, idx) => (idx === i ? { ...h, ...patch } : h));
+    update({ apiHeaders: next });
+  };
+  const addHeader = () => update({ apiHeaders: [...headers, { key: "", value: "" }] });
+  const removeHeader = (i) => update({ apiHeaders: headers.filter((_, idx) => idx !== i) });
+  const setAuth = (patch) => update({ apiAuth: { ...auth, ...patch } });
+
+  return (
+    <>
+      <Field label="Request URL">
+        <input
+          type="url"
+          value={node.apiUrl || ""}
+          onChange={(e) => update({ apiUrl: e.target.value })}
+          placeholder="https://api.example.com/hook"
+          className={inputCls}
+        />
+        <p className="mt-1 text-[11px] text-fg-subtle">
+          Must be an https:// address. Called automatically when the flow reaches this step.
+        </p>
+      </Field>
+
+      <Field label="Method">
+        <select
+          value={node.apiMethod || "POST"}
+          onChange={(e) => update({ apiMethod: e.target.value })}
+          className={inputCls}
+        >
+          {API_METHODS.map((m) => (
+            <option key={m} value={m}>{m}</option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label="Headers">
+        <div className="space-y-2">
+          {headers.length === 0 && (
+            <p className="text-[11px] text-fg-subtle">No headers. Add one if the API needs it (e.g. Content-Type).</p>
+          )}
+          {headers.map((h, i) => (
+            <div key={i} className="flex gap-2">
+              <input
+                value={h.key || ""}
+                onChange={(e) => setHeader(i, { key: e.target.value })}
+                placeholder="Header"
+                className={`${inputCls} flex-1`}
+              />
+              <input
+                value={h.value || ""}
+                onChange={(e) => setHeader(i, { value: e.target.value })}
+                placeholder="Value"
+                className={`${inputCls} flex-1`}
+              />
+              <button
+                type="button"
+                onClick={() => removeHeader(i)}
+                className="px-2 text-fg-subtle hover:text-red-600"
+                aria-label="Remove header"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={addHeader}
+            className="text-xs font-medium text-blue-600 hover:text-blue-700"
+          >
+            + Add header
+          </button>
+        </div>
+      </Field>
+
+      <Field label="Request body">
+        <textarea
+          rows={4}
+          value={node.apiBody || ""}
+          onChange={(e) => update({ apiBody: e.target.value })}
+          placeholder={'{\n  "id": "{{formData.requestId}}",\n  "by": "{{submitter.email}}"\n}'}
+          className={`${inputCls} font-mono text-xs`}
+        />
+        <p className="mt-1 text-[11px] text-fg-subtle">
+          Use {"{{formData.field}}"}, {"{{submitter.email}}"}, {"{{lastApprovalOutcome}}"} to insert live values.
+        </p>
+      </Field>
+
+      <Field label="Authentication">
+        <select
+          value={auth.mode || "none"}
+          onChange={(e) => setAuth({ mode: e.target.value })}
+          className={inputCls}
+        >
+          <option value="none">None</option>
+          <option value="bearer">Bearer token</option>
+          <option value="basic">Basic auth</option>
+        </select>
+        {auth.mode === "bearer" && (
+          <input
+            value={auth.token || ""}
+            onChange={(e) => setAuth({ token: e.target.value })}
+            placeholder="Token"
+            className={`${inputCls} mt-2`}
+          />
+        )}
+        {auth.mode === "basic" && (
+          <div className="mt-2 flex gap-2">
+            <input
+              value={auth.username || ""}
+              onChange={(e) => setAuth({ username: e.target.value })}
+              placeholder="Username"
+              className={`${inputCls} flex-1`}
+            />
+            <input
+              type="password"
+              value={auth.password || ""}
+              onChange={(e) => setAuth({ password: e.target.value })}
+              placeholder="Password"
+              className={`${inputCls} flex-1`}
+            />
+          </div>
+        )}
+      </Field>
+
+      <Field label="Save response as">
+        <input
+          value={node.saveResponseAs || ""}
+          onChange={(e) => update({ saveResponseAs: e.target.value })}
+          placeholder="e.g. erpResult (optional)"
+          className={inputCls}
+        />
+        <p className="mt-1 text-[11px] text-fg-subtle">
+          Stores the response so later Decision nodes can read it.
+        </p>
+      </Field>
+
+      <div className="mt-1">
+        <Checkbox
+          checked={node.continueOnError !== false}
+          onChange={(v) => update({ continueOnError: v })}
+          label="Continue workflow if the call fails"
+        />
+        <p className="mt-1 ml-6 text-[11px] text-fg-subtle">
+          When off, a failed call stops the workflow instead of moving on.
+        </p>
+      </div>
+    </>
+  );
+}
+
 const inputCls =
-  "w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500";
+  "w-full px-3 py-2 text-sm bg-surface border border-line rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500";
 
 function Field({ label, children }) {
   return (
     <div className="mb-4">
-      <label className="block text-xs font-medium text-gray-700 mb-1.5">
+      <label className="block text-xs font-medium text-fg mb-1.5">
         {label}
       </label>
       {children}
@@ -739,9 +1199,9 @@ function Checkbox({ checked, onChange, label }) {
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="w-4 h-4 rounded border-gray-300 accent-blue-600"
+        className="w-4 h-4 rounded border-line accent-blue-600"
       />
-      <span className="text-sm text-gray-700">{label}</span>
+      <span className="text-sm text-fg">{label}</span>
     </label>
   );
 }

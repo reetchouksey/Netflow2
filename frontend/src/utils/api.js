@@ -40,10 +40,11 @@ export const setStoredUser = (user) => {
 }
 
 export class ApiError extends Error {
-  constructor(message, code, status) {
+  constructor(message, code, status, data) {
     super(message)
     this.code = code
     this.status = status
+    this.data = data || {}
     this.name = 'ApiError'
   }
 }
@@ -88,7 +89,7 @@ const request = async (method, endpoint, body, opts = {}) => {
         }
       }
     }
-    throw new ApiError(message, code, response.status)
+    throw new ApiError(message, code, response.status, data)
   }
 
   return data

@@ -51,7 +51,7 @@ function Bubble({ role, error, children }) {
             ? 'rounded-br-sm bg-indigo-600 text-white'
             : error
               ? 'rounded-bl-sm bg-red-50 text-red-700 border border-red-100'
-              : 'rounded-bl-sm bg-white text-gray-700 border border-gray-200'
+              : 'rounded-bl-sm bg-surface text-fg border border-line'
         }`}
       >
         {children}
@@ -133,7 +133,7 @@ export default function AssistantWidget() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label={open ? 'Close assistant' : 'Open assistant'}
-        className="fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 transition hover:scale-105 hover:bg-indigo-700"
+        className="fixed bottom-20 right-5 md:bottom-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 transition hover:scale-105 hover:bg-indigo-700"
       >
         {open ? (
           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -145,9 +145,9 @@ export default function AssistantWidget() {
       </button>
 
       {open && (
-        <div className="fixed bottom-24 right-5 z-40 flex h-[32rem] max-h-[calc(100vh-7rem)] w-[22rem] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+        <div className="fixed bottom-24 right-5 z-40 flex h-[32rem] max-h-[calc(100vh-7rem)] w-[22rem] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
           <div className="flex items-center gap-2 bg-indigo-600 px-4 py-3 text-white">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface/20">
               <Robot className="h-4 w-4" />
             </div>
             <div className="min-w-0 flex-1">
@@ -158,7 +158,7 @@ export default function AssistantWidget() {
               type="button"
               onClick={() => setOpen(false)}
               aria-label="Close"
-              className="flex h-7 w-7 items-center justify-center rounded-md text-indigo-100 transition hover:bg-white/15 hover:text-white"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-indigo-100 transition hover:bg-surface/15 hover:text-white"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -166,7 +166,7 @@ export default function AssistantWidget() {
             </button>
           </div>
 
-          <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto bg-gray-50 px-3 py-3">
+          <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto bg-surface-2 px-3 py-3">
             {messages.map((m, i) => (
               <Bubble key={i} role={m.role} error={m.error}>{m.content}</Bubble>
             ))}
@@ -178,7 +178,7 @@ export default function AssistantWidget() {
                     key={s}
                     type="button"
                     onClick={() => ask(s)}
-                    className="rounded-full border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-medium text-indigo-600 transition hover:bg-indigo-50"
+                    className="rounded-full border border-indigo-200 bg-surface px-2.5 py-1 text-[11px] font-medium text-indigo-600 transition hover:bg-indigo-50"
                   >
                     {s}
                   </button>
@@ -189,7 +189,7 @@ export default function AssistantWidget() {
             {busy && <Bubble role="assistant"><Typing /></Bubble>}
           </div>
 
-          <div className="border-t border-gray-100 p-2">
+          <div className="border-t border-line p-2">
             <div className="flex items-end gap-2">
               <textarea
                 ref={inputRef}
@@ -198,7 +198,7 @@ export default function AssistantWidget() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(input) } }}
                 placeholder="Ask about your requests…"
-                className="max-h-28 flex-1 resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                className="max-h-28 flex-1 resize-none rounded-lg border border-line px-3 py-2 text-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-200"
               />
               <button
                 type="button"
@@ -209,7 +209,7 @@ export default function AssistantWidget() {
                 Send
               </button>
             </div>
-            <p className="mt-1 px-1 text-[10px] text-gray-400">
+            <p className="mt-1 px-1 text-[10px] text-fg-subtle">
               Answers are based only on your own requests and approvals.
             </p>
           </div>

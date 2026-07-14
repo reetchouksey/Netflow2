@@ -1,10 +1,13 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import NewFormModal from '../components/NewFormModal'
+import { TableRowSkeleton } from '../components/Skeleton'
 import { useForms, formsStore, FORM_CATEGORIES } from '../lib/formsStore'
 import { useUser } from '../utils/auth'
 import { canCreateForm, canSubmitForms, canEditForm } from '../utils/permissions'
+import { toast } from '../lib/toastStore'
+import { confirm } from '../lib/confirmStore'
 
 const categoryStyles = {
   'Company-wide': 'bg-sky-50 text-sky-700',
@@ -39,6 +42,8 @@ function Forms() {
   const canEdit = canEditForm(me)
   const [search, setSearch] = useState('')
   const [newOpen, setNewOpen] = useState(false)
+  const [booting, setBooting] = useState(true)
+  useEffect(() => { formsStore.refresh().finally(() => setBooting(false)) }, [])
 
   const buildUrl = (token) => `${window.location.origin}/f/${token}`
   const copyText = async (text) => {
@@ -49,19 +54,32 @@ function Forms() {
       const target = f.isPublic && f.publicToken ? f : await formsStore.setPublic(f.id, true)
       const url = buildUrl(target.publicToken)
       const ok = await copyText(url)
-      window.prompt(ok ? 'Public link (copied to clipboard):' : 'Public link — copy it:', url)
+      if (ok) toast.success('Public link copied to clipboard')
+      else window.prompt('Public link — copy it:', url)
     } catch (err) {
-      window.alert(err.message || 'Could not create a public link.')
+      toast.error(err.message || 'Could not create a public link.')
     }
   }
   const copyLink = async (f) => {
     const url = buildUrl(f.publicToken)
     const ok = await copyText(url)
-    if (!ok) window.prompt('Public link — copy it:', url)
+    if (ok) toast.success('Public link copied to clipboard')
+    else window.prompt('Public link — copy it:', url)
   }
   const stopSharing = async (f) => {
-    if (!window.confirm('Stop sharing? The public link will stop working until you share again.')) return
-    try { await formsStore.setPublic(f.id, false) } catch (err) { window.alert(err.message || 'Failed to update sharing.') }
+    const ok = await confirm({
+      title: 'Stop sharing?',
+      message: 'The public link will stop working until you share again.',
+      confirmLabel: 'Stop sharing',
+      danger: false,
+    })
+    if (!ok) return
+    try {
+      await formsStore.setPublic(f.id, false)
+      toast.success('Sharing stopped')
+    } catch (err) {
+      toast.error(err.message || 'Failed to update sharing.')
+    }
   }
   const [categoryFilter, setCategoryFilter] = useState('All categories')
   const [statusFilter, setStatusFilter] = useState('All status')
@@ -93,10 +111,10 @@ function Forms() {
 
   return (
     <AppShell title="Forms" subtitle={subtitle} actions={actions}>
-      <div className="bg-white border border-gray-200 rounded-lg">
-            <div className="px-5 py-4 flex flex-col md:flex-row gap-3 md:items-center border-b border-gray-100">
+      <div className="bg-surface border border-line rounded-lg">
+            <div className="px-5 py-4 flex flex-col md:flex-row gap-3 md:items-center border-b border-line">
               <div className="relative flex-1 max-w-xs">
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-fg-subtle absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
                 <input
@@ -104,13 +122,13 @@ function Forms() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search forms..."
-                  className="w-full pl-9 pr-3 py-2 text-sm rounded-md border border-gray-200 bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition"
+                  className="w-full pl-9 pr-3 py-2 text-sm rounded-md border border-line bg-surface-2 focus:bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition"
                 />
               </div>
               <select
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="px-3 py-2 text-sm rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition"
+                className="px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition"
               >
                 <option>All categories</option>
                 {FORM_CATEGORIES.map((c) => (
@@ -120,7 +138,7 @@ function Forms() {
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-2 text-sm rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition"
+                className="px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition"
               >
                 <option>All status</option>
                 <option>Published</option>
@@ -128,9 +146,17 @@ function Forms() {
               </select>
             </div>
 
-            {filtered.length === 0 ? (
+            {booting && forms.length === 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <tbody className="divide-y divide-line">
+                    {Array.from({ length: 6 }).map((_, i) => <TableRowSkeleton key={i} cols={7} />)}
+                  </tbody>
+                </table>
+              </div>
+            ) : filtered.length === 0 ? (
               <div className="px-5 py-16 text-center">
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-fg-muted">
                   {forms.length === 0
                     ? canCreate
                       ? 'No forms yet. Create your first one to get started.'
@@ -150,7 +176,7 @@ function Forms() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-left text-[11px] font-semibold tracking-wider text-gray-400 uppercase border-b border-gray-100">
+                    <tr className="text-left text-[11px] font-semibold tracking-wider text-fg-subtle uppercase border-b border-line">
                       <th className="px-5 py-3">Form</th>
                       <th className="px-5 py-3">Category</th>
                       <th className="px-5 py-3">Fields</th>
@@ -160,11 +186,11 @@ function Forms() {
                       <th className="px-5 py-3">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-line">
                     {filtered.map((f) => (
-                      <tr key={f.id} className="hover:bg-gray-50/60 transition">
+                      <tr key={f.id} className="hover:bg-surface-2/60 transition">
                         <td className="px-5 py-4">
-                          <p className="font-medium text-gray-800 flex items-center gap-1.5">
+                          <p className="font-medium text-fg flex items-center gap-1.5">
                             {f.name}
                             {f.isPublic && (
                               <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700">
@@ -173,20 +199,20 @@ function Forms() {
                             )}
                           </p>
                           {f.description && (
-                            <p className="text-xs text-gray-500 mt-0.5">{f.description}</p>
+                            <p className="text-xs text-fg-muted mt-0.5">{f.description}</p>
                           )}
                         </td>
                         <td className="px-5 py-4">
                           <span
                             className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                              categoryStyles[f.category] || 'bg-gray-100 text-gray-600'
+                              categoryStyles[f.category] || 'bg-surface-3 text-fg-muted'
                             }`}
                           >
                             {f.category}
                           </span>
                         </td>
-                        <td className="px-5 py-4 text-gray-700">{f.fields}</td>
-                        <td className="px-5 py-4 text-gray-700">{f.submissions ?? 0}</td>
+                        <td className="px-5 py-4 text-fg">{f.fields}</td>
+                        <td className="px-5 py-4 text-fg">{f.submissions ?? 0}</td>
                         <td className="px-5 py-4">
                           {canCreate ? (
                             <button
@@ -195,7 +221,7 @@ function Forms() {
                               className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium transition ${
                                 f.status === 'Published'
                                   ? 'bg-green-50 text-green-600 hover:bg-green-100'
-                                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                  : 'bg-surface-3 text-fg-muted hover:bg-line'
                               }`}
                             >
                               {f.status}
@@ -205,14 +231,14 @@ function Forms() {
                               className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
                                 f.status === 'Published'
                                   ? 'bg-green-50 text-green-600'
-                                  : 'bg-gray-100 text-gray-500'
+                                  : 'bg-surface-3 text-fg-muted'
                               }`}
                             >
                               {f.status}
                             </span>
                           )}
                         </td>
-                        <td className="px-5 py-4 text-xs text-gray-500">{formatDate(f.createdAt)}</td>
+                        <td className="px-5 py-4 text-xs text-fg-muted">{formatDate(f.createdAt)}</td>
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-2">
                             {canSubmit && f.status === 'Published' && f.fields > 0 && (
@@ -227,7 +253,7 @@ function Forms() {
                             {canSubmit && f.status === 'Published' && f.fields === 0 && (
                               <span
                                 title="Form has no fields"
-                                className="px-2.5 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-400 cursor-not-allowed"
+                                className="px-2.5 py-1 rounded-md text-xs font-medium bg-surface-3 text-fg-subtle cursor-not-allowed"
                               >
                                 Fill
                               </span>
@@ -236,7 +262,7 @@ function Forms() {
                               <button
                                 onClick={() => navigate(`/forms/${f.id}/responses`)}
                                 title="View collected responses"
-                                className="px-2.5 py-1 rounded-md text-xs font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition"
+                                className="px-2.5 py-1 rounded-md text-xs font-medium border border-line text-fg-muted hover:bg-surface-2 transition"
                               >
                                 Responses
                               </button>
@@ -254,7 +280,7 @@ function Forms() {
                                   <button
                                     onClick={() => stopSharing(f)}
                                     title="Stop sharing"
-                                    className="px-2 py-1 rounded-md text-xs font-medium text-gray-400 hover:text-red-600 hover:bg-red-50 transition"
+                                    className="px-2 py-1 rounded-md text-xs font-medium text-fg-subtle hover:text-red-600 hover:bg-red-50 transition"
                                   >
                                     Stop
                                   </button>
@@ -282,7 +308,7 @@ function Forms() {
                             )}
                             {canCreate && (
                               <button
-                                onClick={() => { if (window.confirm('Permanently delete this form and all its submissions? This cannot be undone.')) formsStore.remove(f.id) }}
+                                onClick={async () => { if (await confirm({ title: 'Delete form?', message: 'This permanently deletes the form and all its submissions. This cannot be undone.', confirmLabel: 'Delete', danger: true })) formsStore.remove(f.id) }}
                                 title="Delete form permanently"
                                 className="w-9 h-7 rounded-md border border-red-200 bg-red-50 hover:bg-red-100 flex items-center justify-center text-red-500 transition"
                               >

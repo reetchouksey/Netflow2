@@ -56,6 +56,12 @@ export const notificationsStore = {
     unreadCount = 0
     emit()
   },
+  async remove(id) {
+    await api.delete(`/api/notifications/${id}`)
+    cache = cache.filter((n) => n.id !== id)
+    unreadCount = cache.filter((n) => !n.read).length
+    emit()
+  },
   clear() {
     cache = []
     unreadCount = 0

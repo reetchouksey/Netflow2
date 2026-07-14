@@ -7,6 +7,7 @@ import NodeTypesSidebar from './WorkflowCanvas/NodeTypesSidebar'
 import WorkflowEditor from './WorkflowCanvas/WorkflowEditor'
 import NodeConfig from './WorkflowCanvas/NodeConfig'
 import { NODE_DEFAULTS, NODE_STYLES, createNodeId } from './WorkflowCanvas/nodeStyles'
+import { confirm } from '../lib/confirmStore'
 
 const STEPS = [
   { id: 1, label: 'Choose template' },
@@ -146,7 +147,7 @@ const TEMPLATES = [
     id: 'scratch',
     title: 'Start from scratch',
     subtitle: 'Build a custom workflow from an empty canvas',
-    iconClass: 'bg-gray-100 text-gray-500',
+    iconClass: 'bg-surface-3 text-fg-muted',
     defaults: {
       name: '',
       category: 'HR',
@@ -180,7 +181,7 @@ const SLA_OPTIONS = ['Always', 'After first breach', 'Never']
 
 function StepIndicator({ current }) {
   return (
-    <div className="border-b border-gray-200 bg-white">
+    <div className="border-b border-line bg-surface">
       
       <div className="px-6 py-4 flex items-center gap-3">
         {STEPS.map((s, i) => {
@@ -195,7 +196,7 @@ function StepIndicator({ current }) {
                       ? 'bg-green-500 text-white'
                       : isCurrent
                       ? 'bg-indigo-600 text-white'
-                      : 'bg-white border border-gray-300 text-gray-400'
+                      : 'bg-surface border border-line text-fg-subtle'
                   }`}
                 >
                   {isDone ? '✓' : s.id}
@@ -203,17 +204,17 @@ function StepIndicator({ current }) {
                 <span
                   className={`text-sm ${
                     isCurrent
-                      ? 'font-semibold text-gray-900'
+                      ? 'font-semibold text-fg'
                       : isDone
-                      ? 'text-gray-700'
-                      : 'text-gray-500'
+                      ? 'text-fg'
+                      : 'text-fg-muted'
                   }`}
                 >
                   {s.label}
                 </span>
               </div>
               {i < STEPS.length - 1 && (
-                <div className={`flex-1 h-px ${isDone ? 'bg-green-400' : 'bg-gray-200'}`} />
+                <div className={`flex-1 h-px ${isDone ? 'bg-green-400' : 'bg-line'}`} />
               )}
             </React.Fragment>
           )
@@ -229,8 +230,8 @@ function StepIndicator({ current }) {
 function Step1Template({ selected, onSelect }) {
   return (
     <div className="max-w-4xl mx-auto">
-      <h2 className="text-xl font-bold text-gray-900">Choose a template to start with</h2>
-      <p className="text-sm text-gray-500 mt-1 mb-6">
+      <h2 className="text-xl font-bold text-fg">Choose a template to start with</h2>
+      <p className="text-sm text-fg-muted mt-1 mb-6">
         Pick a pre-built workflow or start from scratch. You can customise everything in the next step.
       </p>
 
@@ -244,7 +245,7 @@ function Step1Template({ selected, onSelect }) {
               className={`text-left p-5 rounded-lg border transition ${
                 isSelected
                   ? 'border-indigo-400 bg-indigo-50/40 ring-2 ring-indigo-200'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
+                  : 'border-line bg-surface hover:border-line'
               }`}
             >
               <div
@@ -254,8 +255,8 @@ function Step1Template({ selected, onSelect }) {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                 </svg>
               </div>
-              <p className="font-semibold text-gray-900">{t.title}</p>
-              <p className="text-sm text-gray-500 mt-1">{t.subtitle}</p>
+              <p className="font-semibold text-fg">{t.title}</p>
+              <p className="text-sm text-fg-muted mt-1">{t.subtitle}</p>
               {isSelected && (
                 <p className="mt-3 text-sm font-medium text-indigo-600 flex items-center gap-1">
                   <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
@@ -360,7 +361,7 @@ function Step2Builder({ data, setData }) {
     setData((d) => ({ ...d, connections: typeof next === 'function' ? next(d.connections) : next }))
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+    <div className="bg-surface border border-line rounded-lg overflow-hidden">
       <div className="flex h-[640px] min-h-0">
         <NodeTypesSidebar onAddNode={addNodeAfterTail} />
         <WorkflowEditor
@@ -388,9 +389,9 @@ function Step2Builder({ data, setData }) {
 
 function Section({ title, children }) {
   return (
-    <section className="bg-white border border-gray-200 rounded-lg">
-      <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/60 rounded-t-lg">
-        <h3 className="text-sm font-semibold text-gray-800">{title}</h3>
+    <section className="bg-surface border border-line rounded-lg">
+      <div className="px-5 py-3 border-b border-line bg-surface-2/60 rounded-t-lg">
+        <h3 className="text-sm font-semibold text-fg">{title}</h3>
       </div>
       <div className="p-5 space-y-4">{children}</div>
     </section>
@@ -445,20 +446,20 @@ function Step3Settings({ data, setData, forms }) {
   }
 
   const inputCls =
-    'w-full px-3 py-2 text-sm rounded-md border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400'
+    'w-full px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400'
 
   return (
     <div className="max-w-2xl mx-auto space-y-4">
       <div>
-        <h2 className="text-xl font-bold text-gray-900">Settings &amp; triggers</h2>
-        <p className="text-sm text-gray-500 mt-1">
+        <h2 className="text-xl font-bold text-fg">Settings &amp; triggers</h2>
+        <p className="text-sm text-fg-muted mt-1">
           Configure global settings, form linkage, and access for this workflow.
         </p>
       </div>
 
       <Section title="Basic info">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Workflow name</label>
+          <label className="block text-sm font-medium text-fg mb-1">Workflow name</label>
           <input
             type="text"
             value={settings.name}
@@ -468,7 +469,7 @@ function Step3Settings({ data, setData, forms }) {
           />
         </div>
         <div> 
-          <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+          <label className="block text-sm font-medium text-fg mb-1">Description</label>
           <textarea
             rows={3}
             value={settings.description}
@@ -477,7 +478,7 @@ function Step3Settings({ data, setData, forms }) {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+          <label className="block text-sm font-medium text-fg mb-1">Category</label>
           <select
             value={settings.category}
             onChange={(e) => update({ category: e.target.value })}
@@ -492,7 +493,7 @@ function Step3Settings({ data, setData, forms }) {
 
       <Section title="Form & trigger linkage">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Linked form</label>
+          <label className="block text-sm font-medium text-fg mb-1">Linked form</label>
           <select
             value={settings.linkedFormId || ''}
             onChange={(e) => update({ linkedFormId: e.target.value || null })}
@@ -510,7 +511,7 @@ function Step3Settings({ data, setData, forms }) {
           )}
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Trigger on</label>
+          <label className="block text-sm font-medium text-fg mb-1">Trigger on</label>
           <select
             value={settings.triggerOn}
             onChange={(e) => update({ triggerOn: e.target.value })}
@@ -521,12 +522,12 @@ function Step3Settings({ data, setData, forms }) {
             ))}
           </select>
         </div>
-        <label className="flex items-center gap-2 text-sm text-gray-700">
+        <label className="flex items-center gap-2 text-sm text-fg">
           <input
             type="checkbox"
             checked={settings.preventDuplicates}
             onChange={(e) => update({ preventDuplicates: e.target.checked })}
-            className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-400"
+            className="w-4 h-4 rounded border-line text-indigo-600 focus:ring-indigo-400"
           />
           Prevent duplicate submissions per user per day
         </label>
@@ -534,7 +535,7 @@ function Step3Settings({ data, setData, forms }) {
 
       <Section title="Access & permissions">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Who can submit</label>
+          <label className="block text-sm font-medium text-fg mb-1">Who can submit</label>
           <select
             value={settings.whoCanSubmit}
             onChange={(e) => update({ whoCanSubmit: e.target.value })}
@@ -589,15 +590,15 @@ function Step3Settings({ data, setData, forms }) {
                   })}
                 </div>
               )}
-              <p className="text-[11px] text-gray-500">
+              <p className="text-[11px] text-fg-muted">
                 Only these people can submit the linked form and start this workflow.
               </p>
             </div>
           )}
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Visibility</label>
-          <p className="text-xs text-gray-500 mb-1.5">Who can see and open this form.</p>
+          <label className="block text-sm font-medium text-fg mb-1">Visibility</label>
+          <p className="text-xs text-fg-muted mb-1.5">Who can see and open this form.</p>
           <select
             value={settings.visibility}
             onChange={(e) => update({ visibility: e.target.value })}
@@ -620,12 +621,12 @@ function Step3Settings({ data, setData, forms }) {
                     className={`px-3 py-1.5 text-xs rounded-md border transition flex items-center gap-1.5 ${
                       on
                         ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
-                        : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                        : 'border-line bg-surface text-fg-muted hover:bg-surface-2'
                     }`}
                   >
                     <span
                       className={`w-3.5 h-3.5 rounded-sm flex items-center justify-center ${
-                        on ? 'bg-indigo-600 text-white' : 'border border-gray-300'
+                        on ? 'bg-indigo-600 text-white' : 'border border-line'
                       }`}
                     >
                       {on && (
@@ -689,12 +690,12 @@ function Step3Settings({ data, setData, forms }) {
                   })}
                 </div>
               )}
-              <p className="text-[11px] text-gray-500">Only these people can see and open this form.</p>
+              <p className="text-[11px] text-fg-muted">Only these people can see and open this form.</p>
             </div>
           )}
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-fg mb-1">
             Notify admin on SLA breach
           </label>
           <select
@@ -716,14 +717,14 @@ function Step3Settings({ data, setData, forms }) {
         ].map((opt) => (
           <label
             key={opt.key}
-            className="flex items-center justify-between text-sm text-gray-700"
+            className="flex items-center justify-between text-sm text-fg"
           >
             <span>{opt.label}</span>
             <input
               type="checkbox"
               checked={!!settings.advanced[opt.key]}
               onChange={(e) => updateAdvanced({ [opt.key]: e.target.checked })}
-              className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-400"
+              className="w-4 h-4 rounded border-line text-indigo-600 focus:ring-indigo-400"
             />
           </label>
         ))}
@@ -748,7 +749,7 @@ function PreviewChips({ path, muted = false }) {
             >
               {n.title}
             </span>
-            {i < path.length - 1 && <span className="text-gray-400">→</span>}
+            {i < path.length - 1 && <span className="text-fg-subtle">→</span>}
           </React.Fragment>
         )
       })}
@@ -776,7 +777,10 @@ function Step4Review({ data, forms }) {
     return f ? f.title : '(form not found)'
   }, [forms, settings.linkedFormId])
 
-  const hasApprover = (n) => !!(n.approverId || n.approverRole || n.approver)
+  const hasApprover = (n) =>
+    n.type === 'multiApproval'
+      ? Array.isArray(n.approverIds) && n.approverIds.length > 0
+      : !!(n.approverId || n.approverRole || n.approver)
 
   const flowProblems = graphIssues(nodes, connections)
 
@@ -784,7 +788,7 @@ function Step4Review({ data, forms }) {
     { label: 'Linked form is selected and published', ok: !!settings.linkedFormId },
     {
       label: 'All approval, submit & review nodes have an assigned owner',
-      ok: nodes.filter((n) => n.type === 'approval' || n.type === 'submit' || n.type === 'review').every(hasApprover),
+      ok: nodes.filter((n) => n.type === 'approval' || n.type === 'multiApproval' || n.type === 'submit' || n.type === 'review').every(hasApprover),
     },
     {
       label: 'SLA deadlines configured on all approval nodes',
@@ -802,8 +806,8 @@ function Step4Review({ data, forms }) {
   return (
     <div className="max-w-3xl mx-auto space-y-4">
       <div>
-        <h2 className="text-xl font-bold text-gray-900">Review &amp; publish</h2>
-        <p className="text-sm text-gray-500 mt-1">
+        <h2 className="text-xl font-bold text-fg">Review &amp; publish</h2>
+        <p className="text-sm text-fg-muted mt-1">
           Everything looks good. Review the summary below, then hit Publish.
         </p>
       </div>
@@ -842,8 +846,8 @@ function Step4Review({ data, forms }) {
             ],
           ].map(([k, v]) => (
             <React.Fragment key={k}>
-              <dt className="col-span-1 text-gray-500">{k}</dt>
-              <dd className="col-span-2 font-medium text-gray-800">{v}</dd>
+              <dt className="col-span-1 text-fg-muted">{k}</dt>
+              <dd className="col-span-2 font-medium text-fg">{v}</dd>
             </React.Fragment>
           ))}
         </dl>
@@ -851,7 +855,7 @@ function Step4Review({ data, forms }) {
 
       <Section title="Workflow canvas preview">
         <div className="flex items-center justify-between -mt-2 mb-1">
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-fg-muted">
             {nodes.length} nodes · {connectionsCount} connections
           </span>
         </div>
@@ -877,7 +881,7 @@ function Step4Review({ data, forms }) {
                     </div>
                   )}
                 </div>
-                {i < mainPath.length - 1 && <span className="text-gray-400 leading-9">→</span>}
+                {i < mainPath.length - 1 && <span className="text-fg-subtle leading-9">→</span>}
               </React.Fragment>
             )
           })}
@@ -893,7 +897,7 @@ function Step4Review({ data, forms }) {
       <Section title="Checklist before publishing">
         <ul className="-my-2">
           {checklist.map((c) => (
-            <li key={c.label} className="flex items-center gap-2 py-2 border-b border-gray-100 last:border-0">
+            <li key={c.label} className="flex items-center gap-2 py-2 border-b border-line last:border-0">
               <span
                 className={`w-5 h-5 rounded-md flex items-center justify-center ${
                   c.ok ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'
@@ -903,7 +907,7 @@ function Step4Review({ data, forms }) {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
               </span>
-              <span className="text-sm text-gray-700">{c.label}</span>
+              <span className="text-sm text-fg">{c.label}</span>
             </li>
           ))}
         </ul>
@@ -1040,8 +1044,8 @@ function NewWorkflow() {
     }))
   }
 
-  const handleDiscard = () => {
-    if (window.confirm('Discard this workflow? Unsaved changes will be lost.')) {
+  const handleDiscard = async () => {
+    if (await confirm({ title: 'Discard workflow?', message: 'Unsaved changes will be lost.', confirmLabel: 'Discard', danger: false })) {
       navigate('/workflows')
     }
   }
@@ -1109,7 +1113,7 @@ function NewWorkflow() {
 
   if (loadError) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-surface-2">
         <div className="p-6 rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm max-w-md text-center">
           <p className="font-semibold mb-1">Could not load workflow</p>
           <p>{loadError}</p>
@@ -1120,7 +1124,7 @@ function NewWorkflow() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50 text-gray-800">
+    <div className="min-h-screen flex flex-col bg-surface-2 text-fg">
 
 
       <StepIndicator current={step} />
@@ -1141,13 +1145,13 @@ function NewWorkflow() {
         )}
       </main>
 
-      <footer className="h-16 bg-white border-t border-gray-200 px-6 flex items-center justify-between">
-        <p className="text-sm text-gray-500">Step {step} of {STEPS.length}</p>
+      <footer className="h-16 bg-surface border-t border-line px-6 flex items-center justify-between">
+        <p className="text-sm text-fg-muted">Step {step} of {STEPS.length}</p>
         <div className="flex items-center gap-2">
           {step > 1 && (
             <button
               onClick={() => setStep((s) => s - 1)}
-              className="px-4 py-2 rounded-md border border-gray-200 hover:bg-gray-50 text-sm font-medium text-gray-700 transition flex items-center gap-1.5"
+              className="px-4 py-2 rounded-md border border-line hover:bg-surface-2 text-sm font-medium text-fg transition flex items-center gap-1.5"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -1157,7 +1161,7 @@ function NewWorkflow() {
           )}
           <button
             onClick={handleDiscard}
-            className="px-4 py-2 rounded-md border border-gray-200 hover:bg-gray-50 text-sm font-medium text-gray-700 transition flex items-center gap-1.5"
+            className="px-4 py-2 rounded-md border border-line hover:bg-surface-2 text-sm font-medium text-fg transition flex items-center gap-1.5"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -1167,7 +1171,7 @@ function NewWorkflow() {
           {step < 4 ? (
             <button
               onClick={() => setStep((s) => s + 1)}
-              className="px-4 py-2 rounded-md border border-gray-200 hover:bg-gray-50 text-sm font-medium text-gray-700 transition flex items-center gap-1.5"
+              className="px-4 py-2 rounded-md border border-line hover:bg-surface-2 text-sm font-medium text-fg transition flex items-center gap-1.5"
             >
               Continue
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -1198,10 +1202,12 @@ function NewWorkflow() {
 const NODE_TYPE_TO_API = {
   start: 'start',
   approval: 'approval',
+  multiApproval: 'multiApproval',
   submit: 'submit',
   review: 'review',
   condition: 'condition',
   notify: 'notification',
+  api: 'api',
   timer: 'timer',
   end: 'end'
 }
@@ -1244,7 +1250,7 @@ function graphIssues(nodes, connections) {
         issues.push(`Review "${label(n)}" is missing its ${missing} branch — drag a connection from it to the next step.`)
       }
     }
-    if ((n.type === 'approval' || n.type === 'submit' || n.type === 'notify' || n.type === 'timer') && outFrom(n.id).length === 0) {
+    if ((n.type === 'approval' || n.type === 'multiApproval' || n.type === 'submit' || n.type === 'notify' || n.type === 'api' || n.type === 'timer') && outFrom(n.id).length === 0) {
       issues.push(`"${label(n)}" has no next step — connect it to the following node (e.g. the next approval or End).`)
     }
   }
@@ -1375,6 +1381,18 @@ function serializeNodes(nodes, connections) {
       config.approvalType = n.sequential ? 'sequential' : 'parallel'
       config.requireSignature = n.requireSignature === true
     }
+    if (n.type === 'multiApproval') {
+      // Committee approval: an explicit list of people + how many (N of M) must
+      // approve. The engine builds one shared task from these.
+      const ids = Array.isArray(n.approverIds) ? n.approverIds.filter(Boolean) : []
+      config.approverIds = ids
+      config.requiredApprovals = Math.min(
+        Math.max(1, Number(n.requiredApprovals) || 1),
+        Math.max(1, ids.length)
+      )
+      config.slaHours = toHours(n.slaValue, n.slaUnit)
+      config.requireSignature = n.requireSignature === true
+    }
     if (n.type === 'submit') {
       // Submit node: the assignee fills an inline form + comment to advance.
       // Reuses the approver fields to resolve who the submission task goes to.
@@ -1406,6 +1424,23 @@ function serializeNodes(nodes, connections) {
       const changesPath = rejectTargetByFrom.get(n.id)
       if (forwardPath) config.forwardPath = forwardPath
       if (changesPath) config.changesPath = changesPath
+    }
+    if (n.type === 'api') {
+      // Integration / webhook node: outbound HTTP call config.
+      config.apiUrl = n.apiUrl || ''
+      config.apiMethod = n.apiMethod || 'POST'
+      config.apiHeaders = (Array.isArray(n.apiHeaders) ? n.apiHeaders : [])
+        .filter((h) => h && h.key)
+        .map((h) => ({ key: h.key, value: h.value || '' }))
+      config.apiBody = n.apiBody || ''
+      config.apiAuth = {
+        mode: n.apiAuth?.mode || 'none',
+        token: n.apiAuth?.token || '',
+        username: n.apiAuth?.username || '',
+        password: n.apiAuth?.password || ''
+      }
+      config.saveResponseAs = n.saveResponseAs || ''
+      config.continueOnError = n.continueOnError !== false
     }
     if (n.type === 'condition') {
       // Decision nodes branch on whether the immediately preceding approval
@@ -1455,10 +1490,12 @@ function serializeEdges(connections) {
 const API_NODE_TYPE_TO_UI = {
   start: 'start',
   approval: 'approval',
+  multiApproval: 'multiApproval',
   submit: 'submit',
   review: 'review',
   condition: 'condition',
   notification: 'notify',
+  api: 'api',
   timer: 'timer',
   end: 'end',
   document: 'end',
@@ -1494,6 +1531,19 @@ function deserializeNodes(apiNodes) {
         requireSignature: cfg.requireSignature === true,
       })
     }
+    if (uiType === 'multiApproval') {
+      const { slaValue, slaUnit } = SLA_HOURS_TO_DISPLAY(cfg.slaHours)
+      const ids = Array.isArray(cfg.approverIds)
+        ? cfg.approverIds.map((id) => (id && typeof id === 'object' ? id._id || String(id) : id)).filter(Boolean)
+        : []
+      Object.assign(base, {
+        approverIds: ids,
+        requiredApprovals: Math.min(Math.max(1, Number(cfg.requiredApprovals) || 1), Math.max(1, ids.length)),
+        requireSignature: cfg.requireSignature === true,
+        slaValue,
+        slaUnit,
+      })
+    }
     if (uiType === 'submit') {
       const { slaValue, slaUnit } = SLA_HOURS_TO_DISPLAY(cfg.slaHours)
       Object.assign(base, {
@@ -1508,6 +1558,14 @@ function deserializeNodes(apiNodes) {
               required: !!f.required,
               placeholder: f.placeholder || '',
               options: Array.isArray(f.options) ? f.options : [],
+              conditionalLogic:
+                f.conditionalLogic && typeof f.conditionalLogic === 'object'
+                  ? f.conditionalLogic
+                  : undefined,
+              validation:
+                f.validation && typeof f.validation === 'object'
+                  ? f.validation
+                  : undefined,
             }))
           : [],
         slaValue,
@@ -1522,6 +1580,24 @@ function deserializeNodes(apiNodes) {
         instructions: cfg.instructions || '',
         slaValue,
         slaUnit,
+      })
+    }
+    if (uiType === 'api') {
+      Object.assign(base, {
+        apiUrl: cfg.apiUrl || '',
+        apiMethod: cfg.apiMethod || 'POST',
+        apiHeaders: Array.isArray(cfg.apiHeaders)
+          ? cfg.apiHeaders.map((h) => ({ key: h.key || '', value: h.value || '' }))
+          : [],
+        apiBody: cfg.apiBody || '',
+        apiAuth: {
+          mode: cfg.apiAuth?.mode || 'none',
+          token: cfg.apiAuth?.token || '',
+          username: cfg.apiAuth?.username || '',
+          password: cfg.apiAuth?.password || ''
+        },
+        saveResponseAs: cfg.saveResponseAs || '',
+        continueOnError: cfg.continueOnError !== false,
       })
     }
     if (uiType === 'timer') {

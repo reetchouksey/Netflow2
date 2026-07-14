@@ -14,7 +14,7 @@ const MAX_SCALE = 2;
 const clampScale = (s) => Math.max(MIN_SCALE, Math.min(MAX_SCALE, s));
 
 const zoomBtnCls =
-  "w-7 h-7 inline-flex items-center justify-center rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-900 text-sm font-semibold transition";
+  "w-7 h-7 inline-flex items-center justify-center rounded-md border border-line bg-surface text-fg-muted hover:bg-surface-2 hover:text-fg text-sm font-semibold transition";
 
 export default function WorkflowEditor({
   nodes,
@@ -199,10 +199,10 @@ export default function WorkflowEditor({
   };
 
   return (
-    <section className="flex-1 min-w-0 bg-gray-50/60 flex flex-col">
-      <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-gray-200 bg-white">
+    <section className="flex-1 min-w-0 bg-surface-2/60 flex flex-col">
+      <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-line bg-surface">
         {!readOnly ? (
-          <p className="text-[11px] text-gray-500 leading-tight">
+          <p className="text-[11px] text-fg-muted leading-tight">
             Tip: drag a node’s bottom dot onto another to connect. Scroll to
             zoom, drag empty space to pan.
           </p>
@@ -221,7 +221,7 @@ export default function WorkflowEditor({
           <button
             type="button"
             onClick={resetView}
-            className="h-7 min-w-[3.25rem] px-2 inline-flex items-center justify-center rounded-md border border-gray-200 bg-white text-[11px] font-medium text-gray-600 hover:bg-gray-50 transition"
+            className="h-7 min-w-[3.25rem] px-2 inline-flex items-center justify-center rounded-md border border-line bg-surface text-[11px] font-medium text-fg-muted hover:bg-surface-2 transition"
             title="Reset zoom to 100%"
           >
             {Math.round(view.scale * 100)}%
@@ -237,7 +237,7 @@ export default function WorkflowEditor({
           <button
             type="button"
             onClick={fitView}
-            className="ml-1 h-7 px-2.5 inline-flex items-center justify-center rounded-md border border-gray-200 bg-white text-[11px] font-medium text-gray-700 hover:bg-gray-50 transition"
+            className="ml-1 h-7 px-2.5 inline-flex items-center justify-center rounded-md border border-line bg-surface text-[11px] font-medium text-fg hover:bg-surface-2 transition"
             title="Fit all nodes in view"
           >
             Fit
@@ -469,10 +469,10 @@ function WorkflowNode({
 
       {!readOnly && (
         <div
-          className={`absolute left-1/2 -translate-x-1/2 -top-1.5 w-3 h-3 rounded-full bg-white border-2 transition ${
+          className={`absolute left-1/2 -translate-x-1/2 -top-1.5 w-3 h-3 rounded-full bg-surface border-2 transition ${
             isPendingTarget
               ? "border-blue-500 scale-125"
-              : "border-gray-300 group-hover:border-gray-500"
+              : "border-line group-hover:border-gray-500"
           }`}
         />
       )}
@@ -481,10 +481,10 @@ function WorkflowNode({
         <div
           onMouseDown={onStartConnect}
           title="Drag to connect"
-          className={`absolute left-1/2 -translate-x-1/2 -bottom-1.5 w-3 h-3 rounded-full bg-white border-2 transition cursor-crosshair hover:scale-125 hover:bg-blue-50 ${
+          className={`absolute left-1/2 -translate-x-1/2 -bottom-1.5 w-3 h-3 rounded-full bg-surface border-2 transition cursor-crosshair hover:scale-125 hover:bg-blue-50 ${
             isPendingSource
               ? "border-blue-500 scale-125 bg-blue-50"
-              : "border-gray-300 hover:border-blue-500"
+              : "border-line hover:border-blue-500"
           }`}
         />
       )}
@@ -497,7 +497,7 @@ function WorkflowNode({
             onDelete();
           }}
           title="Delete node"
-          className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-white border border-gray-300 text-gray-500 hover:text-rose-600 hover:border-rose-300 shadow-sm text-[11px] leading-none flex items-center justify-center"
+          className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-surface border border-line text-fg-muted hover:text-rose-600 hover:border-rose-300 shadow-sm text-[11px] leading-none flex items-center justify-center"
         >
           ×
         </button>

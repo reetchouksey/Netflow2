@@ -37,8 +37,8 @@ const STATUS_ORDER = { approved: 0, completed: 1, pending: 2, escalated: 3, reje
 
 function KpiCard({ label, value, valueClass, loading }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg px-5 py-4">
-      <p className="text-[11px] font-semibold tracking-wider text-gray-400">{label}</p>
+    <div className="bg-surface border border-line rounded-lg px-5 py-4">
+      <p className="text-[11px] font-semibold tracking-wider text-fg-subtle">{label}</p>
       <p className={`text-2xl font-semibold mt-1 ${valueClass}`}>
         {loading ? '...' : value}
       </p>
@@ -49,11 +49,11 @@ function KpiCard({ label, value, valueClass, loading }) {
 function HorizontalBar({ label, value, suffix = '', pct, color, valueWidth = 'w-12' }) {
   return (
     <div className="flex items-center gap-3">
-      <span className="w-28 shrink-0 text-xs text-gray-600 text-right truncate">{label}</span>
-      <div className="flex-1 h-3 rounded-full bg-gray-100 overflow-hidden">
+      <span className="w-28 shrink-0 text-xs text-fg-muted text-right truncate">{label}</span>
+      <div className="flex-1 h-3 rounded-full bg-surface-3 overflow-hidden">
         <div className={`h-full rounded-full ${color} transition-all`} style={{ width: `${Math.max(2, pct)}%` }} />
       </div>
-      <span className={`${valueWidth} shrink-0 text-xs text-gray-500 text-right tabular-nums`}>
+      <span className={`${valueWidth} shrink-0 text-xs text-fg-muted text-right tabular-nums`}>
         {value}{suffix}
       </span>
     </div>
@@ -63,12 +63,12 @@ function HorizontalBar({ label, value, suffix = '', pct, color, valueWidth = 'w-
 function CompletionTimeChart({ data, loading }) {
   const max = useMemo(() => Math.max(1, ...data.map((d) => d.hours)), [data])
   return (
-    <section className="bg-white border border-gray-200 rounded-lg px-5 py-5">
-      <h2 className="text-sm font-semibold text-gray-800 mb-4">Avg completion time by month</h2>
+    <section className="bg-surface border border-line rounded-lg px-5 py-5">
+      <h2 className="text-sm font-semibold text-fg mb-4">Avg completion time by month</h2>
       {loading ? (
-        <p className="text-sm text-gray-400">Loading...</p>
+        <p className="text-sm text-fg-subtle">Loading...</p>
       ) : data.length === 0 ? (
-        <p className="text-sm text-gray-400">No completed workflows yet.</p>
+        <p className="text-sm text-fg-subtle">No completed workflows yet — once workflows finish, timing will show up here.</p>
       ) : (
         <div className="space-y-3">
           {data.map((d, i) => (
@@ -111,7 +111,7 @@ function OutcomeDonut({ outcomes }) {
         })}
       </svg>
       <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-2xl font-semibold text-gray-800">
+        <span className="text-2xl font-semibold text-fg">
           {outcomes[0]?.pct?.toFixed(0) || 0}%
         </span>
       </div>
@@ -121,19 +121,19 @@ function OutcomeDonut({ outcomes }) {
 
 function OutcomeBreakdown({ outcomes, departments, loading }) {
   return (
-    <section className="bg-white border border-gray-200 rounded-lg px-5 py-5">
-      <h2 className="text-sm font-semibold text-gray-800 mb-4">Approval outcome breakdown</h2>
+    <section className="bg-surface border border-line rounded-lg px-5 py-5">
+      <h2 className="text-sm font-semibold text-fg mb-4">Approval outcome breakdown</h2>
       {loading ? (
-        <p className="text-sm text-gray-400">Loading...</p>
+        <p className="text-sm text-fg-subtle">Loading...</p>
       ) : outcomes.length === 0 ? (
-        <p className="text-sm text-gray-400">No outcome data yet.</p>
+        <p className="text-sm text-fg-subtle">No outcome data yet — approval results will appear here once requests are decided.</p>
       ) : (
         <>
-          <div className="flex items-center gap-6">
+          <div className="flex flex-wrap items-center gap-6">
             <OutcomeDonut outcomes={outcomes} />
             <ul className="space-y-1.5 text-sm">
               {outcomes.map((o) => (
-                <li key={o.label} className="flex items-center gap-2 text-gray-700">
+                <li key={o.label} className="flex items-center gap-2 text-fg">
                   <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: o.color }} />
                   <span>{o.label} — <span className="font-medium">{o.pct.toFixed(0)}%</span></span>
                 </li>
@@ -143,7 +143,7 @@ function OutcomeBreakdown({ outcomes, departments, loading }) {
 
           {departments.length > 0 && (
             <div className="mt-5 space-y-2.5">
-              <p className="text-xs font-semibold tracking-wider text-gray-400 uppercase mb-2">Approval rate by department</p>
+              <p className="text-xs font-semibold tracking-wider text-fg-subtle uppercase mb-2">Approval rate by department</p>
               {departments.map((d, i) => (
                 <HorizontalBar
                   key={d.name}
@@ -166,12 +166,12 @@ function OutcomeBreakdown({ outcomes, departments, loading }) {
 function SlaBreachTrend({ data, loading }) {
   const max = useMemo(() => Math.max(1, ...data.map((s) => s.value)), [data])
   return (
-    <section className="bg-white border border-gray-200 rounded-lg px-5 py-5">
-      <h2 className="text-sm font-semibold text-gray-800 mb-6">SLA breach trend</h2>
+    <section className="bg-surface border border-line rounded-lg px-5 py-5">
+      <h2 className="text-sm font-semibold text-fg mb-6">SLA breach trend</h2>
       {loading ? (
-        <p className="text-sm text-gray-400">Loading...</p>
+        <p className="text-sm text-fg-subtle">Loading...</p>
       ) : data.length === 0 ? (
-        <p className="text-sm text-gray-400">No SLA breach data.</p>
+        <p className="text-sm text-fg-subtle">No SLA breach data.</p>
       ) : (
         <div className={`grid gap-6 grid-cols-${Math.min(data.length, 8)}`} style={{ gridTemplateColumns: `repeat(${data.length}, minmax(0, 1fr))` }}>
           {data.map((s) => {
@@ -179,12 +179,12 @@ function SlaBreachTrend({ data, loading }) {
             const height = Math.max(4, (s.value / max) * 80)
             return (
               <div key={s.week} className="flex flex-col items-center justify-end">
-                <span className="text-xs font-medium text-gray-700 mb-2">{s.value}</span>
+                <span className="text-xs font-medium text-fg mb-2">{s.value}</span>
                 <div
                   className="w-full rounded-md bg-red-500"
                   style={{ opacity, height: `${height}px` }}
                 />
-                <span className="text-xs text-gray-400 mt-2">{s.week}</span>
+                <span className="text-xs text-fg-subtle mt-2">{s.week}</span>
               </div>
             )
           })}
@@ -207,7 +207,7 @@ function ExportMenu({ onCsv, onXlsx, onPdf, disabled }) {
   }, [open])
 
   const pick = (fn) => () => { fn(); setOpen(false) }
-  const item = 'w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40'
+  const item = 'w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-surface-2 disabled:opacity-40'
 
   return (
     <div className="relative" ref={ref}>
@@ -215,7 +215,7 @@ function ExportMenu({ onCsv, onXlsx, onPdf, disabled }) {
         type="button"
         onClick={() => setOpen((o) => !o)}
         disabled={disabled}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-gray-200 hover:bg-gray-50 text-sm font-medium text-gray-700 transition disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-line hover:bg-surface-2 text-sm font-medium text-fg transition disabled:opacity-50"
       >
         Export
         <svg xmlns="http://www.w3.org/2000/svg" className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -223,7 +223,7 @@ function ExportMenu({ onCsv, onXlsx, onPdf, disabled }) {
         </svg>
       </button>
       {open && (
-        <div className="absolute right-0 mt-1 w-40 bg-white border border-gray-200 rounded-md shadow-lg z-20 py-1">
+        <div className="absolute right-0 mt-1 w-40 bg-surface border border-line rounded-md shadow-lg z-20 py-1">
           <button type="button" className={item} onClick={pick(onCsv)}>CSV (.csv)</button>
           <button type="button" className={item} onClick={pick(onXlsx)}>Excel (.xlsx)</button>
           <button type="button" className={item} onClick={pick(onPdf)}>PDF (.pdf)</button>
@@ -335,7 +335,7 @@ function Analytics() {
     const approvalPct = summary?.approvalRate ?? outcomes.find((o) => o.label.toLowerCase() === 'approved')?.pct
     const slaTotal = slaTrend.reduce((s, x) => s + x.value, 0)
     return [
-      { label: 'AVG COMPLETION TIME', value: completionAvg, valueClass: 'text-gray-800' },
+      { label: 'AVG COMPLETION TIME', value: completionAvg, valueClass: 'text-fg' },
       { label: 'APPROVAL RATE',       value: approvalPct != null ? `${Number(approvalPct).toFixed(0)}%` : '—', valueClass: 'text-green-600' },
       { label: 'SLA BREACHES',        value: summary?.slaBreaches ?? slaTotal, valueClass: 'text-red-500' }
     ]
@@ -435,7 +435,7 @@ function Analytics() {
       <select
         value={range.label}
         onChange={(e) => setRange(RANGES.find((r) => r.label === e.target.value) || RANGES[1])}
-        className="text-sm px-3 py-1.5 rounded-md border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-200 transition"
+        className="text-sm px-3 py-1.5 rounded-md border border-line bg-surface text-fg hover:bg-surface-2 focus:outline-none focus:ring-2 focus:ring-indigo-200 transition"
       >
         {RANGES.map((r) => <option key={r.label}>{r.label}</option>)}
       </select>

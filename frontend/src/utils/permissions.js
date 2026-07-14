@@ -42,3 +42,7 @@ export const isViewer = (user) => roleName(user) === 'Viewer'
 // only ever submits requests, so the UI labels their queue "Requests".
 const APPROVER_ROLES = new Set(['Admin', 'CEO', 'Manager', 'HR', 'VP'])
 export const isApprover = (user) => APPROVER_ROLES.has(roleName(user))
+
+// Platform super admin: manages organizations (create/suspend, domains,
+// features, limits) via the Platform panel. Not an org-level admin.
+export const isSuperAdmin = (user) => roleName(user) === 'SuperAdmin'

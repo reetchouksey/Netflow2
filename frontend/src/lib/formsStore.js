@@ -91,6 +91,15 @@ export const formsStore = {
   async submit(id, formData) {
     return api.post(`/api/forms/${id}/submit`, { formData })
   },
+  async getDraft(id) {
+    return api.get(`/api/forms/${id}/draft`)
+  },
+  async saveDraft(id, formData) {
+    return api.put(`/api/forms/${id}/draft`, { formData })
+  },
+  async discardDraft(id) {
+    return api.delete(`/api/forms/${id}/draft`)
+  },
   async setPublic(id, enabled) {
     const { form } = await api.post(`/api/forms/${id}/public`, { enabled })
     const adapted = adaptForm(form)

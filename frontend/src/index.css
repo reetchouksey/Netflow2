@@ -1,1 +1,48 @@
 @import "tailwindcss";
+
+/*
+  Dark mode
+  ---------
+  Class-based toggle: adding `.dark` to <html> flips every dark: variant AND
+  the semantic color tokens below. The tokens (surface / fg / line) are the
+  primary mechanism — components use `bg-surface`, `text-fg`, `border-line`,
+  etc., and those automatically re-resolve per theme. Accent colors
+  (indigo / emerald / rose / amber / sky …) are intentionally left as Tailwind
+  defaults for v1 and spot-fixed with `dark:` where needed.
+*/
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* Surfaces — page + cards + subtle fills */
+  --color-surface: #ffffff;      /* white  — cards, menus, inputs        */
+  --color-surface-2: #f9fafb;    /* gray-50  — page bg, hover fills       */
+  --color-surface-3: #f3f4f6;    /* gray-100 — stronger fills, tracks     */
+
+  /* Foreground text */
+  --color-fg: #1f2937;           /* gray-800 — primary text / headings    */
+  --color-fg-muted: #4b5563;     /* gray-600 — secondary text             */
+  --color-fg-subtle: #9ca3af;    /* gray-400 — hints, meta, placeholders  */
+
+  /* Lines */
+  --color-line: #e5e7eb;         /* gray-200 — borders, dividers          */
+}
+
+.dark {
+  --color-surface: #0f172a;      /* slate-900 */
+  --color-surface-2: #111a2e;    /* slightly darker than cards for page   */
+  --color-surface-3: #1e293b;    /* slate-800 — fills / hover             */
+
+  --color-fg: #e2e8f0;           /* slate-200 */
+  --color-fg-muted: #94a3b8;     /* slate-400 */
+  --color-fg-subtle: #64748b;    /* slate-500 */
+
+  --color-line: #293548;         /* subtle slate border                   */
+}
+
+html { color-scheme: light; }
+html.dark { color-scheme: dark; }
+
+body {
+  background-color: var(--color-surface-2);
+  color: var(--color-fg);
+}

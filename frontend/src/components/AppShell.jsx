@@ -6,11 +6,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { authStore, useUser, initials, ROLE_LABELS } from '../utils/auth'
+import { themeStore, useTheme } from '../lib/themeStore'
 import { useTasks } from '../lib/tasksStore'
 import { useForms } from '../lib/formsStore'
 import { useWorkflows } from '../lib/workflowsStore'
 import { useUnreadCount } from '../lib/notificationsStore'
-import { canManageUsers, canViewReports, canCreateWorkflow, isApprover } from '../utils/permissions'
+import { canManageUsers, canViewReports, canCreateWorkflow, isApprover, isSuperAdmin } from '../utils/permissions'
 import AssistantWidget from './AssistantWidget'
 
 // ---------- left rail ----------------------------------------------------
@@ -39,7 +40,8 @@ const NAV_SECTIONS = [
   {
     label: 'SETTINGS',
     items: [
-      { key: 'admin', label: 'Admin Panel', to: '/admin', icon: IconAdmin, chevron: true, visible: canManageUsers }
+      { key: 'admin', label: 'Admin Panel', to: '/admin', icon: IconAdmin, chevron: true, visible: canManageUsers },
+      { key: 'platform', label: 'Platform', to: '/platform', icon: IconPlatform, chevron: true, visible: isSuperAdmin }
     ]
   }
 ]
@@ -53,166 +55,180 @@ function visibleSections(user) {
     .filter((section) => section.items.length > 0)
 }
 
-function Sidebar({ user, pendingCount }) {
+// Shared nav rendering — the permission-filtered sections + links. Used by both
+// the desktop push-drawer Sidebar and the mobile overlay drawer. `onNavigate`
+// (optional) fires when a link is tapped, letting the mobile drawer close.
+function NavSections({ user, pendingCount, onNavigate }) {
   const { pathname } = useLocation()
   const sections = visibleSections(user)
-  const [collapsed, setCollapsed] = useState(() => {
-    try { return localStorage.getItem('fs.sidebarCollapsed') === '1' } catch { return false }
-  })
-  const toggleCollapsed = () => setCollapsed((c) => {
-    const next = !c
-    try { localStorage.setItem('fs.sidebarCollapsed', next ? '1' : '0') } catch { /* storage unavailable */ }
-    return next
-  })
 
   return (
-    <aside className={`${collapsed ? 'w-16' : 'w-60'} shrink-0 bg-white border-r border-gray-200 text-gray-700 flex flex-col min-h-screen sticky top-0 h-screen transition-[width] duration-200`}>
-      {/* Logo */}
-      <div className={`pt-5 pb-4 border-b border-gray-100 ${collapsed ? 'px-3' : 'px-5'}`}>
-        <div className={`flex items-center gap-2.5 ${collapsed ? 'justify-center' : ''}`}>
-          <img src="/netflow-icon.png" alt="NetFlow" className="w-9 h-9 rounded-xl shrink-0" />
-          {!collapsed && (
-            <div className="leading-tight">
-              <p className="text-gray-900 font-bold tracking-tight text-[15px]">NetFlow</p>
-              <p className="text-[10px] text-gray-400 mt-0.5">Automate. Orchestrate. Scale.</p>
-            </div>
-          )}
+    <>
+      {sections.map((section) => (
+        <div key={section.label} className="mb-4">
+          <p className="px-2 mb-1.5 text-[10px] font-semibold tracking-widest text-fg-subtle uppercase">
+            {section.label}
+          </p>
+          <ul className="space-y-0.5">
+            {section.items.map((item) => {
+              const Icon = item.icon
+              const label = item.labelFor ? item.labelFor(user) : item.label
+              const isActive = pathname === item.to || pathname.startsWith(item.to + '/')
+              const showBadge = item.key === 'tasks' && pendingCount > 0
+              return (
+                <li key={item.key}>
+                  <Link
+                    to={item.to}
+                    onClick={onNavigate}
+                    className={`relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                      isActive
+                        ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300'
+                        : 'text-fg-muted hover:bg-surface-3 hover:text-fg'
+                    }`}
+                  >
+                    <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-indigo-600' : 'text-fg-muted'}`} />
+                    <span className="flex-1 whitespace-nowrap">{label}</span>
+                    {showBadge && (
+                      <span className="text-[10px] font-semibold rounded-full bg-emerald-500 text-white px-1.5 py-0.5 min-w-[18px] text-center">
+                        {pendingCount}
+                      </span>
+                    )}
+                    {item.chevron && (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-fg-subtle" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
+                    )}
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
         </div>
-      </div>
+      ))}
+    </>
+  )
+}
 
-      {/* Nav */}
-      <nav className="flex-1 px-3 py-4 overflow-hidden">
-        {sections.map((section) => (
-          <div key={section.label} className="mb-4">
-            {!collapsed && (
-              <p className="px-2 mb-1.5 text-[10px] font-semibold tracking-widest text-gray-400 uppercase">
-                {section.label}
-              </p>
-            )}
-            <ul className="space-y-0.5">
-              {section.items.map((item) => {
-                const Icon = item.icon
-                const label = item.labelFor ? item.labelFor(user) : item.label
-                const isActive = pathname === item.to || pathname.startsWith(item.to + '/')
-                const showBadge = item.key === 'tasks' && pendingCount > 0
-                return (
-                  <li key={item.key}>
-                    <Link
-                      to={item.to}
-                      title={collapsed ? label : undefined}
-                      className={`relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                        collapsed ? 'justify-center' : ''
-                      } ${
-                        isActive
-                          ? 'bg-indigo-50 text-indigo-700'
-                          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                      }`}
-                    >
-                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-indigo-600' : 'text-gray-500'}`} />
-                      {!collapsed && <span className="flex-1">{label}</span>}
-                      {!collapsed && showBadge && (
-                        <span className="text-[10px] font-semibold rounded-full bg-emerald-500 text-white px-1.5 py-0.5 min-w-[18px] text-center">
-                          {pendingCount}
-                        </span>
-                      )}
-                      {collapsed && showBadge && (
-                        <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500" title={`${pendingCount} pending`} />
-                      )}
-                      {!collapsed && item.chevron && (
-                        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                        </svg>
-                      )}
-                    </Link>
-                  </li>
-                )
-              })}
-            </ul>
-          </div>
-        ))}
+// Push drawer: a full labeled sidebar that occupies real layout width when
+// `open` (so page content is pushed, not covered) and collapses to zero width
+// when closed. Desktop only (md+); on phones the bottom tab bar + overlay
+// drawer take over. The open/close toggle lives in the top bar.
+function Sidebar({ user, pendingCount, open }) {
+  return (
+    <aside
+      aria-hidden={!open}
+      className={`hidden md:block shrink-0 overflow-hidden bg-surface border-line text-fg sticky top-0 h-screen transition-[width] duration-200 ease-in-out ${open ? 'w-60 border-r' : 'w-0'}`}
+    >
+      {/* Fixed inner width keeps nav from reflowing while the rail animates */}
+      <nav className="w-60 h-full px-3 py-5 overflow-y-auto flex flex-col">
+        <NavSections user={user} pendingCount={pendingCount} />
       </nav>
-
-      {/* Collapse toggle */}
-      <div className="px-3 pb-4 border-t border-gray-100 pt-3">
-        <button
-          type="button"
-          onClick={toggleCollapsed}
-          className={`w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition ${collapsed ? 'justify-center' : ''}`}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className={`w-4 h-4 shrink-0 transition-transform duration-200 ${collapsed ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-          {!collapsed && 'Collapse'}
-        </button>
-      </div>
     </aside>
   )
 }
 
-// ---------- floating icon dock (non-employees) ----------------------------
-
-function IconDock({ user, pendingCount }) {
+// Fixed bottom tab bar for phones (md:hidden). Shows the top destinations; when
+// the role has more items than fit, a Menu tab opens the full nav in an overlay
+// drawer. Reuses each item's icon + label and the Tasks pending badge.
+function BottomTabBar({ user, pendingCount, menuOpen, onOpenMenu }) {
   const { pathname } = useLocation()
-  const navigate = useNavigate()
-  const [hovered, setHovered] = useState(false)
-  const sections = visibleSections(user)
-  const allItems = sections.flatMap((s) => s.items)
-
-  const handleLogout = async () => {
-    await authStore.logout()
-    navigate('/login')
-  }
+  const flat = visibleSections(user).flatMap((s) => s.items)
+  const useMenu = flat.length > 5
+  const primary = useMenu ? flat.slice(0, 4) : flat.slice(0, 5)
+  const isActive = (to) => pathname === to || pathname.startsWith(to + '/')
 
   return (
-    <div
-      className={`fixed left-0 top-0 bottom-0 z-30 flex flex-col items-start gap-1 bg-white border-r border-gray-200 py-3 shadow-sm transition-all duration-200 overflow-hidden ${hovered ? 'w-44 px-2' : 'w-12 px-1.5'}`}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+    <nav
+      aria-label="Primary"
+      className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-surface border-t border-line pb-[env(safe-area-inset-bottom)]"
     >
-      {/* Nav icons */}
-      <div className="flex-1 flex flex-col gap-1 w-full">
-        {allItems.map((item) => {
+      <div className="flex items-stretch">
+        {primary.map((item) => {
           const Icon = item.icon
           const label = item.labelFor ? item.labelFor(user) : item.label
-          const isActive = pathname === item.to || pathname.startsWith(item.to + '/')
+          const active = isActive(item.to)
           const showBadge = item.key === 'tasks' && pendingCount > 0
           return (
             <Link
               key={item.key}
               to={item.to}
-              title={!hovered ? label : undefined}
-              className={`relative flex items-center gap-2.5 rounded-xl transition-all w-full py-2 ${hovered ? 'px-2' : 'justify-center px-0'} ${
-                isActive
-                  ? 'bg-indigo-50 text-indigo-700'
-                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+              className={`relative flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium transition-colors ${
+                active ? 'text-indigo-600 dark:text-indigo-300' : 'text-fg-muted'
               }`}
             >
-              <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-indigo-600' : 'text-gray-500'}`} />
-              {hovered && <span className="text-sm font-medium whitespace-nowrap">{label}</span>}
-              {showBadge && (
-                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500" />
-              )}
+              <span className="relative">
+                <Icon className="w-5 h-5" />
+                {showBadge && (
+                  <span className="absolute -top-1.5 -right-2.5 min-w-[16px] h-4 px-1 rounded-full bg-emerald-500 text-white text-[10px] font-semibold flex items-center justify-center">
+                    {pendingCount > 9 ? '9+' : pendingCount}
+                  </span>
+                )}
+              </span>
+              <span className="max-w-full truncate">{label}</span>
             </Link>
           )
         })}
+        {useMenu && (
+          <button
+            type="button"
+            onClick={onOpenMenu}
+            aria-expanded={menuOpen}
+            aria-controls="mobile-nav-drawer"
+            aria-label="Open menu"
+            className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium transition-colors ${
+              menuOpen ? 'text-indigo-600 dark:text-indigo-300' : 'text-fg-muted'
+            }`}
+          >
+            <IconMenu className="w-5 h-5" />
+            <span>Menu</span>
+          </button>
+        )}
       </div>
+    </nav>
+  )
+}
 
-      {/* Logout button — pinned to bottom */}
-      <div className="w-full pt-2 border-t border-gray-100">
-        <button
-          type="button"
-          onClick={handleLogout}
-          title={!hovered ? 'Sign out' : undefined}
-          className={`flex items-center gap-2.5 w-full py-2 rounded-xl text-gray-400 hover:bg-red-50 hover:text-red-500 transition-all ${hovered ? 'px-2' : 'justify-center px-0'}`}
-        >
-          <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1" />
-          </svg>
-          {hovered && <span className="text-sm font-medium whitespace-nowrap">Sign out</span>}
-        </button>
-      </div>
+// Slide-in overlay that reveals the full nav on phones. Opened by the bottom
+// bar's Menu tab; closes on backdrop click, Esc, or tapping a link.
+function MobileNavDrawer({ user, pendingCount, open, onClose }) {
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+
+  return (
+    <div className="md:hidden" aria-hidden={!open}>
+      <div
+        onClick={onClose}
+        className={`fixed inset-0 z-40 bg-black/40 transition-opacity duration-200 ${open ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+      />
+      <aside
+        id="mobile-nav-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Navigation menu"
+        className={`fixed inset-y-0 left-0 z-50 w-72 max-w-[80%] bg-surface border-r border-line text-fg shadow-xl transition-transform duration-200 ease-in-out ${open ? 'translate-x-0' : '-translate-x-full'}`}
+      >
+        <div className="h-16 flex items-center gap-2 px-4 border-b border-line">
+          <img src="/netflow-icon.png" alt="NetFlow" className="w-8 h-8 rounded-xl" />
+          <span className="font-bold text-fg text-[15px] tracking-tight">NetFlow</span>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close menu"
+            className="ml-auto w-9 h-9 rounded-md flex items-center justify-center text-fg-muted hover:bg-surface-3 transition"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <nav className="px-3 py-4 overflow-y-auto h-[calc(100dvh-4rem)] flex flex-col">
+          <NavSections user={user} pendingCount={pendingCount} onNavigate={onClose} />
+        </nav>
+      </aside>
     </div>
   )
 }
@@ -223,7 +239,7 @@ const TYPE_BADGE = {
   Request:  'bg-blue-50 text-blue-600',
   Form:     'bg-emerald-50 text-emerald-600',
   Workflow: 'bg-violet-50 text-violet-600',
-  Page:     'bg-gray-100 text-gray-500',
+  Page:     'bg-surface-3 text-fg-muted',
 }
 
 // Navigable pages the current user is actually allowed to open.
@@ -335,7 +351,7 @@ function GlobalSearch({ user }) {
   return (
     <div ref={boxRef} className="flex-1 max-w-2xl relative">
       <div className="relative">
-        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-fg-subtle pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
           <circle cx="11" cy="11" r="7" /><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35" />
         </svg>
         <input
@@ -346,17 +362,17 @@ function GlobalSearch({ user }) {
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
           placeholder="Search requests, forms, workflows…"
-          className="w-full pl-9 pr-16 py-2 text-sm text-gray-700 border border-gray-200 rounded-lg bg-gray-50 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:bg-white transition"
+          className="w-full pl-9 pr-4 sm:pr-16 py-2 text-sm text-fg border border-line rounded-lg bg-surface-2 placeholder-fg-subtle focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:bg-surface transition"
         />
-        <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 border border-gray-200 rounded px-1.5 py-0.5 bg-white font-sans pointer-events-none">
+        <kbd className="hidden sm:block absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-fg-subtle border border-line rounded px-1.5 py-0.5 bg-surface font-sans pointer-events-none">
           Ctrl K
         </kbd>
       </div>
 
       {showDropdown && (
-        <div className="absolute left-0 right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-30">
+        <div className="absolute left-0 right-0 mt-2 bg-surface border border-line rounded-xl shadow-lg overflow-hidden z-30">
           {results.length === 0 ? (
-            <div className="px-4 py-6 text-center text-xs text-gray-400">No matches for &ldquo;{query.trim()}&rdquo;</div>
+            <div className="px-4 py-6 text-center text-xs text-fg-subtle">No matches for &ldquo;{query.trim()}&rdquo;</div>
           ) : (
             <ul className="max-h-80 overflow-y-auto py-1">
               {results.map((r, i) => (
@@ -365,12 +381,12 @@ function GlobalSearch({ user }) {
                     type="button"
                     onMouseEnter={() => setActiveIdx(i)}
                     onClick={() => go(r)}
-                    className={`w-full text-left px-3 py-2 flex items-center gap-3 transition ${i === activeIdx ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}
+                    className={`w-full text-left px-3 py-2 flex items-center gap-3 transition ${i === activeIdx ? 'bg-indigo-50' : 'hover:bg-surface-2'}`}
                   >
                     <span className={`shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded ${TYPE_BADGE[r.type] || TYPE_BADGE.Page}`}>{r.type}</span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-xs font-medium text-gray-800 truncate">{r.label}</span>
-                      <span className="block text-[10px] text-gray-400 truncate">{r.sub}</span>
+                      <span className="block text-xs font-medium text-fg truncate">{r.label}</span>
+                      <span className="block text-[10px] text-fg-subtle truncate">{r.sub}</span>
                     </span>
                   </button>
                 </li>
@@ -385,19 +401,32 @@ function GlobalSearch({ user }) {
 
 // ---------- top bar ------------------------------------------------------
 
-function TopBar({ user, unreadCount }) {
+function TopBar({ user, unreadCount, onToggleSidebar }) {
   const navigate = useNavigate()
+  const theme = useTheme()
   const displayName = user?.name || 'Guest'
   const roleLabel = user?.role?.name
     ? (ROLE_LABELS[user.role.name] || user.role.name)
     : 'Member'
 
   return (
-    <header className="h-16 bg-white border-b border-gray-200 px-6 flex items-center gap-4 sticky top-0 z-20">
+    <header className="h-16 bg-surface border-b border-line px-4 md:px-6 flex items-center gap-3 md:gap-4 sticky top-0 z-20">
+      {/* Sidebar open/close toggle */}
+      <button
+        type="button"
+        onClick={onToggleSidebar}
+        aria-label="Toggle sidebar"
+        className="w-9 h-9 -ml-1 rounded-md hidden md:flex items-center justify-center text-fg-muted hover:bg-surface-3 transition shrink-0"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+
       {/* Logo — shown for all users in the top bar */}
       <Link to="/dashboard" className="flex items-center gap-2 shrink-0 mr-2">
         <img src="/netflow-icon.png" alt="NetFlow" className="w-8 h-8 rounded-xl" />
-        <span className="font-bold text-gray-900 text-[15px] tracking-tight">NetFlow</span>
+        <span className="hidden sm:inline font-bold text-fg text-[15px] tracking-tight">NetFlow</span>
       </Link>
 
       {/* Global search — works for every role */}
@@ -406,9 +435,27 @@ function TopBar({ user, unreadCount }) {
       <div className="flex items-center gap-2 ml-auto">
         <button
           type="button"
+          onClick={() => themeStore.toggle()}
+          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+          className="w-9 h-9 rounded-md flex items-center justify-center text-fg-muted hover:bg-surface-3 transition"
+        >
+          {theme === 'dark' ? (
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="4" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41" />
+            </svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+            </svg>
+          )}
+        </button>
+        <button
+          type="button"
           onClick={() => navigate('/notifications')}
           aria-label="Notifications"
-          className="relative w-9 h-9 rounded-md flex items-center justify-center text-gray-500 hover:bg-gray-100 transition"
+          className="relative w-9 h-9 rounded-md flex items-center justify-center text-fg-muted hover:bg-surface-3 transition"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.4-1.4A2 2 0 0118 14.17V11a6 6 0 10-12 0v3.17a2 2 0 01-.6 1.43L4 17h5m6 0a3 3 0 11-6 0" />
@@ -420,7 +467,7 @@ function TopBar({ user, unreadCount }) {
           )}
         </button>
 
-        <div className="w-px h-8 bg-gray-200 mx-1" />
+        <div className="hidden sm:block w-px h-8 bg-line mx-1" />
 
         <UserMenu user={user} displayName={displayName} roleLabel={roleLabel} />
       </div>
@@ -449,34 +496,34 @@ function UserMenu({ user, displayName, roleLabel }) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-md hover:bg-gray-100 transition"
+        className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-md hover:bg-surface-3 transition"
       >
         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-white flex items-center justify-center text-xs font-semibold">
           {initials(displayName)}
         </div>
-        <div className="text-left leading-tight">
-          <p className="text-sm font-medium text-gray-800 max-w-[10rem] truncate">{displayName}</p>
-          <p className="text-[11px] text-gray-500">{roleLabel}</p>
+        <div className="hidden sm:block text-left leading-tight">
+          <p className="text-sm font-medium text-fg max-w-[10rem] truncate">{displayName}</p>
+          <p className="text-[11px] text-fg-muted">{roleLabel}</p>
         </div>
-        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-gray-400 ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-fg-subtle ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
         </svg>
       </button>
       {open && user && (
         <div
-          className="absolute right-0 mt-2 w-44 bg-white border border-gray-200 rounded-md shadow-lg z-30 py-1"
+          className="absolute right-0 mt-2 w-44 bg-surface border border-line rounded-md shadow-lg z-30 py-1"
           onMouseLeave={() => setOpen(false)}
         >
           <button
             onClick={() => { setOpen(false); navigate('/profile') }}
-            className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            className="w-full text-left px-3 py-2 text-sm text-fg hover:bg-surface-2"
           >
             Your profile
           </button>
-          <div className="my-1 h-px bg-gray-100" />
+          <div className="my-1 h-px bg-surface-3" />
           <button
             onClick={handleLogout}
-            className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-red-50 hover:text-red-600"
+            className="w-full text-left px-3 py-2 text-sm text-fg hover:bg-red-50 hover:text-red-600"
           >
             Sign out
           </button>
@@ -494,11 +541,27 @@ export default function AppShell({
   actions,
   back,
   children,
-  mainClass = 'flex-1 p-6 overflow-y-auto'
+  mainClass = 'flex-1 p-4 md:p-6 pb-24 md:pb-6 overflow-y-auto'
 }) {
   const user = useUser()
   const tasks = useTasks()
   const unreadCount = useUnreadCount()
+  const { pathname } = useLocation()
+
+  // Mobile-only overlay nav (opened from the bottom bar's Menu tab). Not
+  // persisted; auto-closes whenever the route changes.
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  useEffect(() => { setMobileMenuOpen(false) }, [pathname])
+
+  // Push-drawer open/closed state — user preference, persisted (default open).
+  const [navOpen, setNavOpen] = useState(() => {
+    try { return localStorage.getItem('fs.navOpen') !== '0' } catch { return true }
+  })
+  const toggleNav = () => setNavOpen((o) => {
+    const next = !o
+    try { localStorage.setItem('fs.navOpen', next ? '1' : '0') } catch { /* storage unavailable */ }
+    return next
+  })
 
   // Only count approvals genuinely waiting on me (assigned to me + pending),
   // not requests I submitted that happen to be pending on someone else.
@@ -512,12 +575,12 @@ export default function AppShell({
   const hasTitleRow = title || subtitle || actions || back
 
   return (
-    <div className="min-h-screen flex bg-gray-50/80 text-gray-800">
-      {/* Floating icon dock — shown for all roles */}
-      <IconDock user={user} pendingCount={pendingCount} />
+    <div className="min-h-screen flex bg-surface-2/80 text-fg">
+      {/* Push-drawer sidebar — occupies width when open, pushing content */}
+      <Sidebar user={user} pendingCount={pendingCount} open={navOpen} />
 
-      <div className="flex-1 flex flex-col min-w-0 pl-14">
-        <TopBar user={user} unreadCount={unreadCount} />
+      <div className="flex-1 flex flex-col min-w-0">
+        <TopBar user={user} unreadCount={unreadCount} onToggleSidebar={toggleNav} />
 
         <main className={mainClass}>
           {hasTitleRow && (
@@ -526,7 +589,7 @@ export default function AppShell({
                 {back && (
                   <Link
                     to={back.to}
-                    className="text-xs text-gray-500 hover:text-gray-700 inline-flex items-center gap-1 mb-1"
+                    className="text-xs text-fg-muted hover:text-fg inline-flex items-center gap-1 mb-1"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -535,12 +598,12 @@ export default function AppShell({
                   </Link>
                 )}
                 {title && (
-                  <h1 className="text-2xl font-bold text-gray-900 leading-tight">
+                  <h1 className="text-2xl font-bold text-fg leading-tight">
                     {title}
                   </h1>
                 )}
                 {subtitle && (
-                  <div className="text-sm text-gray-500 mt-1">{subtitle}</div>
+                  <div className="text-sm text-fg-muted mt-1">{subtitle}</div>
                 )}
               </div>
               {actions && (
@@ -553,6 +616,20 @@ export default function AppShell({
           {children}
         </main>
       </div>
+
+      {/* Mobile-only: fixed bottom tab bar + slide-in nav overlay (md:hidden) */}
+      <BottomTabBar
+        user={user}
+        pendingCount={pendingCount}
+        menuOpen={mobileMenuOpen}
+        onOpenMenu={() => setMobileMenuOpen(true)}
+      />
+      <MobileNavDrawer
+        user={user}
+        pendingCount={pendingCount}
+        open={mobileMenuOpen}
+        onClose={() => setMobileMenuOpen(false)}
+      />
 
       {/* Floating AI assistant — hidden automatically when no LLM is configured */}
       <AssistantWidget />
@@ -585,4 +662,10 @@ function IconAdmin(p) { return (
 )}
 function IconRouting(p) { return (
   <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><circle cx="6" cy="6" r="2.5" /><circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="12" r="2.5" /><path strokeLinecap="round" strokeLinejoin="round" d="M8.5 6H13a2.5 2.5 0 012.5 2.5M8.5 18H13a2.5 2.5 0 002.5-2.5" /></svg>
+)}
+function IconPlatform(p) { return (
+  <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M9 12h.01M9 15h.01M15 9h.01M15 12h.01M15 15h.01" /></svg>
+)}
+function IconMenu(p) { return (
+  <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
 )}

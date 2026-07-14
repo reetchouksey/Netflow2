@@ -5,8 +5,26 @@ import { useNavigate } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import { useTasks, tasksStore, TASK_FILTERS } from '../lib/tasksStore'
 import { useUser } from '../utils/auth'
+import { confirm } from '../lib/confirmStore'
+import { ListRowSkeleton } from '../components/Skeleton'
+import EmptyState from '../components/EmptyState'
 
 const APPROVER_ROLES = new Set(['Admin', 'CEO', 'Manager', 'HR', 'VP'])
+
+const SORTS = [
+  { value: 'date_desc', label: 'Newest first' },
+  { value: 'date_asc',  label: 'Oldest first' },
+  { value: 'name_asc',  label: 'Name (A–Z)' },
+  { value: 'name_desc', label: 'Name (Z–A)' },
+  { value: 'status',    label: 'Status' }
+]
+
+// A request is deletable only once it's finished. Workflow requests use the
+// parent execution's status; standalone tasks fall back to their own status.
+const FINISHED_EXEC = new Set(['completed', 'failed', 'cancelled'])
+const RESOLVED_STATUS = new Set(['Approved', 'Rejected', 'Cancelled'])
+const isRequestFinished = (task) =>
+  task.executionId ? FINISHED_EXEC.has(task.executionStatus) : RESOLVED_STATUS.has(task.status)
 
 const formatTimeLeft = (minutes) => {
   if (minutes < 0) return null
@@ -35,11 +53,11 @@ const statusBadge = (status) => {
     case 'Escalated':
       return { label: 'Escalated', cls: 'bg-orange-50 text-orange-700 border-orange-200' }
     default:
-      return { label: 'Pending your approval', cls: 'bg-gray-50 text-gray-600 border-gray-200' }
+      return { label: 'Pending your approval', cls: 'bg-surface-2 text-fg-muted border-line' }
   }
 }
 
-function TaskCard({ task, onOpen, onApprove, onReject, busy, canAct, showApprover }) {
+function TaskCard({ task, onOpen, onApprove, onReject, busy, canAct, showApprover, canDelete, onDelete }) {
   const sla = slaBadge(task)
   const status = statusBadge(task.status)
   const isResolved = task.status !== 'Pending'
@@ -47,18 +65,18 @@ function TaskCard({ task, onOpen, onApprove, onReject, busy, canAct, showApprove
   return (
     <div
       onClick={() => onOpen(task.id)}
-      className="flex items-start gap-4 px-5 py-4 bg-white rounded-lg border border-gray-200 hover:border-indigo-300 hover:shadow-sm transition cursor-pointer"
+      className="flex items-start gap-4 px-5 py-4 bg-surface rounded-lg border border-line hover:border-indigo-300 hover:shadow-sm transition cursor-pointer"
     >
       <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${task.avatarColor}`}>
         {task.initials}
       </div>
 
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-gray-800 truncate">
+        <p className="text-sm font-semibold text-fg truncate">
           {task.title}
-          <span className="text-gray-400 font-normal"> · {task.detail}</span>
+          <span className="text-fg-subtle font-normal"> · {task.detail}</span>
         </p>
-        <p className="text-xs text-gray-500 mt-0.5">
+        <p className="text-xs text-fg-muted mt-0.5">
           {showApprover
             ? `With ${task.approver || 'an approver'} · ${task.workflow}`
             : `${task.requester} · ${task.workflow}`}
@@ -87,7 +105,7 @@ function TaskCard({ task, onOpen, onApprove, onReject, busy, canAct, showApprove
             }}
             className={`px-4 py-1 text-xs font-medium rounded-md border transition ${
               isResolved || busy
-                ? 'border-gray-200 text-gray-400 cursor-not-allowed'
+                ? 'border-line text-fg-subtle cursor-not-allowed'
                 : 'border-green-200 text-green-700 hover:bg-green-50'
             }`}
           >
@@ -102,7 +120,7 @@ function TaskCard({ task, onOpen, onApprove, onReject, busy, canAct, showApprove
             }}
             className={`px-4 py-1 text-xs font-medium rounded-md border transition ${
               isResolved || busy
-                ? 'border-gray-200 text-gray-400 cursor-not-allowed'
+                ? 'border-line text-fg-subtle cursor-not-allowed'
                 : 'border-red-200 text-red-600 hover:bg-red-50'
             }`}
           >
@@ -110,8 +128,22 @@ function TaskCard({ task, onOpen, onApprove, onReject, busy, canAct, showApprove
           </button>
         </div>
       ) : (
-        <div className="shrink-0 self-center">
-          <span className="text-xs text-gray-400">View →</span>
+        <div className="shrink-0 self-center flex items-center gap-2">
+          {canDelete && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onDelete(task.id) }}
+              disabled={busy === 'delete'}
+              aria-label="Delete request"
+              title="Delete request"
+              className="p-1 rounded-md text-fg-subtle hover:text-red-500 hover:bg-red-50 disabled:opacity-50 transition"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-1 0v12a1 1 0 01-1 1H8a1 1 0 01-1-1V7m3 4v6m4-6v6" />
+              </svg>
+            </button>
+          )}
+          <span className="text-xs text-fg-subtle">View →</span>
         </div>
       )}
     </div>
@@ -128,6 +160,7 @@ function TaskInbox() {
   // Approvers default to their approval queue; everyone else to their requests.
   const [scope, setScope] = useState(isApprover ? 'assigned' : 'submitted')
   const [filter, setFilter] = useState('All tasks')
+  const [sort, setSort] = useState('date_desc')
   const [busyMap, setBusyMap] = useState({})
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -151,6 +184,29 @@ function TaskInbox() {
       await tasksStore.refresh()
     } catch (err) {
       setError(err.message || 'Action failed')
+    } finally {
+      setBusyMap((m) => {
+        const next = { ...m }
+        delete next[id]
+        return next
+      })
+    }
+  }
+
+  const handleDelete = async (id) => {
+    const ok = await confirm({
+      title: 'Delete request?',
+      message: 'Permanently delete this request and its history? This cannot be undone.',
+      confirmLabel: 'Delete',
+      danger: true,
+    })
+    if (!ok) return
+    setBusyMap((m) => ({ ...m, [id]: 'delete' }))
+    setError('')
+    try {
+      await tasksStore.deleteRequest(id)
+    } catch (err) {
+      setError(err.message || 'Delete failed')
     } finally {
       setBusyMap((m) => {
         const next = { ...m }
@@ -190,6 +246,19 @@ function TaskInbox() {
   // Group the visible tasks by department, departments sorted alphabetically,
   // and within each department by submission date/time (newest first).
   const groups = useMemo(() => {
+    const byDate = (a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0)
+    const byName = (a, b) => (a.title || '').localeCompare(b.title || '')
+    const sortItems = (arr) => {
+      const copy = [...arr]
+      switch (sort) {
+        case 'date_asc':  return copy.sort(byDate)
+        case 'name_asc':  return copy.sort(byName)
+        case 'name_desc': return copy.sort((a, b) => byName(b, a))
+        case 'status':    return copy.sort((a, b) => (a.status || '').localeCompare(b.status || '') || byDate(b, a))
+        default:          return copy.sort((a, b) => byDate(b, a)) // date_desc — newest first
+      }
+    }
+
     const byDept = new Map()
     for (const t of filtered) {
       const dept = t.department || 'General'
@@ -198,13 +267,8 @@ function TaskInbox() {
     }
     return [...byDept.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([department, items]) => ({
-        department,
-        items: [...items].sort(
-          (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
-        )
-      }))
-  }, [filtered])
+      .map(([department, items]) => ({ department, items: sortItems(items) }))
+  }, [filtered, sort])
 
   const tabs = [
     { key: 'submitted', label: 'My requests' },
@@ -218,7 +282,7 @@ function TaskInbox() {
 
   const actions = (
     <>
-      <div className="inline-flex rounded-md border border-gray-200 bg-white p-0.5">
+      <div className="inline-flex rounded-md border border-line bg-surface p-0.5">
         {tabs.map((t) => (
           <button
             key={t.key}
@@ -227,7 +291,7 @@ function TaskInbox() {
             className={`text-sm px-3 py-1 rounded transition ${
               scope === t.key
                 ? 'bg-indigo-600 text-white'
-                : 'text-gray-600 hover:bg-gray-50'
+                : 'text-fg-muted hover:bg-surface-2'
             }`}
           >
             {t.label}
@@ -237,14 +301,22 @@ function TaskInbox() {
       <select
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
-        className="text-sm px-3 py-1.5 rounded-md border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-200 transition"
+        className="text-sm px-3 py-1.5 rounded-md border border-line bg-surface text-fg hover:bg-surface-2 focus:outline-none focus:ring-2 focus:ring-indigo-200 transition"
       >
         {TASK_FILTERS.map((f) => <option key={f}>{f}</option>)}
+      </select>
+      <select
+        value={sort}
+        onChange={(e) => setSort(e.target.value)}
+        aria-label="Sort requests"
+        className="text-sm px-3 py-1.5 rounded-md border border-line bg-surface text-fg hover:bg-surface-2 focus:outline-none focus:ring-2 focus:ring-indigo-200 transition"
+      >
+        {SORTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
       </select>
       <button
         type="button"
         onClick={() => tasksStore.refresh()}
-        className="text-sm px-3 py-1.5 rounded-md border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition"
+        className="text-sm px-3 py-1.5 rounded-md border border-line bg-surface text-fg hover:bg-surface-2 transition"
         title="Refresh"
       >
         Refresh
@@ -265,23 +337,42 @@ function TaskInbox() {
           )}
 
           {loading && tasks.length === 0 ? (
-            <div className="bg-white border border-dashed border-gray-200 rounded-lg py-16 text-center">
-              <p className="text-sm text-gray-500">Loading {onRequests ? 'requests' : 'tasks'}...</p>
+            <div className="bg-surface border border-line rounded-lg divide-y divide-line">
+              {Array.from({ length: 6 }).map((_, i) => <ListRowSkeleton key={i} />)}
             </div>
           ) : filtered.length === 0 ? (
-            <div className="bg-white border border-dashed border-gray-200 rounded-lg py-16 text-center">
-              <p className="text-sm text-gray-500">
-                {scope === 'submitted'
-                  ? 'You have not submitted any requests yet. Fill a form to get started.'
-                  : 'Nothing assigned to you matches this filter.'}
-              </p>
-              {filter !== 'All tasks' && (
-                <button
-                  onClick={() => setFilter('All tasks')}
-                  className="mt-3 text-xs text-indigo-600 hover:text-indigo-700 font-medium"
-                >
-                  Show all
-                </button>
+            <div className="bg-surface border border-dashed border-line rounded-lg py-16">
+              {filter !== 'All tasks' ? (
+                <EmptyState
+                  title="Nothing matches this filter"
+                  description="Try a different filter to see more."
+                  action={
+                    <button
+                      onClick={() => setFilter('All tasks')}
+                      className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                    >
+                      Show all
+                    </button>
+                  }
+                />
+              ) : scope === 'submitted' ? (
+                <EmptyState
+                  title="No requests yet"
+                  description="You haven't submitted any requests yet. Fill out a form to get started."
+                  action={
+                    <button
+                      onClick={() => navigate('/forms')}
+                      className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium shadow-sm transition"
+                    >
+                      Browse forms
+                    </button>
+                  }
+                />
+              ) : (
+                <EmptyState
+                  title="You're all caught up"
+                  description="Nothing is waiting on your approval right now."
+                />
               )}
             </div>
           ) : (
@@ -289,13 +380,13 @@ function TaskInbox() {
               {groups.map((group) => (
                 <div key={group.department}>
                   <div className="flex items-center gap-2 mb-2 px-1">
-                    <h2 className="text-xs font-semibold tracking-wider text-gray-500 uppercase">
+                    <h2 className="text-xs font-semibold tracking-wider text-fg-muted uppercase">
                       {group.department}
                     </h2>
-                    <span className="text-[11px] font-medium text-gray-400 bg-gray-100 rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
+                    <span className="text-[11px] font-medium text-fg-subtle bg-surface-3 rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
                       {group.items.length}
                     </span>
-                    <div className="flex-1 h-px bg-gray-100" />
+                    <div className="flex-1 h-px bg-surface-3" />
                   </div>
                   <div className="space-y-3">
                     {group.items.map((task) => (
@@ -308,6 +399,8 @@ function TaskInbox() {
                         busy={busyMap[task.id]}
                         canAct={scope === 'assigned' && String(task.assignedToId) === meId}
                         showApprover={scope === 'submitted'}
+                        canDelete={scope === 'submitted' && String(task.submittedById) === meId && isRequestFinished(task)}
+                        onDelete={handleDelete}
                       />
                     ))}
                   </div>

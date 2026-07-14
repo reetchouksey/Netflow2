@@ -97,8 +97,8 @@ export default function ApprovalRouting() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* request builder */}
-        <div className="bg-white border border-gray-200 rounded-lg p-5">
-          <h2 className="text-sm font-semibold text-gray-800 mb-4">Request</h2>
+        <div className="bg-surface border border-line rounded-lg p-5">
+          <h2 className="text-sm font-semibold text-fg mb-4">Request</h2>
 
           <Field label="Submitter">
             <select value={submitterId} onChange={(e) => setSubmitterId(e.target.value)} className={inputCls}>
@@ -109,7 +109,7 @@ export default function ApprovalRouting() {
                 </option>
               ))}
             </select>
-            <p className="mt-1 text-[11px] text-gray-500">The chain usually starts with this person's direct manager.</p>
+            <p className="mt-1 text-[11px] text-fg-muted">The chain usually starts with this person's direct manager.</p>
           </Field>
 
           <Field label="Category">
@@ -131,7 +131,7 @@ export default function ApprovalRouting() {
                   className={`px-2 py-1 text-[11px] rounded-md border transition ${
                     Number(amount) === v
                       ? 'border-indigo-400 bg-indigo-50 text-indigo-700'
-                      : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                      : 'border-line text-fg-muted hover:bg-surface-2'
                   }`}
                 >
                   {money(v)}
@@ -160,9 +160,9 @@ export default function ApprovalRouting() {
         </div>
 
         {/* result */}
-        <div className="lg:col-span-2 bg-white border border-gray-200 rounded-lg p-5">
+        <div className="lg:col-span-2 bg-surface border border-line rounded-lg p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-gray-800">Inferred approver chain</h2>
+            <h2 className="text-sm font-semibold text-fg">Inferred approver chain</h2>
             {badge && (
               <span className={`text-[11px] font-medium px-2 py-1 rounded-full border ${badge.cls}`}>
                 {badge.label}{routing.model ? ` · ${routing.model}` : ''}
@@ -171,21 +171,21 @@ export default function ApprovalRouting() {
           </div>
 
           {!routing ? (
-            <div className="py-16 text-center text-sm text-gray-400">
-              Configure a request and click <span className="font-medium text-gray-500">Infer approver chain</span>.
+            <div className="py-16 text-center text-sm text-fg-subtle">
+              Configure a request and click <span className="font-medium text-fg-muted">Infer approver chain</span>.
             </div>
           ) : (
             <>
               {routing.rule && (
-                <div className="mb-4 text-xs text-gray-600 bg-gray-50 border border-gray-100 rounded-md px-3 py-2">
-                  Matched policy: <span className="font-semibold text-gray-800">{routing.rule.name}</span>
+                <div className="mb-4 text-xs text-fg-muted bg-surface-2 border border-line rounded-md px-3 py-2">
+                  Matched policy: <span className="font-semibold text-fg">{routing.rule.name}</span>
                   {' · '}band {routing.rule.band}
                   {routing.rule.requiredRoles?.length ? <> · requires {routing.rule.requiredRoles.join(' → ')}</> : null}
                 </div>
               )}
-              {routing.summary && <p className="mb-4 text-sm text-gray-700">{routing.summary}</p>}
+              {routing.summary && <p className="mb-4 text-sm text-fg">{routing.summary}</p>}
 
-              <ol className="relative border-l-2 border-gray-100 ml-3">
+              <ol className="relative border-l-2 border-line ml-3">
                 {routing.chain.map((step) => {
                   const escalated = step.requiredRole && step.role && step.requiredRole !== step.role
                   return (
@@ -199,18 +199,18 @@ export default function ApprovalRouting() {
                         </div>
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-semibold text-gray-900">{step.name}</span>
-                            <span className="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{step.role}</span>
-                            {step.department && <span className="text-[11px] text-gray-400">{step.department}</span>}
+                            <span className="text-sm font-semibold text-fg">{step.name}</span>
+                            <span className="text-[11px] px-1.5 py-0.5 rounded bg-surface-3 text-fg-muted">{step.role}</span>
+                            {step.department && <span className="text-[11px] text-fg-subtle">{step.department}</span>}
                             {escalated && (
                               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200">
                                 escalated · needed {step.requiredRole}
                               </span>
                             )}
                           </div>
-                          {step.email && <div className="text-[11px] text-gray-500">{step.email}</div>}
-                          {step.reason && <div className="text-xs text-gray-600 mt-0.5">{step.reason}</div>}
-                          {step.slaHours != null && <div className="text-[11px] text-gray-400 mt-0.5">SLA: {step.slaHours}h</div>}
+                          {step.email && <div className="text-[11px] text-fg-muted">{step.email}</div>}
+                          {step.reason && <div className="text-xs text-fg-muted mt-0.5">{step.reason}</div>}
+                          {step.slaHours != null && <div className="text-[11px] text-fg-subtle mt-0.5">SLA: {step.slaHours}h</div>}
                         </div>
                       </div>
                     </li>
@@ -223,18 +223,18 @@ export default function ApprovalRouting() {
       </div>
 
       {/* DoA matrix reference */}
-      <div className="mt-6 bg-white border border-gray-200 rounded-lg">
-        <div className="px-5 py-3 border-b border-gray-100">
-          <h2 className="text-sm font-semibold text-gray-800">Delegation-of-Authority matrix</h2>
+      <div className="mt-6 bg-surface border border-line rounded-lg">
+        <div className="px-5 py-3 border-b border-line">
+          <h2 className="text-sm font-semibold text-fg">Delegation-of-Authority matrix</h2>
           
         </div>
         {rules.length === 0 ? (
-          <div className="px-5 py-10 text-center text-sm text-gray-400">No DoA rules found. Run <span className="font-mono">npm run seed:doa</span>.</div>
+          <div className="px-5 py-10 text-center text-sm text-fg-subtle">No DoA rules found. Run <span className="font-mono">npm run seed:doa</span>.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-[11px] uppercase tracking-wider text-gray-400 border-b border-gray-100">
+                <tr className="text-left text-[11px] uppercase tracking-wider text-fg-subtle border-b border-line">
                   <th className="px-5 py-2 font-semibold">Rule</th>
                   <th className="px-5 py-2 font-semibold">Dept</th>
                   <th className="px-5 py-2 font-semibold">Category</th>
@@ -242,16 +242,16 @@ export default function ApprovalRouting() {
                   <th className="px-5 py-2 font-semibold">Approver chain</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-line">
                 {rules.map((r) => (
-                  <tr key={r._id} className="hover:bg-gray-50">
-                    <td className="px-5 py-2.5 font-medium text-gray-800">{r.name}</td>
-                    <td className="px-5 py-2.5 text-gray-600">{r.department}</td>
-                    <td className="px-5 py-2.5 text-gray-600">{r.category}</td>
-                    <td className="px-5 py-2.5 text-gray-600">
+                  <tr key={r._id} className="hover:bg-surface-2">
+                    <td className="px-5 py-2.5 font-medium text-fg">{r.name}</td>
+                    <td className="px-5 py-2.5 text-fg-muted">{r.department}</td>
+                    <td className="px-5 py-2.5 text-fg-muted">{r.category}</td>
+                    <td className="px-5 py-2.5 text-fg-muted">
                       {money(r.minAmount)}{r.maxAmount == null ? '+' : ` – ${money(r.maxAmount)}`}
                     </td>
-                    <td className="px-5 py-2.5 text-gray-600">
+                    <td className="px-5 py-2.5 text-fg-muted">
                       {(r.approverChain || []).map((s) => s.role).join(' → ') || '—'}
                     </td>
                   </tr>
@@ -266,12 +266,12 @@ export default function ApprovalRouting() {
 }
 
 const inputCls =
-  'w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500'
+  'w-full px-3 py-2 text-sm bg-surface border border-line rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500'
 
 function Field({ label, children }) {
   return (
     <div className="mb-4">
-      <label className="block text-xs font-medium text-gray-700 mb-1.5">{label}</label>
+      <label className="block text-xs font-medium text-fg mb-1.5">{label}</label>
       {children}
     </div>
   )

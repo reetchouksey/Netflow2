@@ -22,13 +22,50 @@ export const authStore = {
   getSnapshot() {
     return currentUser
   },
-  async login(email, password) {
-    const data = await api.post('/api/auth/login', { email, password }, { skipAuthRedirect: true })
+  _setSession(data) {
     setToken(data.token)
     setStoredUser(data.user)
     currentUser = data.user
     emit()
     return data.user
+  },
+  // Returns a status object so the UI can branch:
+  //   { status: 'ok', user }        → logged in
+  //   { status: 'mfa', challenge }  → needs a 6-digit code (already enrolled)
+  //   { status: 'setup', challenge }→ admin must enrol MFA before entry
+  async login(email, password, subdomain) {
+    const body = { email, password }
+    if (subdomain) body.subdomain = subdomain // step 9: org-scoped login by workspace
+    const data = await api.post('/api/auth/login', body, { skipAuthRedirect: true })
+    if (data.mfaRequired) return { status: 'mfa', challenge: data.challenge }
+    if (data.mfaSetupRequired) return { status: 'setup', challenge: data.challenge }
+    this._setSession(data)
+    return { status: 'ok', user: data.user }
+  },
+  // Second login step for enrolled users (TOTP or backup code).
+  async completeMfa(challenge, code) {
+    const data = await api.post('/api/auth/mfa/verify', { challenge, code }, { skipAuthRedirect: true })
+    return this._setSession(data)
+  },
+  // Forced-enrolment (admin) helpers — use the setup challenge, no session yet.
+  async mfaSetupWithChallenge(challenge) {
+    return api.post('/api/auth/mfa/setup', { challenge }, { skipAuthRedirect: true })
+  },
+  async mfaEnableWithChallenge(challenge, code) {
+    const data = await api.post('/api/auth/mfa/enable', { challenge, code }, { skipAuthRedirect: true })
+    this._setSession(data) // enable-via-challenge returns { token, user, backupCodes }
+    return data
+  },
+  // Change the signed-in user's password. For a forced first-login change
+  // (mustChangePassword) currentPassword may be omitted. Returns the fresh user
+  // (a new token is issued server-side and stored here).
+  async changePassword(currentPassword, newPassword) {
+    const data = await api.post(
+      '/api/auth/change-password',
+      { currentPassword, newPassword },
+      { skipAuthRedirect: true }
+    )
+    return this._setSession(data)
   },
   async register(payload) {
     const data = await api.post('/api/auth/register', payload, { skipAuthRedirect: true })
@@ -76,6 +113,7 @@ export const initials = (name) => {
 }
 
 export const ROLE_LABELS = {
+  SuperAdmin: 'Platform Super Admin',
   Admin: 'Workflow Admin',
   Manager: 'Manager',
   HR: 'HR',
