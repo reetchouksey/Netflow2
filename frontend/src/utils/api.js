@@ -2,7 +2,10 @@
 // Shared fetch wrapper. Injects the JWT, parses { success, error, code }
 // envelopes, and on 401 clears the token + bounces to /login.
 
-const BASE = import.meta.env.VITE_API_URL ;
+// Base URL of the NetFlow API. Defaults to the deployed Render backend so the
+// production build (Vercel) works without a dashboard env var. Override with
+// VITE_API_URL (e.g. http://localhost:5000) for local development.
+const BASE = import.meta.env.VITE_API_URL || 'https://netflow-s4de.onrender.com'
 
 // Exposed so components can turn a relative attachment URL ("/uploads/x.pdf")
 // returned by the API into an absolute, openable link.
