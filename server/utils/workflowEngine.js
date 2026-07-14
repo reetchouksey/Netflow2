@@ -12,6 +12,7 @@ const Role = require('../models/Role')
 const { createNotification } = require('./createNotification')
 const { writeAuditLog } = require('./writeAuditLog')
 const { sendTaskAssignedEmail } = require('./emailService')
+const { resolvePref } = require('./notificationPrefs')
 
 // ---------- helpers ----------
 
@@ -447,8 +448,8 @@ const handleApprovalNode = async (execution, node, workflow) => {
     triggeredBy: execution.triggeredBy
   })
 
-  const approver = await User.findById(assignedTo).select('name email').lean()
-  if (approver?.email) {
+  const approver = await User.findById(assignedTo).select('name email notificationPrefs').lean()
+  if (approver?.email && resolvePref(approver, 'assignment').email) {
     sendTaskAssignedEmail({
       to: approver.email,
       assigneeName: approver.name,
@@ -463,6 +464,91 @@ const handleApprovalNode = async (execution, node, workflow) => {
   execution.variables.pendingNodeId = node.id
   if (routingReason) execution.variables.routingReason = routingReason
   // Mongoose Mixed type — tell it the variables object changed so the patch is persisted
+  execution.markModified('variables')
+  await execution.save()
+
+  return { paused: true, taskId: task._id }
+}
+
+// Multi/committee approval node: one shared task sent to several people at once.
+// The stage passes as soon as `requiredApprovals` (N of M) approve; it fails once
+// enough reject that N approvals become impossible. Uses Task.parallelApprovers /
+// parallelApprovals; the N-of-M tallying lives in routes/tasks.js.
+const handleMultiApprovalNode = async (execution, node, workflow) => {
+  const rawIds = Array.isArray(node.config?.approverIds) ? node.config.approverIds : []
+
+  // Resolve each configured person: must be active; apply Out-of-Office
+  // redirect; dedupe (two entries can resolve to the same person).
+  const seen = new Set()
+  const approvers = []
+  for (const rawId of rawIds) {
+    if (!rawId) continue
+    const user = await User.findById(rawId).select('_id isActive').lean()
+    if (!user || user.isActive === false) continue
+    const { assignedTo } = await redirectIfOutOfOffice(user._id)
+    const key = String(assignedTo)
+    if (seen.has(key)) continue
+    seen.add(key)
+    approvers.push(assignedTo)
+  }
+
+  if (approvers.length === 0) {
+    return await failExecution(
+      execution,
+      `Multi-approval node "${node.id}" has no resolvable approvers`
+    )
+  }
+
+  const M = approvers.length
+  let required = Number(node.config?.requiredApprovals) || 1
+  required = Math.min(Math.max(required, 1), M) // clamp to 1..M
+
+  const slaHours = node.config?.slaHours || 48
+
+  const task = await Task.create({
+    workflowExecutionId: execution._id,
+    workflowId: workflow._id,
+    assignedTo: approvers[0], // representative assignee for legacy queries/escalation
+    submittedBy: execution.triggeredBy,
+    formResponseId: execution.formResponseId,
+    title: `${workflow.title} — ${node.label || 'Approval Required'}`,
+    type: workflow.department || 'General',
+    actionType: 'approval',
+    status: 'pending',
+    dueDate: new Date(Date.now() + slaHours * 3600000),
+    currentNode: node.id,
+    approvalType: 'parallel',
+    requireSignature: node.config?.requireSignature === true,
+    parallelApprovers: approvers,
+    parallelApprovals: approvers.map((u) => ({ userId: u, status: 'pending' })),
+    requiredApprovals: required
+  })
+
+  // Notify + email every approver up front.
+  const people = await User.find({ _id: { $in: approvers } }).select('name email notificationPrefs').lean()
+  for (const p of people) {
+    createNotification({
+      userId: p._id,
+      title: 'New approval task assigned',
+      message: `You have a committee approval task (${required} of ${M} approvals needed): ${task.title}`,
+      type: 'assignment',
+      taskId: task._id,
+      triggeredBy: execution.triggeredBy
+    })
+    if (p.email && resolvePref(p, 'assignment').email) {
+      sendTaskAssignedEmail({
+        to: p.email,
+        assigneeName: p.name,
+        taskTitle: task.title,
+        submittedBy: 'NetFlow workflow',
+        dueDate: task.dueDate
+      })
+    }
+  }
+
+  execution.variables = execution.variables || {}
+  execution.variables.pendingTaskId = task._id.toString()
+  execution.variables.pendingNodeId = node.id
   execution.markModified('variables')
   await execution.save()
 
@@ -509,8 +595,8 @@ const handleSubmitNode = async (execution, node, workflow) => {
     triggeredBy: execution.triggeredBy
   })
 
-  const assignee = await User.findById(assignedTo).select('name email').lean()
-  if (assignee?.email) {
+  const assignee = await User.findById(assignedTo).select('name email notificationPrefs').lean()
+  if (assignee?.email && resolvePref(assignee, 'assignment').email) {
     sendTaskAssignedEmail({
       to: assignee.email,
       assigneeName: assignee.name,
@@ -571,8 +657,8 @@ const handleReviewNode = async (execution, node, workflow) => {
     triggeredBy: execution.triggeredBy
   })
 
-  const reviewer = await User.findById(assignedTo).select('name email').lean()
-  if (reviewer?.email) {
+  const reviewer = await User.findById(assignedTo).select('name email notificationPrefs').lean()
+  if (reviewer?.email && resolvePref(reviewer, 'assignment').email) {
     sendTaskAssignedEmail({
       to: reviewer.email,
       assigneeName: reviewer.name,
@@ -654,6 +740,69 @@ const handleAssignmentNode = async (execution, node, workflow) => {
   return await processNode(execution, node.nextNode, workflow)
 }
 
+// Integration / webhook node ('api'): one outbound HTTP call to an external
+// system (ERP, Slack, payments, ...). Opt-in and skipped-safe — if the call
+// fails and config.continueOnError is true (default) the workflow still
+// advances, so a flaky endpoint never strands a request. The response can be
+// stashed under config.saveResponseAs for later condition nodes to read.
+const handleApiNode = async (execution, node, workflow) => {
+  const { interpolate, isSafeUrl, callWebhook } = require('./webhook')
+  const cfg = node.config || {}
+  const url = String(cfg.apiUrl || '').trim()
+  const method = cfg.apiMethod || 'POST'
+  const continueOnError = cfg.continueOnError !== false
+
+  const audit = (ok, detail, extra = {}) => writeAuditLog({
+    action: 'webhook_called',
+    performedBy: execution.triggeredBy,
+    targetEntity: `${workflow.title} — ${node.label || node.id}`,
+    department: execution.variables?.department,
+    detail,
+    metadata: { nodeId: node.id, url, method, ok, ...extra }
+  })
+
+  // Shared failure path: continue past the node or fail the whole run.
+  const onFail = async (reason) => {
+    audit(false, `Webhook failed: ${reason}`)
+    if (continueOnError) {
+      await updateNodeLog(execution, node.id, 'completed', { error: reason, skipped: true })
+      return await processNode(execution, node.nextNode, workflow)
+    }
+    return await failExecution(execution, `Integration node "${node.id}" failed: ${reason}`)
+  }
+
+  if (!url) return await onFail('No URL configured')
+  const safe = isSafeUrl(url)
+  if (!safe.ok) return await onFail(safe.reason)
+
+  const vars = execution.variables || {}
+  const headers = (Array.isArray(cfg.apiHeaders) ? cfg.apiHeaders : [])
+    .filter((h) => h && h.key)
+    .map((h) => ({ key: h.key, value: interpolate(h.value, vars) }))
+  const body = cfg.apiBody ? interpolate(cfg.apiBody, vars) : undefined
+
+  let result
+  try {
+    result = await callWebhook({ url, method, headers, body, auth: cfg.apiAuth })
+  } catch (err) {
+    return await onFail(err.message || 'Request error')
+  }
+
+  if (!result.ok) return await onFail(`Received HTTP ${result.status}`)
+
+  // Success: optionally expose the response to downstream nodes/conditions.
+  if (cfg.saveResponseAs) {
+    execution.variables = execution.variables || {}
+    execution.variables[cfg.saveResponseAs] = result.data
+    execution.markModified('variables')
+    await execution.save()
+  }
+
+  await updateNodeLog(execution, node.id, 'completed', { status: result.status })
+  audit(true, `Webhook ${method} ${url} -> ${result.status}`, { status: result.status })
+  return await processNode(execution, node.nextNode, workflow)
+}
+
 // ---------- public API ----------
 
 const processNode = async (execution, nodeId, workflow) => {
@@ -683,6 +832,9 @@ const processNode = async (execution, nodeId, workflow) => {
     case 'approval':
       return await handleApprovalNode(execution, node, workflow)
 
+    case 'multiApproval':
+      return await handleMultiApprovalNode(execution, node, workflow)
+
     case 'submit':
       return await handleSubmitNode(execution, node, workflow)
 
@@ -701,14 +853,16 @@ const processNode = async (execution, nodeId, workflow) => {
     case 'assignment':
       return await handleAssignmentNode(execution, node, workflow)
 
+    case 'api':
+      return await handleApiNode(execution, node, workflow)
+
     case 'end':
       await maybeGeneratePdf(execution, node, workflow)
       return await completeExecution(execution)
 
-    case 'api':
     case 'document':
-      // Stubbed in Phase 2 — log and skip
-      console.log(`Node type "${node.type}" not implemented in Phase 2; skipping`)
+      // Stubbed — log and skip (End-node generatePdf covers PDF-on-completion)
+      console.log(`Node type "${node.type}" not implemented; skipping`)
       await updateNodeLog(execution, node.id, 'skipped', { note: `${node.type} not implemented` })
       return await processNode(execution, node.nextNode, workflow)
 

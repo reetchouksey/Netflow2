@@ -1,24 +1,30 @@
 // M3 - Phase 2 - utils/emailService.js
-// Mailtrap transport in dev. Every public helper is non-blocking
-// (returns a promise) and swallows its own errors via .catch().
+// SMTP transport (Brevo in dev/prod). Every public helper is non-blocking
+// (returns a promise) and swallows its own errors via .catch(), except
+// sendMail itself which rethrows so critical flows (password reset) can react.
 
 const nodemailer = require('nodemailer')
 
+const SMTP_PORT = Number(process.env.SMTP_PORT) || 587
+
 const transporter = nodemailer.createTransport({
-  host: process.env.MAILTRAP_HOST,
-  port: Number(process.env.MAILTRAP_PORT) || 2525,
+  host: process.env.SMTP_HOST,
+  port: SMTP_PORT,
+  // 465 = implicit TLS; 587/2525 = STARTTLS (secure:false + upgrade).
+  secure: SMTP_PORT === 465,
   auth: {
-    user: process.env.MAILTRAP_USER,
-    pass: process.env.MAILTRAP_PASS
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS
   }
 })
 
-const sendMail = async ({ to, subject, text }) => {
+const sendMail = async ({ to, subject, text, html }) => {
   await transporter.sendMail({
     from: `"${process.env.SENDER_NAME}" <${process.env.SENDER_EMAIL}>`,
     to,
     subject,
-    text
+    text,
+    ...(html ? { html } : {})
   })
   console.log(`Email sent to: ${to}`)
 }
@@ -76,6 +82,36 @@ const sendTaskAssignedEmail = ({ to, assigneeName, taskTitle, submittedBy, dueDa
   }).catch(err => console.error('sendTaskAssignedEmail error:', err.message))
 }
 
+// Password reset. Unlike the notification helpers above, this one does NOT
+// swallow errors - the caller awaits it so it can log delivery failures while
+// still returning a generic response to the client (to avoid email enumeration).
+const sendPasswordResetEmail = ({ to, name, resetUrl, expiresMinutes = 30 }) => {
+  const safeName = name || 'there'
+  return sendMail({
+    to,
+    subject: 'Reset your NetFlow password',
+    text:
+      `Hi ${safeName},\n\n` +
+      `We received a request to reset your NetFlow password.\n\n` +
+      `Reset it using this link (valid for ${expiresMinutes} minutes):\n${resetUrl}\n\n` +
+      `If you did not request this, you can safely ignore this email - your password will not change.\n\n` +
+      `NetFlow Team`,
+    html:
+      `<div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;color:#111827">` +
+      `<h2 style="color:#4f46e5;margin-bottom:4px">NetFlow</h2>` +
+      `<p>Hi ${safeName},</p>` +
+      `<p>We received a request to reset your NetFlow password.</p>` +
+      `<p style="margin:24px 0">` +
+      `<a href="${resetUrl}" style="background:#4f46e5;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:bold;display:inline-block">Reset password</a>` +
+      `</p>` +
+      `<p style="color:#6b7280;font-size:13px">This link is valid for ${expiresMinutes} minutes. If the button does not work, paste this URL into your browser:</p>` +
+      `<p style="word-break:break-all;font-size:12px;color:#4f46e5">${resetUrl}</p>` +
+      `<p style="color:#6b7280;font-size:13px">If you did not request this, you can safely ignore this email - your password will not change.</p>` +
+      `<p style="margin-top:24px">NetFlow Team</p>` +
+      `</div>`
+  })
+}
+
 const sendWelcomeEmail = ({ to, name, tempPassword }) => {
   return sendMail({
     to,
@@ -91,9 +127,11 @@ const sendWelcomeEmail = ({ to, name, tempPassword }) => {
 }
 
 module.exports = {
+  sendMail,
   sendApprovalEmail,
   sendRejectionEmail,
   sendEscalationEmail,
   sendTaskAssignedEmail,
-  sendWelcomeEmail
+  sendWelcomeEmail,
+  sendPasswordResetEmail
 }

@@ -14,15 +14,21 @@ const Task = require('../models/Task')
 
 const UPLOAD_DIR = path.join(__dirname, '..', 'uploads')
 
-// The e-sign fonts offered in the UI map to the closest built-in PDF font
-// (pdfkit only ships the 14 standard fonts without bundling TTFs).
-const FONT_MAP = {
-  Arial: 'Helvetica',
-  Calibri: 'Helvetica',
-  Helvetica: 'Helvetica',
-  Georgia: 'Times-Roman',
-  'Times New Roman': 'Times-Roman',
-  Roghin: 'Times-Roman',
+// pdfkit only ships the 14 standard PDF fonts (none are script faces), and the
+// app's e-sign fonts are Adobe Fonts we can't embed. So we bundle one free,
+// SIL OFL handwriting font (Great Vibes) as a stand-in and render every typed
+// signature in it — it reads as an actual signature instead of plain italic.
+const SIGNATURE_FONT_PATH = path.join(__dirname, '..', 'assets', 'fonts', 'GreatVibes-Regular.ttf')
+const HAS_SIGNATURE_FONT = fs.existsSync(SIGNATURE_FONT_PATH)
+
+// sig.font stores a CSS font-family stack (e.g. "adobe-handwriting-ernie, 'Ernie',
+// cursive"). Pull a friendly name out of it for the caption under the signature.
+const signatureFontLabel = (font) => {
+  if (!font || typeof font !== 'string') return 'typed'
+  const quoted = font.match(/'([^']+)'/)
+  if (quoted) return quoted[1]
+  const first = font.split(',')[0].trim()
+  return first || 'typed'
 }
 
 const ACTION_LABEL = {
@@ -131,6 +137,18 @@ const generateApprovalPdf = async (execution, workflow) => {
   await buildPdf(outPath, (doc) => {
     const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right
 
+    // Register the embedded handwriting font once for this document. If it can't
+    // be loaded for any reason, typed signatures fall back to an italic style.
+    let sigFontReady = false
+    if (HAS_SIGNATURE_FONT) {
+      try {
+        doc.registerFont('Signature', SIGNATURE_FONT_PATH)
+        sigFontReady = true
+      } catch {
+        sigFontReady = false
+      }
+    }
+
     const heading = (text) => {
       doc.moveDown(0.6)
       doc.font('Helvetica-Bold').fontSize(12).fillColor('#111').text(text)
@@ -228,11 +246,13 @@ const generateApprovalPdf = async (execution, workflow) => {
         const sig = e.signature
         if (sig && (sig.text || sig.url)) {
           if (sig.kind === 'typed' && sig.text) {
-            const mapped = FONT_MAP[sig.font] || 'Helvetica'
-            const styled = mapped === 'Times-Roman' ? 'Times-Italic' : 'Helvetica-Oblique'
-            doc.font(styled).fontSize(16).fillColor('#111').text(sig.text, { indent: 12 })
+            if (sigFontReady) {
+              doc.font('Signature').fontSize(24).fillColor('#111').text(sig.text, { indent: 12 })
+            } else {
+              doc.font('Helvetica-Oblique').fontSize(16).fillColor('#111').text(sig.text, { indent: 12 })
+            }
             doc.font('Helvetica').fontSize(8).fillColor('#9ca3af')
-              .text(`e-signature · ${sig.font || 'typed'}`, { indent: 12 })
+              .text(`e-signature · ${signatureFontLabel(sig.font)}`, { indent: 12 })
             doc.fillColor('#000')
           } else if (sig.url) {
             const buf = signatureBuffer(sig.url)

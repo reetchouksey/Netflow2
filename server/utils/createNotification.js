@@ -3,6 +3,8 @@
 // must not break the action that triggered it.
 
 const Notification = require('../models/Notification')
+const User = require('../models/User')
+const { resolvePref } = require('./notificationPrefs')
 
 const createNotification = async ({
   userId,
@@ -14,6 +16,10 @@ const createNotification = async ({
 }) => {
   try {
     if (!userId) return null
+    // Respect the recipient's in-app channel preference for this event type.
+    // Untunable types always deliver (resolvePref returns on-by-default).
+    const recipient = await User.findById(userId).select('notificationPrefs').lean()
+    if (!resolvePref(recipient, type).inApp) return null
     return await Notification.create({
       userId,
       title,

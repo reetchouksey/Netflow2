@@ -65,12 +65,16 @@ const httpJson = async (url, options, timeoutMs = 20000) => {
 }
 
 // ---- provider calls: each returns the raw assistant text ----
-const callGemini = async ({ prompt, system, temperature, json, timeoutMs }) => {
+const callGemini = async ({ prompt, system, temperature, json, timeoutMs, maxTokens }) => {
   const key = process.env.GEMINI_API_KEY || ''
   if (!key) throw new Error('GEMINI_API_KEY is not set')
   const body = {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    generationConfig: { temperature, ...(json ? { responseMimeType: 'application/json' } : {}) }
+    generationConfig: {
+      temperature,
+      ...(maxTokens ? { maxOutputTokens: maxTokens } : {}),
+      ...(json ? { responseMimeType: 'application/json' } : {})
+    }
   }
   if (system) body.systemInstruction = { parts: [{ text: system }] }
   const url = `${GEMINI_BASE}/models/${getModel()}:generateContent?key=${encodeURIComponent(key)}`
@@ -83,13 +87,13 @@ const callGemini = async ({ prompt, system, temperature, json, timeoutMs }) => {
   return parts.map((p) => p.text || '').join('').trim()
 }
 
-const callNvidia = async ({ prompt, system, temperature, json, timeoutMs }) => {
+const callNvidia = async ({ prompt, system, temperature, json, timeoutMs, maxTokens }) => {
   const key = process.env.NVIDIA_API_KEY || ''
   if (!key) throw new Error('NVIDIA_API_KEY is not set')
   const messages = []
   if (system) messages.push({ role: 'system', content: system })
   messages.push({ role: 'user', content: prompt })
-  const body = { model: getModel(), messages, temperature, max_tokens: 2048 }
+  const body = { model: getModel(), messages, temperature, max_tokens: maxTokens || 2048 }
   if (json) body.response_format = { type: 'json_object' }
 
   // Hosted NIM endpoints can cold-start and return transient 429/5xx; retry a
@@ -136,8 +140,8 @@ const listModels = async () => {
   }))
 }
 
-const generateText = async (prompt, { system, temperature = 0.2, timeoutMs } = {}) =>
-  call({ prompt, system, temperature, json: false, timeoutMs })
+const generateText = async (prompt, { system, temperature = 0.2, timeoutMs, maxTokens } = {}) =>
+  call({ prompt, system, temperature, json: false, timeoutMs, maxTokens })
 
 // Robust JSON extraction: handles clean JSON, ```json fences, and prose-wrapped
 // JSON from any model/provider.
