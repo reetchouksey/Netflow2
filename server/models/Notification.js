@@ -4,6 +4,8 @@
 const mongoose = require('mongoose')
 
 const notificationSchema = new mongoose.Schema({
+  // Multi-tenancy: owning organization (see models/Organization.js).
+  orgId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', index: true },
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -22,5 +24,7 @@ const notificationSchema = new mongoose.Schema({
 }, { timestamps: true })
 
 notificationSchema.index({ userId: 1, isRead: 1, createdAt: -1 })
+
+notificationSchema.plugin(require('../tenancy/orgScopePlugin'))
 
 module.exports = mongoose.model('Notification', notificationSchema)

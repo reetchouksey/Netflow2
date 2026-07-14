@@ -20,6 +20,8 @@ const doaStepSchema = new mongoose.Schema({
 }, { _id: false })
 
 const doaRuleSchema = new mongoose.Schema({
+  // Multi-tenancy: owning organization (see models/Organization.js).
+  orgId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', index: true },
   name: { type: String, required: true, trim: true, unique: true },
   description: { type: String },
   department: { type: String, enum: DEPARTMENTS, default: 'ANY' },
@@ -39,5 +41,7 @@ doaRuleSchema.index({ isActive: 1, department: 1, category: 1, minAmount: 1, max
 
 doaRuleSchema.statics.DEPARTMENTS = DEPARTMENTS
 doaRuleSchema.statics.APPROVER_ROLES = APPROVER_ROLES
+
+doaRuleSchema.plugin(require('../tenancy/orgScopePlugin'))
 
 module.exports = mongoose.model('DelegationOfAuthority', doaRuleSchema)

@@ -11,10 +11,15 @@ const Task = require('../models/Task')
 const User = require('../models/User')
 const WorkflowExecution = require('../models/WorkflowExecution')
 const Workflow = require('../models/Workflow')
+const FormResponse = require('../models/FormResponse')
+const Notification = require('../models/Notification')
 const { protect } = require('../middleware/auth')
 const { sendSuccess, sendError } = require('../utils/apiResponse')
 const { createNotification } = require('../utils/createNotification')
 const { writeAuditLog } = require('../utils/writeAuditLog')
+const { isFieldVisible } = require('../utils/conditionalLogic')
+const { validateField } = require('../utils/validation')
+const { resolvePref } = require('../utils/notificationPrefs')
 const {
   sendApprovalEmail,
   sendRejectionEmail
@@ -84,7 +89,7 @@ const buildApprovalChain = async (task) => {
     seen.add(nodeId)
     const n = nodeById.get(nodeId)
     if (!n) return
-    if (n.type === 'approval') orderedApprovals.push(n)
+    if (n.type === 'approval' || n.type === 'multiApproval') orderedApprovals.push(n)
     // Follow every branch type so approvals downstream of a Decision (truePath/
     // falsePath) OR a Review node (forwardPath/changesPath) are still discovered.
     walk(n.config?.truePath)
@@ -95,7 +100,7 @@ const buildApprovalChain = async (task) => {
   }
   walk(start ? start.id : null)
   if (orderedApprovals.length === 0) {
-    for (const n of workflow.nodes || []) if (n.type === 'approval') orderedApprovals.push(n)
+    for (const n of workflow.nodes || []) if (n.type === 'approval' || n.type === 'multiApproval') orderedApprovals.push(n)
   }
 
   const pendingNodeId = execution?.variables?.pendingNodeId || null
@@ -105,6 +110,18 @@ const buildApprovalChain = async (task) => {
     const d = t ? decisionFromTask(t) : null
     const status = t ? (t.status === 'completed' ? 'approved' : t.status) : 'upcoming'
     const isCurrent = (pendingNodeId && n.id === pendingNodeId) || (t && t.status === 'pending')
+
+    // Committee/quorum progress ("2 of 3 approved") when this is a multi node.
+    let quorum = null
+    if (n.type === 'multiApproval') {
+      const M = t ? (t.parallelApprovers || []).length : (n.config?.approverIds || []).length
+      const approvedVotes = t ? (t.parallelApprovals || []).filter((p) => p.status === 'approved').length : 0
+      const required = t
+        ? Math.min(Math.max(t.requiredApprovals || 1, 1), M || 1)
+        : Math.min(Math.max(n.config?.requiredApprovals || 1, 1), M || 1)
+      quorum = { total: M, approved: approvedVotes, required }
+    }
+
     return {
       nodeId: n.id,
       title: n.label || 'Approval',
@@ -113,7 +130,8 @@ const buildApprovalChain = async (task) => {
       assignee: t?.assignedTo ? { name: t.assignedTo.name, email: t.assignedTo.email } : null,
       decidedBy: d?.by || null,
       decidedAt: d?.at || null,
-      isCurrent: !!isCurrent
+      isCurrent: !!isCurrent,
+      quorum
     }
   })
 
@@ -144,9 +162,12 @@ router.get('/my-tasks', protect, async (req, res, next) => {
     if (status) query.status = status
     if (type) query.type = type
 
-    if (scope === 'assigned') query.assignedTo = me
+    // Committee (multi-approval) tasks are shared: they list every voter in
+    // `parallelApprovers`, so match those too (not just the representative
+    // `assignedTo`) — otherwise co-approvers wouldn't see the task.
+    if (scope === 'assigned') query.$or = [{ assignedTo: me }, { parallelApprovers: me }]
     else if (scope === 'submitted') query.submittedBy = me
-    else query.$or = [{ assignedTo: me }, { submittedBy: me }]
+    else query.$or = [{ assignedTo: me }, { parallelApprovers: me }, { submittedBy: me }]
 
     const tasks = await Task.find(query)
       .populate('submittedBy', 'name email department')
@@ -186,6 +207,19 @@ router.get('/my-tasks', protect, async (req, res, next) => {
         String(t.submittedBy?._id || t.submittedBy) === String(me) &&
         ['pending', 'escalated'].includes(t.status) &&
         t.workflowId?.advanced?.allowCancel === true
+    }
+
+    // Attach each parent execution's status so the client can tell which WHOLE
+    // requests are finished (used to gate hard-delete of a request).
+    const execIds = [...new Set(
+      tasks.map((t) => t.workflowExecutionId && String(t.workflowExecutionId)).filter(Boolean)
+    )]
+    if (execIds.length) {
+      const execs = await WorkflowExecution.find({ _id: { $in: execIds } }).select('status').lean()
+      const statusById = new Map(execs.map((e) => [String(e._id), e.status]))
+      for (const t of tasks) {
+        if (t.workflowExecutionId) t.executionStatus = statusById.get(String(t.workflowExecutionId)) || null
+      }
     }
 
     return sendSuccess(res, { count: tasks.length, tasks })
@@ -259,6 +293,50 @@ router.get('/:id', protect, async (req, res, next) => {
   }
 })
 
+// DELETE /api/tasks/:id — the submitter permanently deletes one of their OWN
+// finished requests. When the task belongs to a workflow, the WHOLE request is
+// removed: every stage task + the linked form response + related notifications
+// + the execution. In-flight (running/paused) requests cannot be deleted.
+// Audit logs are append-only and deliberately left intact.
+router.delete('/:id', protect, async (req, res, next) => {
+  try {
+    const task = await Task.findById(req.params.id).lean()
+    if (!task) return sendError(res, 'Task not found', 'TASK_NOT_FOUND', 404)
+
+    if (!sameId(task.submittedBy, req.user._id) && !isElevated(req.user)) {
+      return sendError(res, 'Not authorised to delete this request', 'FORBIDDEN', 403)
+    }
+
+    if (task.workflowExecutionId) {
+      const execution = await WorkflowExecution.findById(task.workflowExecutionId).lean()
+      // Guard: only finished requests can be deleted.
+      if (execution && !['completed', 'failed', 'cancelled'].includes(execution.status)) {
+        return sendError(res, 'This request is still in progress and cannot be deleted', 'REQUEST_IN_PROGRESS', 409)
+      }
+
+      const siblingTasks = await Task.find({ workflowExecutionId: task.workflowExecutionId }).select('_id').lean()
+      const taskIds = siblingTasks.map((t) => t._id)
+
+      await Notification.deleteMany({ taskId: { $in: taskIds } })
+      await Task.deleteMany({ workflowExecutionId: task.workflowExecutionId })
+      if (execution?.formResponseId) await FormResponse.deleteOne({ _id: execution.formResponseId })
+      await WorkflowExecution.deleteOne({ _id: task.workflowExecutionId })
+    } else {
+      // Standalone task (no workflow) — only delete when resolved.
+      if (!['approved', 'rejected', 'completed', 'cancelled'].includes(task.status)) {
+        return sendError(res, 'Only finished requests can be deleted', 'REQUEST_NOT_RESOLVED', 409)
+      }
+      await Notification.deleteMany({ taskId: task._id })
+      if (task.formResponseId) await FormResponse.deleteOne({ _id: task.formResponseId })
+      await Task.deleteOne({ _id: task._id })
+    }
+
+    return sendSuccess(res, { deleted: true })
+  } catch (err) {
+    next(err)
+  }
+})
+
 // Internal helper: ensure caller can act on this task.
 const requireApprover = (task, user) => {
   const allowed = sameId(task.assignedTo, user._id) || isElevated(user)
@@ -298,6 +376,53 @@ const isFieldEmpty = (field, v) => {
   return false
 }
 
+// True when a task is a committee/quorum approval (shared across several voters).
+const isMultiApproval = (task) =>
+  task.approvalType === 'parallel' && Array.isArray(task.parallelApprovers) && task.parallelApprovers.length > 0
+
+// Tally the votes on a multi-approval task. `required` is clamped to 1..M.
+const countVotes = (task) => {
+  const approvers = task.parallelApprovers || []
+  const votes = task.parallelApprovals || []
+  const M = approvers.length
+  const has = (id, status) => votes.some((pa) => sameId(pa.userId, id) && pa.status === status)
+  const approved = approvers.filter((id) => has(id, 'approved')).length
+  const rejected = approvers.filter((id) => has(id, 'rejected')).length
+  const required = Math.min(Math.max(task.requiredApprovals || M || 1, 1), M || 1)
+  return { M, approved, rejected, required }
+}
+
+// Record one voter's decision on a multi-approval task (idempotent per user).
+const recordParallelVote = (task, userId, status) => {
+  const idx = (task.parallelApprovals || []).findIndex((p) => sameId(p.userId, userId))
+  if (idx >= 0) {
+    task.parallelApprovals[idx].status = status
+    task.parallelApprovals[idx].decidedAt = new Date()
+  } else {
+    task.parallelApprovals.push({ userId, status, decidedAt: new Date() })
+  }
+}
+
+// Ping the co-approvers who haven't voted yet ("X approved — 1 of 2 so far").
+const notifyOtherApprovers = (task, actorId, actorName, verb, progressText) => {
+  const decided = new Set(
+    (task.parallelApprovals || [])
+      .filter((p) => p.status && p.status !== 'pending')
+      .map((p) => String(p.userId?._id || p.userId))
+  )
+  for (const id of task.parallelApprovers || []) {
+    if (sameId(id, actorId) || decided.has(String(id))) continue
+    createNotification({
+      userId: id,
+      title: 'Approval update',
+      message: `${actorName} ${verb} "${task.title}". ${progressText}`,
+      type: 'assignment',
+      taskId: task._id,
+      triggeredBy: actorId
+    })
+  }
+}
+
 // POST /api/tasks/:id/approve
 router.post('/:id/approve', protect, async (req, res, next) => {
   try {
@@ -317,19 +442,16 @@ router.post('/:id/approve', protect, async (req, res, next) => {
     }
     const sig = task.requireSignature ? cleanSignature(signature) : undefined
 
-    // Parallel approvals: record this vote, check if all approved
-    if (task.approvalType === 'parallel' && task.parallelApprovers?.length > 0) {
-      const idx = (task.parallelApprovals || []).findIndex(p => sameId(p.userId, req.user._id))
-      if (idx >= 0) {
-        task.parallelApprovals[idx].status = 'approved'
-        task.parallelApprovals[idx].decidedAt = new Date()
-      } else {
-        task.parallelApprovals.push({
-          userId: req.user._id,
-          status: 'approved',
-          decidedAt: new Date()
-        })
+    // Committee/quorum approval: record this vote; advance only once N of M
+    // approvals are in. Otherwise the task stays pending for the others.
+    if (isMultiApproval(task)) {
+      // Guard: this voter already decided.
+      const prior = (task.parallelApprovals || []).find((p) => sameId(p.userId, req.user._id))
+      if (prior && prior.status !== 'pending') {
+        return sendError(res, `You have already ${prior.status} this task`, 'ALREADY_VOTED', 400)
       }
+
+      recordParallelVote(task, req.user._id, 'approved')
       task.approvalHistory.push({
         action: 'approved',
         performedBy: req.user._id,
@@ -338,19 +460,25 @@ router.post('/:id/approve', protect, async (req, res, next) => {
         signature: sig
       })
 
-      const allApproved = task.parallelApprovers.every(approverId =>
-        task.parallelApprovals.some(pa =>
-          sameId(pa.userId, approverId) && pa.status === 'approved'
-        )
-      )
-
-      if (!allApproved) {
+      const { approved, required } = countVotes(task)
+      if (approved < required) {
         await task.save()
+        notifyOtherApprovers(task, req.user._id, req.user.name, 'approved', `${approved} of ${required} approvals received.`)
+        writeAuditLog({
+          action: 'task_approved',
+          performedBy: req.user._id,
+          targetEntity: `Task: ${task.title}`,
+          department: req.user.department,
+          ipAddress: req.ip,
+          detail: `${req.user.name} approved "${task.title}" (${approved}/${required})`,
+          metadata: { taskId: task._id, partial: true }
+        })
         return sendSuccess(res, {
-          message: 'Approval recorded, awaiting other approvers',
+          message: `Approval recorded (${approved} of ${required}). Awaiting other approvers.`,
           task: task.toObject()
         })
       }
+      // Quorum reached — fall through to finalise the stage as approved.
     } else {
       // Sequential: single approver
       task.approvalHistory.push({
@@ -387,8 +515,8 @@ router.post('/:id/approve', protect, async (req, res, next) => {
         triggeredBy: req.user._id
       })
 
-      const submitter = await User.findById(task.submittedBy).select('name email').lean()
-      if (submitter?.email) {
+      const submitter = await User.findById(task.submittedBy).select('name email notificationPrefs').lean()
+      if (submitter?.email && resolvePref(submitter, 'approval').email) {
         sendApprovalEmail({
           to: submitter.email,
           submitterName: submitter.name,
@@ -426,11 +554,20 @@ router.post('/:id/submit', protect, async (req, res, next) => {
     const data = formData && typeof formData === 'object' ? formData : {}
 
     // Server-side required-field validation (mirrors the client form).
+    // Skip fields hidden by conditional logic so a hidden required field can't
+    // block an otherwise-valid submission.
     const missing = fields
-      .filter((f) => f.required && isFieldEmpty(f, data[f.id]))
+      .filter((f) => f.required && isFieldVisible(f, data) && isFieldEmpty(f, data[f.id]))
       .map((f) => f.label || f.id)
     if (missing.length) {
       return sendError(res, `Please complete required field(s): ${missing.join(', ')}`, 'FIELD_REQUIRED', 400)
+    }
+
+    // Advanced validation (length / range / format) on visible, filled fields.
+    for (const f of fields) {
+      if (!isFieldVisible(f, data)) continue
+      const err = validateField(f, data[f.id])
+      if (err) return sendError(res, err, 'FIELD_INVALID', 400)
     }
 
     // Surface file-type field values as real attachments for downstream nodes.
@@ -567,27 +704,54 @@ router.post('/:id/reject', protect, async (req, res, next) => {
       return sendError(res, 'This decision requires your e-signature', 'SIGNATURE_REQUIRED', 400)
     }
 
-    if (task.approvalType === 'parallel' && task.parallelApprovers?.length > 0) {
-      const idx = (task.parallelApprovals || []).findIndex(p => sameId(p.userId, req.user._id))
-      if (idx >= 0) {
-        task.parallelApprovals[idx].status = 'rejected'
-        task.parallelApprovals[idx].decidedAt = new Date()
-      } else {
-        task.parallelApprovals.push({
-          userId: req.user._id,
-          status: 'rejected',
-          decidedAt: new Date()
+    // Committee/quorum reject policy: a single reject does NOT fail the stage
+    // while N approvals are still mathematically possible. Only when enough
+    // people reject that N can no longer be reached does the stage fail.
+    if (isMultiApproval(task)) {
+      const prior = (task.parallelApprovals || []).find((p) => sameId(p.userId, req.user._id))
+      if (prior && prior.status !== 'pending') {
+        return sendError(res, `You have already ${prior.status} this task`, 'ALREADY_VOTED', 400)
+      }
+
+      recordParallelVote(task, req.user._id, 'rejected')
+      task.approvalHistory.push({
+        action: 'rejected',
+        performedBy: req.user._id,
+        performedAt: new Date(),
+        comment,
+        signature: task.requireSignature ? cleanSignature(signature) : undefined
+      })
+
+      const { M, approved, rejected, required } = countVotes(task)
+      const stillPossible = (M - rejected) >= required
+      if (stillPossible) {
+        await task.save()
+        notifyOtherApprovers(task, req.user._id, req.user.name, 'rejected', `Still awaiting approvals (${approved} of ${required}).`)
+        writeAuditLog({
+          action: 'task_rejected',
+          performedBy: req.user._id,
+          targetEntity: `Task: ${task.title}`,
+          department: req.user.department,
+          ipAddress: req.ip,
+          detail: `${req.user.name} rejected "${task.title}" (${approved}/${required} approved; quorum still possible)`,
+          metadata: { taskId: task._id, partial: true }
+        })
+        return sendSuccess(res, {
+          message: `Rejection recorded. Quorum still possible (${approved} of ${required} approved).`,
+          task: task.toObject()
         })
       }
+      // Quorum impossible — fall through to finalise the stage as rejected.
+    } else {
+      task.approvalHistory.push({
+        action: 'rejected',
+        performedBy: req.user._id,
+        performedAt: new Date(),
+        comment,
+        signature: task.requireSignature ? cleanSignature(signature) : undefined
+      })
     }
 
-    task.approvalHistory.push({
-      action: 'rejected',
-      performedBy: req.user._id,
-      performedAt: new Date(),
-      comment,
-      signature: task.requireSignature ? cleanSignature(signature) : undefined
-    })
     task.status = 'rejected'
     await task.save()
 
@@ -613,8 +777,8 @@ router.post('/:id/reject', protect, async (req, res, next) => {
         triggeredBy: req.user._id
       })
 
-      const submitter = await User.findById(task.submittedBy).select('name email').lean()
-      if (submitter?.email) {
+      const submitter = await User.findById(task.submittedBy).select('name email notificationPrefs').lean()
+      if (submitter?.email && resolvePref(submitter, 'rejection').email) {
         sendRejectionEmail({
           to: submitter.email,
           submitterName: submitter.name,

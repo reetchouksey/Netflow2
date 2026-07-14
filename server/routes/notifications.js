@@ -74,4 +74,20 @@ router.patch('/:id/read', protect, async (req, res, next) => {
   }
 })
 
+// DELETE /api/notifications/:id — remove a single notification the user owns.
+router.delete('/:id', protect, async (req, res, next) => {
+  try {
+    const notif = await Notification.findById(req.params.id)
+    if (!notif) return sendError(res, 'Notification not found', 'NOTIFICATION_NOT_FOUND', 404)
+    if (!sameId(notif.userId, req.user._id)) {
+      return sendError(res, 'Not authorised to delete this notification', 'FORBIDDEN', 403)
+    }
+
+    await notif.deleteOne()
+    return sendSuccess(res, { deleted: true })
+  } catch (err) {
+    next(err)
+  }
+})
+
 module.exports = router

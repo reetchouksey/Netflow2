@@ -7,13 +7,16 @@ const crypto = require('crypto')
 
 const Form = require('../models/Form')
 const FormResponse = require('../models/FormResponse')
+const FormDraft = require('../models/FormDraft')
 const Workflow = require('../models/Workflow')
 const User = require('../models/User')
 const { protect } = require('../middleware/auth')
 const { roleGuard } = require('../middleware/roleGuard')
 const { sendSuccess, sendError } = require('../utils/apiResponse')
 const { writeAuditLog } = require('../utils/writeAuditLog')
-const { isConfigured: llmConfigured, getModel: llmModel, generateJSON } = require('../utils/llm')
+const { isConfigured: llmConfigured, getModel: llmModel, generateJSON, generateText } = require('../utils/llm')
+const { isFieldVisible } = require('../utils/conditionalLogic')
+const { validateField } = require('../utils/validation')
 
 const router = express.Router()
 
@@ -247,6 +250,55 @@ router.post('/ai-draft', protect, roleGuard(...BUILDER_ROLES), async (req, res, 
   }
 })
 
+// System prompt for the inline autocomplete of the AI-form prompt box.
+const AI_SUGGEST_SYSTEM = `You autocomplete a short, one-line description of a form a user is about to build.
+Given the partial text the user has typed, reply with ONLY the continuation that should follow it — do NOT repeat what they already typed, do not add quotes, labels or explanations.
+Keep it to at most ~8 words, a single line. If the text already reads as a complete phrase, reply with an empty string.
+Example: input "Leave request form with" → output " dates, reason and manager approval".`
+
+// Remove any leading overlap so we never repeat words the user already typed
+// (models sometimes echo the tail of the prompt).
+const trimOverlap = (typed, completion) => {
+  let c = completion
+  const tail = typed.slice(-40).toLowerCase()
+  const cl = c.toLowerCase()
+  for (let n = Math.min(tail.length, cl.length); n > 0; n--) {
+    if (tail.slice(-n) === cl.slice(0, n)) { c = c.slice(n); break }
+  }
+  return c
+}
+
+// POST /api/forms/ai-suggest — ghost-text autocomplete for the AI prompt box.
+// Builder-only. Returns only the suffix to append. Never throws to the client:
+// on any failure it returns an empty suggestion so typing is never disrupted.
+router.post('/ai-suggest', protect, roleGuard(...BUILDER_ROLES), async (req, res) => {
+  try {
+    const prompt = asStr(req.body?.prompt, 300)
+    if (!llmConfigured() || prompt.length < 3) return sendSuccess(res, { completion: '' })
+
+    let raw = ''
+    try {
+      raw = await generateText(`Partial: "${prompt}"\nContinuation:`, {
+        system: AI_SUGGEST_SYSTEM,
+        temperature: 0.2,
+        maxTokens: 24,
+        timeoutMs: 4000
+      })
+    } catch (err) {
+      return sendSuccess(res, { completion: '' })
+    }
+
+    // Strip surrounding quotes/newlines the model may add, then de-dupe overlap.
+    let completion = String(raw || '').replace(/^["'\s]+|["'\s]+$/g, ' ').replace(/\s*\n.*$/s, '')
+    completion = trimOverlap(prompt, completion).replace(/\s+/g, ' ').slice(0, 80)
+    if (completion && !prompt.endsWith(' ') && !completion.startsWith(' ')) completion = ' ' + completion
+
+    return sendSuccess(res, { completion: completion.trimEnd() })
+  } catch (err) {
+    return sendSuccess(res, { completion: '' })
+  }
+})
+
 // GET /api/forms/:id
 router.get('/:id', protect, async (req, res, next) => {
   try {
@@ -417,6 +469,49 @@ router.get('/:id/responses', protect, roleGuard(...BUILDER_ROLES), async (req, r
   }
 })
 
+// GET /api/forms/:id/draft — the caller's saved draft for this form (or null).
+router.get('/:id/draft', protect, roleGuard(...BUILDER_ROLES, 'Employee'), async (req, res, next) => {
+  try {
+    const draft = await FormDraft.findOne({ formId: req.params.id, userId: req.user._id })
+      .select('formData updatedAt')
+      .lean()
+    return sendSuccess(res, {
+      draft: draft ? { formData: draft.formData || {}, updatedAt: draft.updatedAt } : null
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// PUT /api/forms/:id/draft — save/overwrite the caller's draft. Intentionally
+// NO required-field or advanced validation: a draft is allowed to be partial.
+router.put('/:id/draft', protect, roleGuard(...BUILDER_ROLES, 'Employee'), async (req, res, next) => {
+  try {
+    const { formData } = req.body || {}
+    if (!formData || typeof formData !== 'object') {
+      return sendError(res, 'formData object is required', 'MISSING_FORM_DATA', 400)
+    }
+    const draft = await FormDraft.findOneAndUpdate(
+      { formId: req.params.id, userId: req.user._id },
+      { formData },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    )
+    return sendSuccess(res, { draft: { formData: draft.formData || {}, updatedAt: draft.updatedAt } })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// DELETE /api/forms/:id/draft — discard the caller's draft.
+router.delete('/:id/draft', protect, roleGuard(...BUILDER_ROLES, 'Employee'), async (req, res, next) => {
+  try {
+    await FormDraft.deleteOne({ formId: req.params.id, userId: req.user._id })
+    return sendSuccess(res, { discarded: true })
+  } catch (err) {
+    next(err)
+  }
+})
+
 // POST /api/forms/:id/submit
 // Viewer is read-only by design; everyone else can submit. Admins are allowed
 // because in practice they also file their own leave/expense requests.
@@ -480,7 +575,7 @@ router.post('/:id/submit', protect, roleGuard(...BUILDER_ROLES, 'Employee'), asy
 
     // Required-field check
     const missing = (form.fields || [])
-      .filter(f => f.required && (formData[f.id] === undefined || formData[f.id] === null || formData[f.id] === ''))
+      .filter(f => f.required && isFieldVisible(f, formData) && (formData[f.id] === undefined || formData[f.id] === null || formData[f.id] === ''))
       .map(f => f.label || f.id)
     if (missing.length > 0) {
       return sendError(
@@ -491,12 +586,23 @@ router.post('/:id/submit', protect, roleGuard(...BUILDER_ROLES, 'Employee'), asy
       )
     }
 
+    // Advanced validation (length / range / format) on visible, filled fields.
+    for (const f of form.fields || []) {
+      if (!isFieldVisible(f, formData)) continue
+      const err = validateField(f, formData[f.id])
+      if (err) return sendError(res, err, 'FIELD_INVALID', 400)
+    }
+
     const formResponse = await FormResponse.create({
       formId: form._id,
       submittedBy: req.user._id,
       formData,
       status: 'submitted'
     })
+
+    // A completed submission should not leave a stale draft behind. Best-effort:
+    // never fail the submit if draft cleanup errors.
+    FormDraft.deleteOne({ formId: form._id, userId: req.user._id }).catch(() => {})
 
     writeAuditLog({
       action: 'form_submitted',

@@ -15,6 +15,10 @@ const errorHandler = require('./middleware/errorHandler')
 
 const app = express()
 
+// Trust the first proxy hop so rate-limiting sees the real client IP
+// (needed when deployed behind Nginx / a platform load balancer).
+app.set('trust proxy', 1)
+
 connectDB().then(() => {
   const { startEscalationCron } = require('./jobs/escalationCron')
   startEscalationCron()
@@ -82,6 +86,9 @@ app.use('/api/approval-routing', require('./routes/approvalRouting'))
 
 // Routes — AI-02 (In-app AI assistant chatbot)
 app.use('/api/assistant', require('./routes/assistant'))
+
+// Routes — Multi-tenancy (platform-level org management, SuperAdmin only)
+app.use('/api/platform', require('./routes/platform'))
 
 app.use((req, res) => {
   res.status(404).json({

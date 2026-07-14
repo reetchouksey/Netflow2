@@ -11,6 +11,8 @@ const { roleGuard } = require('../middleware/roleGuard')
 const { sendSuccess, sendError } = require('../utils/apiResponse')
 const { writeAuditLog } = require('../utils/writeAuditLog')
 const { sendWelcomeEmail } = require('../utils/emailService')
+const { sanitizePrefs } = require('../utils/notificationPrefs')
+const { checkEmailDomain } = require('../utils/domainPolicy')
 
 const router = express.Router()
 
@@ -167,6 +169,40 @@ router.put('/me/out-of-office', protect, async (req, res, next) => {
   }
 })
 
+// PUT /api/users/me/notification-prefs
+// Self-service per-event notification channel preferences (in-app vs email).
+// The client sends the full prefs object; we normalise it to a trusted shape.
+// Declared before /:id so "me" isn't captured as an id.
+router.put('/me/notification-prefs', protect, async (req, res, next) => {
+  try {
+    const notificationPrefs = sanitizePrefs(req.body?.notificationPrefs || req.body)
+
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { notificationPrefs },
+      { new: true, runValidators: true }
+    )
+      .select('-password')
+      .lean()
+
+    if (!user) return sendError(res, 'User not found', 'USER_NOT_FOUND', 404)
+
+    writeAuditLog({
+      action: 'user_updated',
+      performedBy: req.user._id,
+      targetEntity: `User: ${user.name}`,
+      department: user.department,
+      ipAddress: req.ip,
+      detail: `${user.name} updated notification preferences`,
+      metadata: { userId: String(user._id) }
+    })
+
+    return sendSuccess(res, { user })
+  } catch (err) {
+    next(err)
+  }
+})
+
 // GET /api/users/:id
 router.get('/:id', protect, async (req, res, next) => {
   try {
@@ -192,6 +228,15 @@ router.post('/', protect, roleGuard('Admin'), async (req, res, next) => {
     }
 
     const normalisedEmail = String(email).toLowerCase().trim()
+
+    // Domain allowlist policy (set per org by the platform admin). Off-list
+    // domains are blocked, unless the org allows external users — in which
+    // case the user is created and a warning is returned to the UI.
+    const policy = checkEmailDomain(req.organization, normalisedEmail)
+    if (!policy.allowed) {
+      return sendError(res, policy.reason, 'DOMAIN_NOT_ALLOWED', 400)
+    }
+
     const exists = await User.findOne({ email: normalisedEmail }).lean()
     if (exists) return sendError(res, 'Email already registered', 'EMAIL_EXISTS', 400)
 
@@ -217,11 +262,163 @@ router.post('/', protect, roleGuard('Admin'), async (req, res, next) => {
       targetEntity: `User: ${user.name}`,
       department: user.department,
       ipAddress: req.ip,
-      detail: `${req.user.name} invited ${user.name} (${user.email})`,
-      metadata: { newUserId: user._id, role: user.role?.name }
+      detail: `${req.user.name} invited ${user.name} (${user.email})${policy.external ? ' — EXTERNAL user (domain not on the org allowlist)' : ''}`,
+      metadata: { newUserId: user._id, role: user.role?.name, external: Boolean(policy.external) }
     })
 
-    return sendSuccess(res, { user: user.toJSON() }, 201)
+    return sendSuccess(res, {
+      user: user.toJSON(),
+      ...(policy.external ? { domainWarning: policy.warning } : {})
+    }, 201)
+  } catch (err) {
+    next(err)
+  }
+})
+
+// POST /api/users/import
+// Bulk-create users from an array of rows (the frontend parses the CSV). Role
+// and department are given by NAME. Each row is validated independently so one
+// bad row never aborts the batch; the response is a per-row summary. Manager/HR
+// are linked by email in a second pass (they may reference someone created in
+// the same batch). Duplicate emails (in DB or within the file) are skipped.
+const MAX_IMPORT_ROWS = 1000
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+router.post('/import', protect, roleGuard('Admin'), async (req, res, next) => {
+  try {
+    const rows = Array.isArray(req.body?.users) ? req.body.users : null
+    if (!rows) return sendError(res, 'users array is required', 'MISSING_USERS', 400)
+    if (rows.length === 0) return sendError(res, 'No rows to import', 'EMPTY_IMPORT', 400)
+    if (rows.length > MAX_IMPORT_ROWS) {
+      return sendError(res, `Too many rows (max ${MAX_IMPORT_ROWS})`, 'IMPORT_TOO_LARGE', 400)
+    }
+
+    // Role name -> id (case-insensitive) and the allowed department set.
+    const roles = await Role.find().select('_id name').lean()
+    const nameToRoleId = new Map(roles.map((r) => [r.name.toLowerCase(), r._id]))
+    const allowedDepartments = User.schema.path('department').enumValues
+
+    const results = []
+    const seenEmails = new Set()
+    const createdByEmail = new Map()  // email -> new user id (for pass 2)
+    // Remember which rows want manager/hr linked, resolved in pass 2.
+    const pendingLinks = []
+
+    // ---- Pass 1: validate + create ----
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i] || {}
+      const rowNum = i + 1
+      const name = String(row.name || '').trim()
+      const email = String(row.email || '').toLowerCase().trim()
+      const department = String(row.department || '').trim()
+      const roleName = String(row.role || '').trim()
+
+      if (!name || !email || !department || !roleName) {
+        results.push({ row: rowNum, email, status: 'error', reason: 'Missing required field (name, email, department, role)' })
+        continue
+      }
+      if (!EMAIL_RE.test(email)) {
+        results.push({ row: rowNum, email, status: 'error', reason: 'Invalid email format' })
+        continue
+      }
+      if (seenEmails.has(email)) {
+        results.push({ row: rowNum, email, status: 'skipped', reason: 'Duplicate email within the file' })
+        continue
+      }
+      seenEmails.add(email)
+
+      const roleId = nameToRoleId.get(roleName.toLowerCase())
+      if (!roleId) {
+        results.push({ row: rowNum, email, status: 'error', reason: `Unknown role "${roleName}"` })
+        continue
+      }
+      if (!allowedDepartments.includes(department)) {
+        results.push({ row: rowNum, email, status: 'error', reason: `Unknown department "${department}" (allowed: ${allowedDepartments.join(', ')})` })
+        continue
+      }
+
+      // Domain allowlist policy — same rules as single user create.
+      const policy = checkEmailDomain(req.organization, email)
+      if (!policy.allowed) {
+        results.push({ row: rowNum, email, status: 'skipped', reason: 'Email domain not on the org allowlist' })
+        continue
+      }
+
+      const exists = await User.findOne({ email }).select('_id').lean()
+      if (exists) {
+        results.push({ row: rowNum, email, status: 'skipped', reason: 'Email already registered' })
+        continue
+      }
+
+      try {
+        const tempPassword = generateTempPassword()
+        const user = new User({ name, email, password: tempPassword, department, role: roleId })
+        await user.save()
+        createdByEmail.set(email, user._id)
+        sendWelcomeEmail({ to: user.email, name: user.name, tempPassword })
+
+        const managerEmail = String(row.manager || '').toLowerCase().trim()
+        const hrEmail = String(row.hr || '').toLowerCase().trim()
+        if (managerEmail || hrEmail) {
+          pendingLinks.push({ rowNum, email, userId: user._id, managerEmail, hrEmail })
+        }
+        results.push({ row: rowNum, email, status: 'created', reason: policy.external ? 'External domain (allowed by org policy)' : '' })
+      } catch (err) {
+        results.push({ row: rowNum, email, status: 'error', reason: err.message || 'Could not create user' })
+      }
+    }
+
+    // ---- Pass 2: link manager / HR by email ----
+    if (pendingLinks.length) {
+      const refEmails = new Set()
+      for (const l of pendingLinks) {
+        if (l.managerEmail) refEmails.add(l.managerEmail)
+        if (l.hrEmail) refEmails.add(l.hrEmail)
+      }
+      // Resolve references against the DB, then overlay this batch's new users.
+      const emailToId = new Map()
+      const dbUsers = await User.find({ email: { $in: [...refEmails] } }).select('_id email').lean()
+      for (const u of dbUsers) emailToId.set(u.email, u._id)
+      for (const [email, id] of createdByEmail) emailToId.set(email, id)
+
+      for (const link of pendingLinks) {
+        const update = {}
+        const warn = []
+        if (link.managerEmail) {
+          const mId = emailToId.get(link.managerEmail)
+          if (mId) update.managerId = mId
+          else warn.push(`manager "${link.managerEmail}" not found`)
+        }
+        if (link.hrEmail) {
+          const hId = emailToId.get(link.hrEmail)
+          if (hId) update.hrId = hId
+          else warn.push(`HR "${link.hrEmail}" not found`)
+        }
+        if (Object.keys(update).length) {
+          await User.updateOne({ _id: link.userId }, update)
+        }
+        if (warn.length) {
+          const r = results.find((x) => x.row === link.rowNum)
+          if (r) r.reason = [r.reason, warn.join('; ')].filter(Boolean).join('; ')
+        }
+      }
+    }
+
+    const created = results.filter((r) => r.status === 'created').length
+    const skipped = results.filter((r) => r.status === 'skipped').length
+    const failed = results.filter((r) => r.status === 'error').length
+
+    writeAuditLog({
+      action: 'users_imported',
+      performedBy: req.user._id,
+      targetEntity: `Bulk import: ${created} user(s)`,
+      department: req.user.department,
+      ipAddress: req.ip,
+      detail: `${req.user.name} imported users - created ${created}, skipped ${skipped}, failed ${failed}`,
+      metadata: { created, skipped, failed, total: rows.length }
+    })
+
+    return sendSuccess(res, { created, skipped, failed, total: rows.length, results }, 201)
   } catch (err) {
     next(err)
   }
@@ -290,7 +487,12 @@ router.put('/:id', protect, roleGuard('Admin'), async (req, res, next) => {
     // Snapshot identity (already loaded above) so we can record what changed.
     const before = (updates.name !== undefined || updates.email !== undefined) ? target : null
 
-    const user = await User.findByIdAndUpdate(req.params.id, updates, {
+    // Revoke existing sessions on security-sensitive changes (role change or
+    // deactivation) so the affected user's old tokens stop working immediately.
+    const revokeSessions = updates.role !== undefined || updates.isActive === false
+    const mutation = revokeSessions ? { ...updates, $inc: { tokenVersion: 1 } } : updates
+
+    const user = await User.findByIdAndUpdate(req.params.id, mutation, {
       new: true,
       runValidators: true
     }).select('-password').populate('role')
@@ -324,6 +526,8 @@ router.put('/:id', protect, roleGuard('Admin'), async (req, res, next) => {
       const doc = await User.findById(req.params.id)
       if (doc) {
         doc.password = newPassword
+        // Kick existing sessions when an admin resets someone's password.
+        doc.tokenVersion = (doc.tokenVersion || 0) + 1
         await doc.save()
         writeAuditLog({
           action: 'user_updated',
@@ -357,7 +561,7 @@ router.delete('/:id', protect, roleGuard('Admin'), async (req, res, next) => {
 
     const user = await User.findByIdAndUpdate(
       req.params.id,
-      { isActive: false },
+      { isActive: false, $inc: { tokenVersion: 1 } },
       { new: true }
     ).select('-password').populate('role')
 
@@ -435,6 +639,8 @@ router.post('/:id/assign-role', protect, roleGuard('Admin'), async (req, res, ne
 
     const previousRoleName = targetUser.role?.name || 'None'
     targetUser.role = newRole._id
+    // Role change alters permissions — revoke existing sessions.
+    targetUser.tokenVersion = (targetUser.tokenVersion || 0) + 1
     await targetUser.save({ validateBeforeSave: false })
     await targetUser.populate('role')
 

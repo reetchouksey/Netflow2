@@ -4,6 +4,8 @@
 const mongoose = require('mongoose')
 
 const workflowExecutionSchema = new mongoose.Schema({
+  // Multi-tenancy: owning organization (see models/Organization.js).
+  orgId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', index: true },
   workflowId: { type: mongoose.Schema.Types.ObjectId, ref: 'Workflow', required: true },
   formResponseId: { type: mongoose.Schema.Types.ObjectId, ref: 'FormResponse' },
   triggeredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -27,5 +29,7 @@ const workflowExecutionSchema = new mongoose.Schema({
   failureReason: { type: String },
   variables: { type: mongoose.Schema.Types.Mixed, default: {} }
 }, { timestamps: true })
+
+workflowExecutionSchema.plugin(require('../tenancy/orgScopePlugin'))
 
 module.exports = mongoose.model('WorkflowExecution', workflowExecutionSchema)

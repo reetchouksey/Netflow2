@@ -7,7 +7,7 @@ const nodeSchema = new mongoose.Schema({
   id: { type: String, required: true },
   type: {
     type: String,
-    enum: ['start', 'approval', 'condition', 'api', 'notification', 'timer', 'assignment', 'document', 'submit', 'review', 'end'],
+    enum: ['start', 'approval', 'multiApproval', 'condition', 'api', 'notification', 'timer', 'assignment', 'document', 'submit', 'review', 'end'],
     required: true
   },
   label: { type: String },
@@ -15,6 +15,10 @@ const nodeSchema = new mongoose.Schema({
     approverId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     approverRole: { type: String },
     approvalType: { type: String, enum: ['sequential', 'parallel'], default: 'sequential' },
+    // Multi/committee approval node: the specific people who must vote, and how
+    // many approvals are required for the stage to pass (N of M / quorum).
+    approverIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    requiredApprovals: { type: Number, default: 1 },
     condition: { type: String },
     conditionField: { type: String },
     conditionOperator: { type: String, enum: ['eq', 'gt', 'lt', 'gte', 'lte', 'contains'] },
@@ -27,8 +31,22 @@ const nodeSchema = new mongoose.Schema({
     slaHours: { type: Number, default: 48 },
     escalateTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     notificationMessage: { type: String },
+    // Integration / webhook node ('api'): an outbound HTTP call to an external
+    // system. Opt-in; interpolated + executed by workflowEngine.handleApiNode.
     apiUrl: { type: String },
-    apiMethod: { type: String },
+    apiMethod: { type: String, default: 'POST' },
+    apiHeaders: [{ key: { type: String }, value: { type: String } }],
+    apiBody: { type: String }, // JSON template with {{formData.x}} placeholders
+    // 'mode' (not 'type') on purpose: a nested field named `type` would be read
+    // by Mongoose as a SchemaType declaration and collapse the subdocument.
+    apiAuth: {
+      mode: { type: String, enum: ['none', 'bearer', 'basic'], default: 'none' },
+      token: { type: String },
+      username: { type: String },
+      password: { type: String }
+    },
+    saveResponseAs: { type: String }, // store the response under this variable name
+    continueOnError: { type: Boolean, default: true },
     assignTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     assignToRole: { type: String },
     // Submit-node config: instructions for the assignee + the inline form fields
@@ -41,7 +59,21 @@ const nodeSchema = new mongoose.Schema({
       label: { type: String },
       required: { type: Boolean, default: false },
       placeholder: { type: String },
-      options: [{ type: String }]
+      options: [{ type: String }],
+      conditionalLogic: {
+        enabled: { type: Boolean, default: false },
+        dependsOn: { type: String },
+        operator: { type: String, enum: ['eq', 'neq', 'contains', 'nonempty'], default: 'eq' },
+        showWhen: { type: String }
+      },
+      validation: {
+        minLength: { type: Number },
+        maxLength: { type: Number },
+        min: { type: Number },
+        max: { type: Number },
+        pattern: { type: String },
+        patternLabel: { type: String }
+      }
     }],
     // Approval-node option: require the approver to attach an e-signature on decision.
     requireSignature: { type: Boolean, default: false },
@@ -54,6 +86,8 @@ const nodeSchema = new mongoose.Schema({
 }, { _id: false })
 
 const workflowSchema = new mongoose.Schema({
+  // Multi-tenancy: owning organization (see models/Organization.js).
+  orgId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', index: true },
   title: { type: String, required: true },
   description: { type: String },
   nodes: [nodeSchema],
@@ -96,5 +130,7 @@ const workflowSchema = new mongoose.Schema({
   version: { type: Number, default: 1 },
   previousVersionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Workflow' }
 }, { timestamps: true })
+
+workflowSchema.plugin(require('../tenancy/orgScopePlugin'))
 
 module.exports = mongoose.model('Workflow', workflowSchema)

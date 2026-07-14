@@ -4,6 +4,8 @@
 const mongoose = require('mongoose')
 
 const formSchema = new mongoose.Schema({
+  // Multi-tenancy: owning organization (see models/Organization.js).
+  orgId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', index: true },
   title: { type: String, required: true },
   description: { type: String },
   fields: [{
@@ -27,12 +29,16 @@ const formSchema = new mongoose.Schema({
     conditionalLogic: {
       enabled: { type: Boolean, default: false },
       dependsOn: { type: String },
+      operator: { type: String, enum: ['eq', 'neq', 'contains', 'nonempty'], default: 'eq' },
       showWhen: { type: String }
     },
     validation: {
       minLength: { type: Number },
       maxLength: { type: Number },
-      pattern: { type: String }
+      min: { type: Number },
+      max: { type: Number },
+      pattern: { type: String },
+      patternLabel: { type: String }
     }
   }],
   status: {
@@ -50,5 +56,7 @@ const formSchema = new mongoose.Schema({
     token: { type: String, default: null, index: true }
   }
 }, { timestamps: true })
+
+formSchema.plugin(require('../tenancy/orgScopePlugin'))
 
 module.exports = mongoose.model('Form', formSchema)

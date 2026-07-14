@@ -11,9 +11,30 @@ const multer = require('multer')
 
 const Form = require('../models/Form')
 const FormResponse = require('../models/FormResponse')
+const Organization = require('../models/Organization')
 const { sendSuccess, sendError } = require('../utils/apiResponse')
+const { isFieldVisible } = require('../utils/conditionalLogic')
+const { validateField } = require('../utils/validation')
 
 const router = express.Router()
+
+// GET /api/public/org?subdomain=acme
+// Pre-login tenant lookup for the login page: which org lives on this
+// subdomain? Returns only non-sensitive fields (name + status), so the page
+// can show "Sign in to Acme" or a friendly suspended/unknown message.
+router.get('/org', async (req, res, next) => {
+  try {
+    const subdomain = String(req.query.subdomain || '').toLowerCase().trim()
+    if (!subdomain) return sendError(res, 'subdomain is required', 'MISSING_SUBDOMAIN', 400)
+
+    const org = await Organization.findOne({ subdomain }).select('name subdomain status').lean()
+    if (!org) return sendError(res, 'No organization on this subdomain', 'ORG_NOT_FOUND', 404)
+
+    return sendSuccess(res, { org: { name: org.name, subdomain: org.subdomain, status: org.status } })
+  } catch (err) {
+    next(err)
+  }
+})
 
 // --- naive per-IP rate limit (in-memory; fine for a single instance) --------
 const hits = new Map()
@@ -80,7 +101,7 @@ router.post('/forms/:token/submit', rateLimit, async (req, res, next) => {
     }
 
     const missing = (form.fields || [])
-      .filter((f) => f.required && fieldEmpty(f, formData[f.id]))
+      .filter((f) => f.required && isFieldVisible(f, formData) && fieldEmpty(f, formData[f.id]))
       .map((f) => f.label || f.id)
     if (missing.length > 0) {
       return sendError(
@@ -91,7 +112,16 @@ router.post('/forms/:token/submit', rateLimit, async (req, res, next) => {
       )
     }
 
+    // Advanced validation (length / range / format) on visible, filled fields.
+    for (const f of form.fields || []) {
+      if (!isFieldVisible(f, formData)) continue
+      const err = validateField(f, formData[f.id])
+      if (err) return sendError(res, err, 'FIELD_INVALID', 400)
+    }
+
     const formResponse = await FormResponse.create({
+      // Public path has no tenant context — inherit the org from the form.
+      orgId: form.orgId,
       formId: form._id,
       submittedBy: null,
       submittedByExternal: {

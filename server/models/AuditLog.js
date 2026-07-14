@@ -4,6 +4,8 @@
 const mongoose = require('mongoose')
 
 const auditLogSchema = new mongoose.Schema({
+  // Multi-tenancy: owning organization (see models/Organization.js).
+  orgId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', index: true },
   action: {
     type: String,
     enum: [
@@ -23,7 +25,9 @@ const auditLogSchema = new mongoose.Schema({
       'role_changed',
       'request_changes',
       'approver_inferred',
-      'workflow_cancelled'
+      'workflow_cancelled',
+      'webhook_called',
+      'users_imported'
     ],
     required: true
   },
@@ -42,5 +46,7 @@ const auditLogSchema = new mongoose.Schema({
 auditLogSchema.index({ createdAt: -1 })
 auditLogSchema.index({ action: 1, createdAt: -1 })
 auditLogSchema.index({ performedBy: 1, createdAt: -1 })
+
+auditLogSchema.plugin(require('../tenancy/orgScopePlugin'))
 
 module.exports = mongoose.model('AuditLog', auditLogSchema)

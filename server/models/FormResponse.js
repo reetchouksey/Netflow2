@@ -4,6 +4,8 @@
 const mongoose = require('mongoose')
 
 const formResponseSchema = new mongoose.Schema({
+  // Multi-tenancy: owning organization (see models/Organization.js).
+  orgId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', index: true },
   formId: { type: mongoose.Schema.Types.ObjectId, ref: 'Form', required: true },
   // Internal submissions reference a User; public (anonymous) submissions leave
   // this null and capture the optional name/email in `submittedByExternal`.
@@ -25,5 +27,7 @@ const formResponseSchema = new mongoose.Schema({
     mimetype: String
   }]
 }, { timestamps: true })
+
+formResponseSchema.plugin(require('../tenancy/orgScopePlugin'))
 
 module.exports = mongoose.model('FormResponse', formResponseSchema)

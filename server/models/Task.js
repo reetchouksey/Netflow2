@@ -4,6 +4,8 @@
 const mongoose = require('mongoose')
 
 const taskSchema = new mongoose.Schema({
+  // Multi-tenancy: owning organization (see models/Organization.js).
+  orgId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', index: true },
   workflowExecutionId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'WorkflowExecution'
@@ -46,6 +48,9 @@ const taskSchema = new mongoose.Schema({
     size: { type: Number }
   }],
   approvalType: { type: String, enum: ['sequential', 'parallel'], default: 'sequential' },
+  // Multi/committee approval: how many of parallelApprovers must approve for the
+  // stage to pass (N of M). Defaults to 1 (any one). Ignored for single approvals.
+  requiredApprovals: { type: Number, default: 1 },
   approvalHistory: [{
     action: {
       type: String,
@@ -74,5 +79,7 @@ const taskSchema = new mongoose.Schema({
 
 taskSchema.index({ assignedTo: 1, status: 1 })
 taskSchema.index({ dueDate: 1, status: 1, isEscalated: 1 })
+
+taskSchema.plugin(require('../tenancy/orgScopePlugin'))
 
 module.exports = mongoose.model('Task', taskSchema)

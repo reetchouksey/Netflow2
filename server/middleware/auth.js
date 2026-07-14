@@ -3,6 +3,8 @@
 
 const jwt = require('jsonwebtoken')
 const User = require('../models/User')
+const { resolveTenantForUser } = require('./tenant')
+const { runWithOrgId } = require('../tenancy/tenantContext')
 
 const protect = async (req, res, next) => {
   try {
@@ -42,7 +44,36 @@ const protect = async (req, res, next) => {
       })
     }
 
+    // Token revocation: reject if the token's version is behind the user's
+    // current tokenVersion (logout, password reset, deactivation, role change).
+    if ((decoded.tv || 0) !== (user.tokenVersion || 0)) {
+      return res.status(401).json({
+        success: false,
+        error: 'Session ended. Please sign in again.',
+        code: 'TOKEN_REVOKED'
+      })
+    }
+
+    // Multi-tenancy: resolve the user's organization (middleware/tenant.js)
+    // and attach it so downstream code can scope every query by req.orgId.
+    const tenantResult = await resolveTenantForUser(user)
+    if (!tenantResult.ok) {
+      return res.status(tenantResult.status).json({
+        success: false,
+        error: tenantResult.error,
+        code: tenantResult.code
+      })
+    }
+
     req.user = user
+    req.organization = tenantResult.org
+    req.orgId = tenantResult.org ? tenantResult.org._id : null
+
+    // Run the rest of the request inside the ambient tenant context so the
+    // org-scope plugin auto-filters every query and stamps every create —
+    // including async work the handlers kick off (workflow engine,
+    // notifications, audit logs).
+    if (req.orgId) return runWithOrgId(req.orgId, () => next())
     next()
   } catch (err) {
     return res.status(401).json({
