@@ -72,10 +72,33 @@ const tenant = async (req, res, next) => {
 // Subdomains that can never belong to a tenant.
 const RESERVED_SUBDOMAINS = new Set(['www', 'api', 'app', 'admin', 'platform'])
 
-// "acme.netflow.app:443" → "acme"; bare domains, IPs and localhost → null.
+// Hosting/platform domains that are the app's own infrastructure. The label in
+// front (e.g. "netflow-s4de" in netflow-s4de.onrender.com, or "net-flow-sw" in
+// net-flow-sw.vercel.app) is a project name, never a tenant workspace.
+const PLATFORM_HOST_SUFFIXES = ['.onrender.com', '.vercel.app', '.netlify.app', '.herokuapp.com']
+
+// "acme.netflow.app:443" → "acme". Returns null for bare domains, IPs,
+// localhost, and the app's own hosting domains. When APP_ROOT_DOMAIN is set,
+// only direct children of that domain are treated as workspaces.
 const subdomainFromHost = (host) => {
   const hostname = String(host || '').split(':')[0].toLowerCase()
   if (!hostname || /^\d+(\.\d+){3}$/.test(hostname)) return null
+  if (hostname === 'localhost' || hostname.endsWith('.localhost')) return null
+
+  // Never resolve a tenant from the app's own hosting host.
+  if (PLATFORM_HOST_SUFFIXES.some((s) => hostname.endsWith(s))) return null
+
+  // When a tenant root domain is configured, only its direct children are
+  // workspaces (acme.netflow.app → "acme"); the apex itself is the default org.
+  const root = String(process.env.APP_ROOT_DOMAIN || '').toLowerCase().replace(/^\.+/, '')
+  if (root) {
+    if (hostname === root || !hostname.endsWith(`.${root}`)) return null
+    const label = hostname.slice(0, -(root.length + 1)).split('.').pop()
+    if (!label || RESERVED_SUBDOMAINS.has(label)) return null
+    return label
+  }
+
+  // Legacy fallback: <sub>.<domain>.<tld>.
   const parts = hostname.split('.')
   if (parts.length < 3) return null
   const sub = parts[0]
