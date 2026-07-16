@@ -237,6 +237,22 @@ function FieldRow({ token, field, value, onChange, error }) {
   )
 }
 
+  // ---------- shells ----------
+  const Page = ({ children }) => (
+    <div className="min-h-screen bg-surface-2">
+      <header className="bg-surface border-b border-line">
+        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-2">
+          <div className="w-7 h-7 rounded-md bg-indigo-600 flex items-center justify-center text-white font-bold text-sm">N</div>
+          <span className="font-semibold text-fg">NetFlow</span>
+        </div>
+      </header>
+      <main className="max-w-2xl mx-auto px-4 py-8">{children}</main>
+      <footer className="max-w-2xl mx-auto px-4 pb-8 text-center text-xs text-fg-subtle">
+        Powered by NetFlow · Never submit passwords through this form.
+      </footer>
+    </div>
+  )
+
 function PublicForm() {
   const { token } = useParams()
 
@@ -337,21 +353,7 @@ function PublicForm() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  // ---------- shells ----------
-  const Page = ({ children }) => (
-    <div className="min-h-screen bg-surface-2">
-      <header className="bg-surface border-b border-line">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-2">
-          <div className="w-7 h-7 rounded-md bg-indigo-600 flex items-center justify-center text-white font-bold text-sm">N</div>
-          <span className="font-semibold text-fg">NetFlow</span>
-        </div>
-      </header>
-      <main className="max-w-2xl mx-auto px-4 py-8">{children}</main>
-      <footer className="max-w-2xl mx-auto px-4 pb-8 text-center text-xs text-fg-subtle">
-        Powered by NetFlow · Never submit passwords through this form.
-      </footer>
-    </div>
-  )
+
 
   if (loading) {
     return <Page><div className="bg-surface border border-line rounded-lg p-8 text-center text-sm text-fg-muted">Loading form…</div></Page>
