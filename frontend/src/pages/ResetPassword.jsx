@@ -5,6 +5,23 @@ import React, { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../utils/api'
 
+ const Shell = ({ children }) => (
+    <div className="min-h-screen flex items-center justify-center bg-[#f0f0ff] px-6 py-12">
+      <div className="w-full max-w-sm bg-surface rounded-2xl shadow-xl p-8">
+        <div className="flex items-center gap-2 mb-6">
+          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
+            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+            </svg>
+          </div>
+          <span className="font-bold text-fg">NetFlow</span>
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+
+
 function ResetPassword() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
@@ -67,22 +84,6 @@ function ResetPassword() {
       setSubmitting(false)
     }
   }
-
-  const Shell = ({ children }) => (
-    <div className="min-h-screen flex items-center justify-center bg-[#f0f0ff] px-6 py-12">
-      <div className="w-full max-w-sm bg-surface rounded-2xl shadow-xl p-8">
-        <div className="flex items-center gap-2 mb-6">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
-            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-            </svg>
-          </div>
-          <span className="font-bold text-fg">NetFlow</span>
-        </div>
-        {children}
-      </div>
-    </div>
-  )
 
   if (checking) {
     return <Shell><p className="text-sm text-fg-muted">Checking your reset link…</p></Shell>
