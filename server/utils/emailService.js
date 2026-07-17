@@ -67,7 +67,9 @@ const sendEscalationEmail = ({ to, managerName, taskTitle, originalAssignee, hou
   }).catch(err => console.error('sendEscalationEmail error:', err.message))
 }
 
-const sendTaskAssignedEmail = ({ to, assigneeName, taskTitle, submittedBy, dueDate }) => {
+const sendTaskAssignedEmail = ({ to, assigneeName, taskTitle, submittedBy, dueDate, taskId }) => {
+  const base = (process.env.CLIENT_URL || 'https://net-flow-sw.vercel.app').split(',')[0].trim().replace(/\/$/, '')
+  const taskUrl = `${base}/tasks/${taskId}`
   return sendMail({
     to,
     subject: 'New task assigned to you — NetFlow',
@@ -77,7 +79,9 @@ const sendTaskAssignedEmail = ({ to, assigneeName, taskTitle, submittedBy, dueDa
       `Task: ${taskTitle}\n` +
       `Submitted by: ${submittedBy || 'System'}\n` +
       `Due by: ${new Date(dueDate).toDateString()}\n\n` +
-      `Log in to NetFlow to review and take action.\n\n` +
+      `Approve: ${taskUrl}?action=approve\n` +
+      `Reject:  ${taskUrl}?action=reject\n\n` +
+      `Or open NetFlow to review: ${taskUrl}\n\n` +
       `NetFlow Team`
   }).catch(err => console.error('sendTaskAssignedEmail error:', err.message))
 }
