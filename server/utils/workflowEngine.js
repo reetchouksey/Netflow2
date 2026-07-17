@@ -450,12 +450,14 @@ const handleApprovalNode = async (execution, node, workflow) => {
 
   const approver = await User.findById(assignedTo).select('name email notificationPrefs').lean()
   if (approver?.email && resolvePref(approver, 'assignment').email) {
+    const submitter = await User.findById(execution.triggeredBy).select('name').lean()
     sendTaskAssignedEmail({
       to: approver.email,
       assigneeName: approver.name,
       taskTitle: task.title,
-      submittedBy: 'NetFlow workflow',
-      dueDate: task.dueDate
+      submittedBy: submitter?.name || 'System',
+      dueDate: task.dueDate,
+      taskId: task._id
     })
   }
 
