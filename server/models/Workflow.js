@@ -102,7 +102,10 @@ const workflowSchema = new mongoose.Schema({
     enum: ['draft', 'published', 'paused', 'archived'],
     default: 'draft'
   },
+  // Primary / legacy single link (kept in sync as linkedFormIds[0]).
   linkedFormId: { type: mongoose.Schema.Types.ObjectId, ref: 'Form' },
+  // Multiple forms may start the same workflow; any of these triggers a run.
+  linkedFormIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Form' }],
   // Who may initiate (submit) this workflow. Only enforced when
   // whoCanSubmit === 'Specific people' and allowedInitiators is non-empty;
   // otherwise submission stays open (backward-compatible default).
@@ -121,6 +124,23 @@ const workflowSchema = new mongoose.Schema({
   triggerOn: { type: String, default: 'Every form submission' },
   preventDuplicates: { type: Boolean, default: false },
   notifyOnSlaBreach: { type: String, default: 'Always' },
+  // n8n-style inbound webhook: external systems POST to /api/hooks/:token to
+  // start a published run (no NetFlow login / linked form required).
+  inboundWebhook: {
+    enabled: { type: Boolean, default: false },
+    token: { type: String, index: true, sparse: true },
+    // HMAC signing secret for X-NetFlow-Signature (sha256=<hex> over raw body).
+    secret: { type: String },
+    // POST here when a webhook-started run completes / fails / is rejected.
+    callbackUrl: { type: String, default: '' },
+    // Optional schema for inbound payloads (validated when non-empty).
+    expectedFields: [{
+      id: { type: String },
+      label: { type: String },
+      type: { type: String, default: 'text' },
+      required: { type: Boolean, default: false }
+    }]
+  },
   advanced: {
     allowCancel: { type: Boolean, default: false },
     autoPdf: { type: Boolean, default: false }

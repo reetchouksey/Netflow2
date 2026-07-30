@@ -24,17 +24,30 @@ const userSchema = new mongoose.Schema({
   // admins (temporary password) and by admin password resets; cleared by
   // POST /api/auth/change-password.
   mustChangePassword: { type: Boolean, default: false },
+  // First-login product tour. Set true when an admin provisions a new user /
+  // org admin; cleared when they finish or skip the tour. Existing users keep
+  // the default false so the tour never auto-fires for them.
+  needsProductTour: { type: Boolean, default: false },
   role: { type: mongoose.Schema.Types.ObjectId, ref: 'Role' },
+  // Free-form on purpose: the valid set is per-tenant and lives on the
+  // Organization (see utils/departments.js), so a schema-level enum would be
+  // wrong for every org that renames or adds a team. Routes validate against
+  // the org's list before writing.
   department: {
     type: String,
-    enum: ['HR', 'Finance', 'IT', 'Operations', 'Sales', 'Legal'],
-    required: true
+    required: true,
+    trim: true
   },
   isActive: { type: Boolean, default: true },
   // Bumped to invalidate all previously-issued JWTs for this user (real logout,
   // password reset, deactivation, role change). Tokens embed this value ("tv")
   // and are rejected by the auth middleware once it no longer matches.
   tokenVersion: { type: Number, default: 0 },
+  // Licensing: may this user create/edit forms and workflows? Deliberately a
+  // per-user grant rather than a role check, because plans sell "1 builder"
+  // while roles are global and shared across tenants. The Org Admin decides
+  // who holds the seats; role still governs everything else.
+  canBuild: { type: Boolean, default: false },
   // Protected (system-seeded) accounts — e.g. the permanent CEO — cannot be
   // edited, re-roled, or deactivated from the Admin Panel. Only a seed can.
   isProtected: { type: Boolean, default: false },
@@ -87,6 +100,10 @@ userSchema.pre('save', async function () {
 })
 
 userSchema.methods.comparePassword = async function (candidatePassword) {
+  // The candidate comes straight off a request body, so it can be an object
+  // ({ $ne: '' } from an injection probe) — bcrypt throws on anything that is
+  // not a string, which would turn a failed login into a 500.
+  if (typeof candidatePassword !== 'string' || !this.password) return false
   return bcrypt.compare(candidatePassword, this.password)
 }
 

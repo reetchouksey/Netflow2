@@ -15,6 +15,9 @@ const { sendSuccess, sendError } = require('../utils/apiResponse')
 const { sendPasswordResetEmail } = require('../utils/emailService')
 const { getDefaultOrgId } = require('../utils/defaultOrg')
 const { subdomainFromHost } = require('../middleware/tenant')
+const { checkQuota } = require('../middleware/quota')
+const { writeBlockFor } = require('../middleware/licence')
+const { listFor: departmentsFor, canonical: canonicalDepartment } = require('../utils/departments')
 const msSso = require('../utils/msSso')
 
 const RESET_TTL_MINUTES = 30
@@ -26,12 +29,9 @@ const LOCK_MINUTES = 15
 // MFA tuning.
 const MFA_CHALLENGE_TTL = '10m'   // short-lived token between password + code steps
 const BACKUP_CODE_COUNT = 8
-const ADMIN_ROLE = 'Admin'        // role that MUST use MFA
-
-const isAdminUser = (user) => user?.role?.name === ADMIN_ROLE
 
 // Short-lived challenge token issued after the password step. `purpose` is
-// 'verify' (user already has MFA) or 'setup' (admin must enrol before entry).
+// 'verify' (user already has MFA) or 'setup' (enrolment mid-login, if used).
 const signChallenge = (userId, purpose) =>
   jwt.sign({ id: userId, mfa: purpose }, process.env.JWT_SECRET, { expiresIn: MFA_CHALLENGE_TTL })
 
@@ -40,8 +40,7 @@ const verifyTotp = (secret, code) =>
   speakeasy.totp.verify({ secret, encoding: 'base32', token: String(code || '').trim(), window: 1 })
 
 // Resolves the acting user id for MFA enrolment endpoints. Accepts EITHER a
-// full session bearer token (Profile opt-in) OR a 'setup' challenge in the
-// body (forced admin enrolment during login, before a session exists).
+// full session bearer token (Profile opt-in) OR a 'setup' challenge in the body.
 const resolveEnrollActor = (req) => {
   const authHeader = req.headers.authorization
   if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -72,8 +71,6 @@ const signToken = (user) => {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d'
   })
 }
-
-const DEPARTMENTS = ['HR', 'Finance', 'IT', 'Operations', 'Sales', 'Legal']
 
 // Resolves the workspace subdomain a request is targeting. An explicit
 // `subdomain` (query on GET, body on POST) wins — used in local dev where
@@ -116,9 +113,6 @@ router.post('/register', async (req, res, next) => {
     if (!name || !email || !password || !department) {
       return sendError(res, 'name, email, password and department are required', 'MISSING_FIELDS', 400)
     }
-    if (!DEPARTMENTS.includes(department)) {
-      return sendError(res, `department must be one of: ${DEPARTMENTS.join(', ')}`, 'INVALID_DEPARTMENT', 400)
-    }
     if (String(password).length < 6) {
       return sendError(res, 'password must be at least 6 characters', 'PASSWORD_TOO_SHORT', 400)
     }
@@ -131,6 +125,22 @@ router.post('/register', async (req, res, next) => {
     const exists = await User.findOne({ email: normalisedEmail, orgId }).lean()
     if (exists) {
       return sendError(res, 'Email already registered', 'EMAIL_EXISTS', 400)
+    }
+
+    // Self-signup consumes a licensed seat like any other user, and the licence
+    // has to be live — an expired workspace must not grow.
+    const org = orgId ? await Organization.findById(orgId).lean() : null
+    if (org) {
+      const blocked = writeBlockFor(org)
+      if (blocked) return sendError(res, blocked.error, blocked.code, blocked.status, blocked.extra)
+      const overQuota = await checkQuota(org, 'users')
+      if (overQuota) return sendError(res, overQuota.error, overQuota.code, overQuota.status, overQuota.extra)
+    }
+
+    // Departments belong to the workspace being joined, not to the codebase.
+    const deptName = canonicalDepartment(org, department)
+    if (!deptName) {
+      return sendError(res, `department must be one of: ${departmentsFor(org).join(', ')}`, 'INVALID_DEPARTMENT', 400)
     }
 
     let resolvedRoleId = roleId
@@ -153,8 +163,9 @@ router.post('/register', async (req, res, next) => {
       name,
       email: normalisedEmail,
       password,
-      department,
-      role: resolvedRoleId
+      department: deptName,
+      role: resolvedRoleId,
+      needsProductTour: true,
     })
     await user.save()
     await user.populate('role')
@@ -239,18 +250,13 @@ router.post('/login', authLimiter, async (req, res, next) => {
     user.failedLoginAttempts = 0
     user.lockUntil = null
 
-    // MFA gate. If enabled, hand back a challenge instead of a session.
+    // MFA gate. If the user opted in, hand back a challenge instead of a session.
     if (user.mfaEnabled) {
       await user.save({ validateBeforeSave: false })
       return sendSuccess(res, { mfaRequired: true, challenge: signChallenge(user._id, 'verify') })
     }
-    // Admins MUST have MFA — force enrolment before granting a session.
-    if (isAdminUser(user)) {
-      await user.save({ validateBeforeSave: false })
-      return sendSuccess(res, { mfaSetupRequired: true, challenge: signChallenge(user._id, 'setup') })
-    }
 
-    // No MFA required → issue the real session token.
+    // No MFA enabled → issue the real session token.
     user.lastLogin = new Date()
     await user.save({ validateBeforeSave: false })
 
@@ -262,8 +268,8 @@ router.post('/login', authLimiter, async (req, res, next) => {
 })
 
 // POST /api/auth/mfa/setup
-// Generates (or regenerates) a TOTP secret and returns a QR to scan. Works
-// for a logged-in user (opt-in) OR an admin mid-forced-enrolment (challenge).
+// Generates (or regenerates) a TOTP secret and returns a QR to scan.
+// Works for a logged-in user (opt-in) or a mid-login setup challenge.
 router.post('/mfa/setup', async (req, res, next) => {
   try {
     const actor = resolveEnrollActor(req)
@@ -294,8 +300,7 @@ router.post('/mfa/setup', async (req, res, next) => {
 
 // POST /api/auth/mfa/enable  body: { code, challenge? }
 // Verifies the first code, enables MFA, returns one-time backup codes. When
-// invoked via a 'setup' challenge (forced admin enrolment), it also issues the
-// real session token so the admin lands logged in.
+// invoked via a 'setup' challenge, it also issues the real session token.
 router.post('/mfa/enable', async (req, res, next) => {
   try {
     const actor = resolveEnrollActor(req)
@@ -366,18 +371,14 @@ router.post('/mfa/verify', authLimiter, async (req, res, next) => {
 router.get('/mfa/status', protect, async (req, res) => {
   return sendSuccess(res, {
     enabled: Boolean(req.user.mfaEnabled),
-    required: isAdminUser(req.user)
+    required: false
   })
 })
 
 // POST /api/auth/mfa/disable  (protected)  body: { code }
-// Requires a valid TOTP / backup code to switch MFA off. Blocked for admins,
-// for whom MFA is mandatory.
+// Requires a valid TOTP / backup code to switch MFA off. Available to every role.
 router.post('/mfa/disable', protect, async (req, res, next) => {
   try {
-    if (isAdminUser(req.user)) {
-      return sendError(res, 'MFA is required for admin accounts and cannot be disabled.', 'MFA_REQUIRED', 403)
-    }
     const { code } = req.body
     if (!code) return sendError(res, 'code is required', 'MISSING_CODE', 400)
 
@@ -508,6 +509,22 @@ router.get('/reset-password/validate', async (req, res, next) => {
 // GET /api/auth/me
 router.get('/me', protect, async (req, res) => {
   return sendSuccess(res, { user: req.user })
+})
+
+// POST /api/auth/product-tour/complete
+// Clears the first-login tour flag after the user finishes or skips.
+router.post('/product-tour/complete', protect, async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user._id).populate('role')
+    if (!user) return sendError(res, 'User not found', 'USER_NOT_FOUND', 404)
+    if (user.needsProductTour) {
+      user.needsProductTour = false
+      await user.save({ validateBeforeSave: false })
+    }
+    return sendSuccess(res, { user: user.toJSON() })
+  } catch (err) {
+    next(err)
+  }
 })
 
 // POST /api/auth/change-password  (protected)  body: { currentPassword?, newPassword }

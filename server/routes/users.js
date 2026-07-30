@@ -13,8 +13,15 @@ const { writeAuditLog } = require('../utils/writeAuditLog')
 const { sendWelcomeEmail } = require('../utils/emailService')
 const { sanitizePrefs } = require('../utils/notificationPrefs')
 const { checkEmailDomain } = require('../utils/domainPolicy')
+const { listFor: departmentsFor, canonical: canonicalDepartment } = require('../utils/departments')
+const { requireQuota, checkQuota, remainingFor, respond } = require('../middleware/quota')
+const { releaseFor } = require('../utils/fileGc')
 
 const router = express.Router()
+
+// Shared by single create, update and CSV import so one path can't accept an
+// address the others would reject.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const generateTempPassword = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%'
@@ -24,6 +31,42 @@ const generateTempPassword = () => {
 }
 
 const sameId = (a, b) => String(a) === String(b)
+
+// Anyone signed in may look colleagues up: the out-of-office delegate picker on
+// Profile and the approver pickers in the builder all need a name list. What
+// they do NOT need is the personnel record — seats, MFA state, reporting lines,
+// last sign-in — so everyone but the Admin reads a directory instead.
+const DIRECTORY_FIELDS = 'name email department role isActive'
+const isPeopleAdmin = (user) => user?.role?.name === 'Admin'
+
+// Applies the right projection for the caller to a User query.
+const scopeToCaller = (query, user) => (isPeopleAdmin(user)
+  ? query.select('-password').populate('role')
+  : query.select(DIRECTORY_FIELDS).populate('role', 'name'))
+
+// Departments are per-tenant (utils/departments), so "is this a real one?" is a
+// question about the caller's org, not about a schema enum.
+const resolveDepartment = (org, value) => canonicalDepartment(org, value)
+
+const departmentError = (org, value) =>
+  `Unknown department "${value}" (allowed: ${departmentsFor(org).join(', ')})`
+
+// Platform staff are created from the platform console, never from inside a
+// workspace — otherwise an Org Admin could promote themselves out of their own
+// tenant and into every other one.
+const assertAssignableRole = async (roleId) => {
+  const role = await Role.findById(roleId).select('name').lean()
+  if (!role) return { ok: false, error: 'Role not found', code: 'ROLE_NOT_FOUND', status: 404 }
+  if (role.name === 'SuperAdmin') {
+    return {
+      ok: false,
+      error: 'Platform Super Admin cannot be assigned from a workspace',
+      code: 'ROLE_NOT_ASSIGNABLE',
+      status: 403
+    }
+  }
+  return { ok: true, role }
+}
 
 // GET /api/users
 router.get('/', protect, async (req, res, next) => {
@@ -49,9 +92,7 @@ router.get('/', protect, async (req, res, next) => {
 
     const [total, users] = await Promise.all([
       User.countDocuments(query),
-      User.find(query)
-        .select('-password')
-        .populate('role')
+      scopeToCaller(User.find(query), req.user)
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
@@ -206,12 +247,14 @@ router.put('/me/notification-prefs', protect, async (req, res, next) => {
 // GET /api/users/:id
 router.get('/:id', protect, async (req, res, next) => {
   try {
-    const user = await User.findById(req.params.id)
-      .select('-password')
-      .populate('role')
-      .populate({ path: 'managerId', select: 'name email department' })
-      .populate({ path: 'hrId', select: 'name email department' })
-      .lean()
+    const q = scopeToCaller(User.findById(req.params.id), req.user)
+    // Reporting lines are part of the personnel record; /users/me/profile is
+    // where someone reads their own.
+    if (isPeopleAdmin(req.user)) {
+      q.populate({ path: 'managerId', select: 'name email department' })
+        .populate({ path: 'hrId', select: 'name email department' })
+    }
+    const user = await q.lean()
     if (!user) return sendError(res, 'User not found', 'USER_NOT_FOUND', 404)
     return sendSuccess(res, { user })
   } catch (err) {
@@ -220,14 +263,33 @@ router.get('/:id', protect, async (req, res, next) => {
 })
 
 // POST /api/users
-router.post('/', protect, roleGuard('Admin'), async (req, res, next) => {
+router.post('/', protect, roleGuard('Admin'), requireQuota('users'), async (req, res, next) => {
   try {
     const { name, email, department, roleId, managerId, hrId } = req.body
     if (!name || !email || !department || !roleId) {
       return sendError(res, 'name, email, department and roleId are required', 'MISSING_FIELDS', 400)
     }
 
+    const roleCheck = await assertAssignableRole(roleId)
+    if (!roleCheck.ok) return sendError(res, roleCheck.error, roleCheck.code, roleCheck.status)
+
+    const deptName = resolveDepartment(req.organization, department)
+    if (!deptName) {
+      return sendError(res, departmentError(req.organization, department), 'INVALID_DEPARTMENT', 400)
+    }
+
+    // Builder seats are licensed separately from user seats, so granting one at
+    // creation time has to clear its own quota.
+    const canBuild = req.body.canBuild === true
+    if (canBuild) {
+      const builderLimit = await checkQuota(req.organization, 'builders')
+      if (builderLimit) return respond(res, builderLimit)
+    }
+
     const normalisedEmail = String(email).toLowerCase().trim()
+    if (!EMAIL_RE.test(normalisedEmail)) {
+      return sendError(res, 'Enter a valid email address', 'INVALID_EMAIL', 400)
+    }
 
     // Domain allowlist policy (set per org by the platform admin). Off-list
     // domains are blocked, unless the org allows external users — in which
@@ -246,10 +308,12 @@ router.post('/', protect, roleGuard('Admin'), async (req, res, next) => {
       name,
       email: normalisedEmail,
       password: tempPassword,
-      department,
+      department: deptName,
       role: roleId,
+      canBuild,
       managerId: managerId || undefined,
-      hrId: hrId || undefined
+      hrId: hrId || undefined,
+      needsProductTour: true,
     })
     await user.save()
     await user.populate('role')
@@ -282,7 +346,6 @@ router.post('/', protect, roleGuard('Admin'), async (req, res, next) => {
 // are linked by email in a second pass (they may reference someone created in
 // the same batch). Duplicate emails (in DB or within the file) are skipped.
 const MAX_IMPORT_ROWS = 1000
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 router.post('/import', protect, roleGuard('Admin'), async (req, res, next) => {
   try {
@@ -293,10 +356,21 @@ router.post('/import', protect, roleGuard('Admin'), async (req, res, next) => {
       return sendError(res, `Too many rows (max ${MAX_IMPORT_ROWS})`, 'IMPORT_TOO_LARGE', 400)
     }
 
-    // Role name -> id (case-insensitive) and the allowed department set.
-    const roles = await Role.find().select('_id name').lean()
+    // Role name -> id (case-insensitive) and the allowed department set. Platform
+    // staff are not importable, so SuperAdmin is left out of the map entirely.
+    const roles = await Role.find({ name: { $ne: 'SuperAdmin' } }).select('_id name').lean()
     const nameToRoleId = new Map(roles.map((r) => [r.name.toLowerCase(), r._id]))
-    const allowedDepartments = User.schema.path('department').enumValues
+    const allowedDepartments = departmentsFor(req.organization)
+
+    // Licensed seats left. The import is deliberately partial-success (a bad row
+    // never aborts the batch), so seats are spent row by row and the rows that no
+    // longer fit are reported as skipped instead of failing the whole file.
+    const seats = await remainingFor(req.organization, 'users')
+    let seatsLeft = seats ? seats.remaining : Infinity
+    if (seats && seatsLeft === 0) {
+      const err = await checkQuota(req.organization, 'users')
+      if (err) return respond(res, err)
+    }
 
     const results = []
     const seenEmails = new Set()
@@ -332,7 +406,8 @@ router.post('/import', protect, roleGuard('Admin'), async (req, res, next) => {
         results.push({ row: rowNum, email, status: 'error', reason: `Unknown role "${roleName}"` })
         continue
       }
-      if (!allowedDepartments.includes(department)) {
+      const deptName = resolveDepartment(req.organization, department)
+      if (!deptName) {
         results.push({ row: rowNum, email, status: 'error', reason: `Unknown department "${department}" (allowed: ${allowedDepartments.join(', ')})` })
         continue
       }
@@ -350,10 +425,28 @@ router.post('/import', protect, roleGuard('Admin'), async (req, res, next) => {
         continue
       }
 
+      if (seatsLeft <= 0) {
+        results.push({
+          row: rowNum,
+          email,
+          status: 'skipped',
+          reason: `User limit reached (${seats.limit} licensed) — this row was not imported`
+        })
+        continue
+      }
+
       try {
         const tempPassword = generateTempPassword()
-        const user = new User({ name, email, password: tempPassword, department, role: roleId })
+        const user = new User({
+          name,
+          email,
+          password: tempPassword,
+          department: deptName,
+          role: roleId,
+          needsProductTour: true,
+        })
         await user.save()
+        seatsLeft -= 1
         createdByEmail.set(email, user._id)
         sendWelcomeEmail({ to: user.email, name: user.name, tempPassword })
 
@@ -430,10 +523,26 @@ router.put('/:id', protect, roleGuard('Admin'), async (req, res, next) => {
     const { password, _id, role, name, email, ...rest } = req.body
     const updates = { ...rest }
 
-    const target = await User.findById(req.params.id).select('name email isProtected').lean()
+    const target = await User.findById(req.params.id).select('name email isProtected isActive canBuild avatar').lean()
     if (!target) return sendError(res, 'User not found', 'USER_NOT_FOUND', 404)
     if (target.isProtected) {
       return sendError(res, 'This account is protected and cannot be modified', 'USER_PROTECTED', 403)
+    }
+
+    // Normalise before comparing so a string "true" from a form post still counts
+    // as claiming a seat.
+    if ('canBuild' in updates) updates.canBuild = updates.canBuild === true || updates.canBuild === 'true'
+    if ('isActive' in updates) updates.isActive = updates.isActive === true || updates.isActive === 'true'
+
+    // Both of these hand out a licensed seat, so they go through the same gate as
+    // creating a user would — otherwise "edit" is a way around the plan.
+    if (updates.canBuild === true && target.canBuild !== true) {
+      const err = await checkQuota(req.organization, 'builders')
+      if (err) return respond(res, err)
+    }
+    if (updates.isActive === true && target.isActive === false) {
+      const err = await checkQuota(req.organization, 'users')
+      if (err) return respond(res, err)
     }
 
     // Optional password reset. Validate up front so we never half-apply changes.
@@ -447,7 +556,17 @@ router.put('/:id', protect, roleGuard('Admin'), async (req, res, next) => {
       if (sameId(req.params.id, req.user._id)) {
         return sendError(res, 'You cannot change your own role', 'CANNOT_CHANGE_OWN_ROLE', 400)
       }
+      const roleCheck = await assertAssignableRole(role)
+      if (!roleCheck.ok) return sendError(res, roleCheck.error, roleCheck.code, roleCheck.status)
       updates.role = role
+    }
+
+    if (updates.department !== undefined) {
+      const deptName = resolveDepartment(req.organization, updates.department)
+      if (!deptName) {
+        return sendError(res, departmentError(req.organization, updates.department), 'INVALID_DEPARTMENT', 400)
+      }
+      updates.department = deptName
     }
 
     // Identity fields. Name is trimmed; email is normalised and checked for
@@ -460,6 +579,9 @@ router.put('/:id', protect, roleGuard('Admin'), async (req, res, next) => {
     if (email !== undefined) {
       const normalisedEmail = String(email).toLowerCase().trim()
       if (!normalisedEmail) return sendError(res, 'Email cannot be empty', 'INVALID_EMAIL', 400)
+      if (!EMAIL_RE.test(normalisedEmail)) {
+        return sendError(res, 'Enter a valid email address', 'INVALID_EMAIL', 400)
+      }
       const clash = await User.findOne({
         email: normalisedEmail,
         _id: { $ne: req.params.id }
@@ -518,6 +640,11 @@ router.put('/:id', protect, roleGuard('Admin'), async (req, res, next) => {
           metadata: { userId: String(user._id) }
         })
       }
+    }
+
+    // A replaced avatar leaves the old image orphaned on disk and still counted.
+    if ('avatar' in updates && target.avatar && updates.avatar !== target.avatar) {
+      await releaseFor(req.orgId, { users: [{ avatar: target.avatar }] })
     }
 
     if (wantsPasswordChange) {
@@ -594,6 +721,7 @@ router.delete('/:id/permanent', protect, roleGuard('Admin'), async (req, res, ne
     ])
 
     await User.deleteOne({ _id: target._id })
+    await releaseFor(req.orgId, { users: [target] })
 
     writeAuditLog({
       action: 'user_deleted',
@@ -634,8 +762,9 @@ router.post('/:id/assign-role', protect, roleGuard('Admin'), async (req, res, ne
       return sendError(res, 'This account is protected and its role cannot be changed', 'USER_PROTECTED', 403)
     }
 
-    const newRole = await Role.findById(roleId).lean()
-    if (!newRole) return sendError(res, 'Role not found', 'ROLE_NOT_FOUND', 404)
+    const roleCheck = await assertAssignableRole(roleId)
+    if (!roleCheck.ok) return sendError(res, roleCheck.error, roleCheck.code, roleCheck.status)
+    const newRole = roleCheck.role
 
     const previousRoleName = targetUser.role?.name || 'None'
     targetUser.role = newRole._id

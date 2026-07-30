@@ -27,14 +27,33 @@ const auditLogSchema = new mongoose.Schema({
       'approver_inferred',
       'workflow_cancelled',
       'webhook_called',
-      'users_imported'
+      'webhook_received',
+      'users_imported',
+      // Org Admin configuration
+      'department_created',
+      'department_renamed',
+      'department_deleted',
+      'org_settings_updated',
+      // Platform (SuperAdmin) org lifecycle
+      'org_created',
+      'org_updated',
+      'org_suspended',
+      'org_activated',
+      'org_deleted',
+      'org_admin_password_reset',
+      // Licensing / quota lifecycle
+      'org_storage_extended',
+      'org_storage_extension_revoked',
+      'org_licence_expired',
+      'org_limit_reached'
     ],
     required: true
   },
+  // Absent for entries written by a background job rather than a person (a
+  // licence lapsing, for example). Both audit views render that as "System".
   performedBy: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+    ref: 'User'
   },
   targetEntity: { type: String, required: true },
   department: { type: String },

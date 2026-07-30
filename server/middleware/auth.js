@@ -4,6 +4,8 @@
 const jwt = require('jsonwebtoken')
 const User = require('../models/User')
 const { resolveTenantForUser } = require('./tenant')
+const { checkRequest } = require('./licence')
+const { checkShellScope } = require('./shellScope')
 const { runWithOrgId } = require('../tenancy/tenantContext')
 
 const protect = async (req, res, next) => {
@@ -68,6 +70,35 @@ const protect = async (req, res, next) => {
     req.user = user
     req.organization = tenantResult.org
     req.orgId = tenantResult.org ? tenantResult.org._id : null
+
+    const requestPath = (req.originalUrl || req.url || '').split('?')[0]
+
+    // Shell scoping: platform staff stay in the platform console — see
+    // middleware/shellScope.
+    const scopeBlock = checkShellScope({ user, path: requestPath })
+    if (scopeBlock) {
+      return res.status(scopeBlock.status).json({
+        success: false,
+        error: scopeBlock.error,
+        code: scopeBlock.code
+      })
+    }
+
+    // Licensing: an expired tenant is read-only. Checked here because this is the
+    // one place every authenticated request goes through — see middleware/licence.
+    const licenceBlock = checkRequest({
+      org: req.organization,
+      method: req.method,
+      path: requestPath
+    })
+    if (licenceBlock) {
+      return res.status(licenceBlock.status).json({
+        success: false,
+        error: licenceBlock.error,
+        code: licenceBlock.code,
+        ...licenceBlock.extra
+      })
+    }
 
     // Run the rest of the request inside the ambient tenant context so the
     // org-scope plugin auto-filters every query and stamps every create —

@@ -179,4 +179,8 @@ const startEscalationCron = () => {
   console.log('Escalation cron scheduled — runs hourly (UTC)')
 }
 
-module.exports = { startEscalationCron, runEscalation }
+// escalateTask is exported so the automated test suite can exercise the real
+// escalation code path against a single, namespaced task inside a tenant
+// context — instead of the global runEscalation sweep, which would touch every
+// org's overdue tasks on a shared database.
+module.exports = { startEscalationCron, runEscalation, escalateTask, findEscalationTarget }

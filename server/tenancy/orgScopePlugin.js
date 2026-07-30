@@ -30,14 +30,19 @@ module.exports = function orgScopePlugin (schema) {
     }
   })
 
-  schema.pre('insertMany', function (next, docs) {
+  // Mongoose changed this hook's signature: (next, docs) up to v8, (docs) in v9
+  // where simply returning is enough. Read the arguments defensively so a driver
+  // upgrade cannot turn every bulk insert into a TypeError.
+  schema.pre('insertMany', function (...args) {
+    const next = typeof args[0] === 'function' ? args[0] : null
+    const docs = args.find((arg) => Array.isArray(arg))
     const orgId = getOrgId()
     if (orgId && Array.isArray(docs)) {
       for (const doc of docs) {
         if (doc && !doc.orgId) doc.orgId = orgId
       }
     }
-    next()
+    if (next) next()
   })
 
   schema.pre(QUERY_HOOKS, function () {

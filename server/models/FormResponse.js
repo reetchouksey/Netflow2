@@ -24,7 +24,10 @@ const formResponseSchema = new mongoose.Schema({
   attachments: [{
     filename: String,
     path: String,
-    mimetype: String
+    mimetype: String,
+    // Bytes. Needed to decrement the org's storage meter when a response is
+    // deleted; legacy rows have none, so the reconciliation job stats the file.
+    size: Number
   }]
 }, { timestamps: true })
 

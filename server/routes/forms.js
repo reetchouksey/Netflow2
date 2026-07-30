@@ -17,12 +17,16 @@ const { writeAuditLog } = require('../utils/writeAuditLog')
 const { isConfigured: llmConfigured, getModel: llmModel, generateJSON, generateText } = require('../utils/llm')
 const { isFieldVisible } = require('../utils/conditionalLogic')
 const { validateField } = require('../utils/validation')
+const { requireQuota, requireCanBuild, checkQuota, respond } = require('../middleware/quota')
+const { meterSubmission } = require('../utils/usageMeter')
+const { releaseFor } = require('../utils/fileGc')
+const { DESIGNER_ROLES, SUBMITTER_ROLES, isDesigner } = require('../utils/roles')
+const { linkedFormMatch, linkedFormsMatchAny } = require('../utils/linkedForms')
 
 const router = express.Router()
 
-// Roles that can build / edit forms and therefore see drafts.
-const BUILDER_ROLES = ['Admin', 'CEO', 'Manager', 'HR', 'VP']
-const isBuilder = (user) => BUILDER_ROLES.includes(user?.role?.name)
+// Org Admin designs forms; leaders/employees only see published + submit.
+const isBuilder = isDesigner
 
 // A "manager" for the "Managers only" submit rule = a people-manager: someone
 // with a manager-ish role OR at least one direct report.
@@ -179,13 +183,19 @@ router.get('/', protect, async (req, res, next) => {
     // Forms with no linked workflow stay visible to everyone.
     let visible = forms
     if (!isBuilder(req.user) && forms.length) {
+      const formIds = forms.map((f) => f._id)
       const wfs = await Workflow.find({
-        linkedFormId: { $in: forms.map((f) => f._id) },
+        ...linkedFormsMatchAny(formIds),
         status: 'published'
-      }).select('linkedFormId access').lean()
+      }).select('linkedFormId linkedFormIds access').lean()
       const accessByForm = new Map()
       for (const w of wfs) {
-        if (w.access) accessByForm.set(String(w.linkedFormId), w.access)
+        if (!w.access) continue
+        const ids = new Set([
+          ...(w.linkedFormIds || []).map(String),
+          ...(w.linkedFormId ? [String(w.linkedFormId)] : []),
+        ])
+        for (const id of ids) accessByForm.set(id, w.access)
       }
       visible = forms.filter((f) =>
         canSeeWorkflowForm(accessByForm.get(String(f._id)), req.user)
@@ -217,7 +227,7 @@ router.get('/ai-status', protect, (req, res) => {
 // POST /api/forms/ai-draft — turn a plain-English description into form fields.
 // Builder-only. Returns a draft { title, description, fields } the client merges
 // into the builder; it does NOT persist anything.
-router.post('/ai-draft', protect, roleGuard(...BUILDER_ROLES), async (req, res, next) => {
+router.post('/ai-draft', protect, roleGuard(...DESIGNER_ROLES), requireCanBuild, async (req, res, next) => {
   try {
     const prompt = asStr(req.body?.prompt, 2000)
     if (!prompt) return sendError(res, 'Describe the form you want to generate.', 'MISSING_PROMPT', 400)
@@ -271,7 +281,7 @@ const trimOverlap = (typed, completion) => {
 // POST /api/forms/ai-suggest — ghost-text autocomplete for the AI prompt box.
 // Builder-only. Returns only the suffix to append. Never throws to the client:
 // on any failure it returns an empty suggestion so typing is never disrupted.
-router.post('/ai-suggest', protect, roleGuard(...BUILDER_ROLES), async (req, res) => {
+router.post('/ai-suggest', protect, roleGuard(...DESIGNER_ROLES), requireCanBuild, async (req, res) => {
   try {
     const prompt = asStr(req.body?.prompt, 300)
     if (!llmConfigured() || prompt.length < 3) return sendSuccess(res, { completion: '' })
@@ -316,7 +326,7 @@ router.get('/:id', protect, async (req, res, next) => {
     // workflow doesn't make visible to them.
     if (!isBuilder(req.user)) {
       const wf = await Workflow.findOne({
-        linkedFormId: form._id,
+        ...linkedFormMatch(form._id),
         status: 'published'
       }).select('access').lean()
       if (wf && !canSeeWorkflowForm(wf.access, req.user)) {
@@ -331,7 +341,7 @@ router.get('/:id', protect, async (req, res, next) => {
 })
 
 // POST /api/forms
-router.post('/', protect, roleGuard(...BUILDER_ROLES), async (req, res, next) => {
+router.post('/', protect, roleGuard(...DESIGNER_ROLES), requireCanBuild, requireQuota('forms'), async (req, res, next) => {
   try {
     const { title, description, fields, department } = req.body
     if (!title) return sendError(res, 'title is required', 'MISSING_FIELDS', 400)
@@ -354,7 +364,7 @@ router.post('/', protect, roleGuard(...BUILDER_ROLES), async (req, res, next) =>
 
 // PUT /api/forms/:id
 // If the form is published, create a new versioned draft instead of mutating.
-router.put('/:id', protect, roleGuard(...BUILDER_ROLES), async (req, res, next) => {
+router.put('/:id', protect, roleGuard(...DESIGNER_ROLES), requireCanBuild, async (req, res, next) => {
   try {
     const existing = await Form.findById(req.params.id)
     if (!existing) return sendError(res, 'Form not found', 'FORM_NOT_FOUND', 404)
@@ -373,7 +383,7 @@ router.put('/:id', protect, roleGuard(...BUILDER_ROLES), async (req, res, next) 
 })
 
 // POST /api/forms/:id/archive  (soft "unpublish" — keeps the form in the DB)
-router.post('/:id/archive', protect, roleGuard(...BUILDER_ROLES), async (req, res, next) => {
+router.post('/:id/archive', protect, roleGuard(...DESIGNER_ROLES), requireCanBuild, async (req, res, next) => {
   try {
     const form = await Form.findByIdAndUpdate(
       req.params.id,
@@ -388,13 +398,17 @@ router.post('/:id/archive', protect, roleGuard(...BUILDER_ROLES), async (req, re
 })
 
 // DELETE /api/forms/:id  (HARD delete — removes the form AND its submissions)
-router.delete('/:id', protect, roleGuard(...BUILDER_ROLES), async (req, res, next) => {
+router.delete('/:id', protect, roleGuard(...DESIGNER_ROLES), requireCanBuild, async (req, res, next) => {
   try {
     const form = await Form.findById(req.params.id)
     if (!form) return sendError(res, 'Form not found', 'FORM_NOT_FOUND', 404)
 
+    // Read the submissions before they go, so their attachments can be deleted
+    // from disk and the storage meter credited back.
+    const docs = await FormResponse.find({ formId: form._id }).select('formData attachments').lean()
     const responses = await FormResponse.deleteMany({ formId: form._id })
     await form.deleteOne()
+    const freed = await releaseFor(req.orgId, { responses: docs })
 
     writeAuditLog({
       action: 'form_deleted',
@@ -403,12 +417,12 @@ router.delete('/:id', protect, roleGuard(...BUILDER_ROLES), async (req, res, nex
       department: form.department,
       ipAddress: req.ip,
       detail: `${req.user.name} permanently deleted form "${form.title}" (${responses.deletedCount} submission(s) removed)`,
-      metadata: { formId: String(form._id), responsesDeleted: responses.deletedCount }
+      metadata: { formId: String(form._id), responsesDeleted: responses.deletedCount, filesDeleted: freed.files }
     })
 
     return sendSuccess(res, {
       message: 'Form deleted',
-      deleted: { form: 1, responses: responses.deletedCount }
+      deleted: { form: 1, responses: responses.deletedCount, files: freed.files }
     })
   } catch (err) {
     next(err)
@@ -416,7 +430,7 @@ router.delete('/:id', protect, roleGuard(...BUILDER_ROLES), async (req, res, nex
 })
 
 // POST /api/forms/:id/publish
-router.post('/:id/publish', protect, roleGuard(...BUILDER_ROLES), async (req, res, next) => {
+router.post('/:id/publish', protect, roleGuard(...DESIGNER_ROLES), requireCanBuild, async (req, res, next) => {
   try {
     const form = await Form.findById(req.params.id)
     if (!form) return sendError(res, 'Form not found', 'FORM_NOT_FOUND', 404)
@@ -432,7 +446,7 @@ router.post('/:id/publish', protect, roleGuard(...BUILDER_ROLES), async (req, re
 // POST /api/forms/:id/public   { enabled: boolean }
 // Enable/disable a public share link. Generates an unguessable token on first
 // enable and returns the updated form so the UI can build the link.
-router.post('/:id/public', protect, roleGuard(...BUILDER_ROLES), async (req, res, next) => {
+router.post('/:id/public', protect, roleGuard(...DESIGNER_ROLES), requireCanBuild, async (req, res, next) => {
   try {
     const form = await Form.findById(req.params.id)
     if (!form) return sendError(res, 'Form not found', 'FORM_NOT_FOUND', 404)
@@ -449,7 +463,7 @@ router.post('/:id/public', protect, roleGuard(...BUILDER_ROLES), async (req, res
 })
 
 // GET /api/forms/:id/responses — builder-only list of submissions for a form.
-router.get('/:id/responses', protect, roleGuard(...BUILDER_ROLES), async (req, res, next) => {
+router.get('/:id/responses', protect, roleGuard(...DESIGNER_ROLES), async (req, res, next) => {
   try {
     const form = await Form.findById(req.params.id).lean()
     if (!form) return sendError(res, 'Form not found', 'FORM_NOT_FOUND', 404)
@@ -470,7 +484,7 @@ router.get('/:id/responses', protect, roleGuard(...BUILDER_ROLES), async (req, r
 })
 
 // GET /api/forms/:id/draft — the caller's saved draft for this form (or null).
-router.get('/:id/draft', protect, roleGuard(...BUILDER_ROLES, 'Employee'), async (req, res, next) => {
+router.get('/:id/draft', protect, roleGuard(...SUBMITTER_ROLES), async (req, res, next) => {
   try {
     const draft = await FormDraft.findOne({ formId: req.params.id, userId: req.user._id })
       .select('formData updatedAt')
@@ -485,7 +499,7 @@ router.get('/:id/draft', protect, roleGuard(...BUILDER_ROLES, 'Employee'), async
 
 // PUT /api/forms/:id/draft — save/overwrite the caller's draft. Intentionally
 // NO required-field or advanced validation: a draft is allowed to be partial.
-router.put('/:id/draft', protect, roleGuard(...BUILDER_ROLES, 'Employee'), async (req, res, next) => {
+router.put('/:id/draft', protect, roleGuard(...SUBMITTER_ROLES), async (req, res, next) => {
   try {
     const { formData } = req.body || {}
     if (!formData || typeof formData !== 'object') {
@@ -503,7 +517,7 @@ router.put('/:id/draft', protect, roleGuard(...BUILDER_ROLES, 'Employee'), async
 })
 
 // DELETE /api/forms/:id/draft — discard the caller's draft.
-router.delete('/:id/draft', protect, roleGuard(...BUILDER_ROLES, 'Employee'), async (req, res, next) => {
+router.delete('/:id/draft', protect, roleGuard(...SUBMITTER_ROLES), async (req, res, next) => {
   try {
     await FormDraft.deleteOne({ formId: req.params.id, userId: req.user._id })
     return sendSuccess(res, { discarded: true })
@@ -513,9 +527,9 @@ router.delete('/:id/draft', protect, roleGuard(...BUILDER_ROLES, 'Employee'), as
 })
 
 // POST /api/forms/:id/submit
-// Viewer is read-only by design; everyone else can submit. Admins are allowed
-// because in practice they also file their own leave/expense requests.
-router.post('/:id/submit', protect, roleGuard(...BUILDER_ROLES, 'Employee'), async (req, res, next) => {
+// Every workspace role can submit, Admins included — in practice they also file
+// their own leave and expense requests.
+router.post('/:id/submit', protect, roleGuard(...SUBMITTER_ROLES), requireQuota('submissions'), async (req, res, next) => {
   try {
     const form = await Form.findById(req.params.id).lean()
     if (!form) return sendError(res, 'Form not found', 'FORM_NOT_FOUND', 404)
@@ -526,7 +540,7 @@ router.post('/:id/submit', protect, roleGuard(...BUILDER_ROLES, 'Employee'), asy
     // A published workflow linked to this form drives the access checks below
     // and the trigger after submission.
     const linkedWorkflow = await Workflow.findOne({
-      linkedFormId: form._id,
+      ...linkedFormMatch(form._id),
       status: 'published'
     }).select('_id title access triggerOn preventDuplicates').lean()
 
@@ -599,6 +613,10 @@ router.post('/:id/submit', protect, roleGuard(...BUILDER_ROLES, 'Employee'), asy
       formData,
       status: 'submitted'
     })
+
+    // Metered after the response exists so a failed create is never billed.
+    // Await it: the count has to be visible to the next quota check.
+    await meterSubmission(req.orgId)
 
     // A completed submission should not leave a stale draft behind. Best-effort:
     // never fail the submit if draft cleanup errors.

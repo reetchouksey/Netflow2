@@ -15,7 +15,9 @@ const notificationSchema = new mongoose.Schema({
   message: { type: String, required: true },
   type: {
     type: String,
-    enum: ['approval', 'rejection', 'escalation', 'assignment', 'reminder'],
+    // 'system' is the platform talking to the tenant rather than one user to
+    // another — licence and quota warnings, which have no task to point at.
+    enum: ['approval', 'rejection', 'escalation', 'assignment', 'reminder', 'system'],
     required: true
   },
   isRead: { type: Boolean, default: false },

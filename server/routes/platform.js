@@ -5,8 +5,19 @@
 //   PUT    /api/platform/orgs/:id                 update name/domains/features/limits
 //   POST   /api/platform/orgs/:id/suspend         suspend (blocks every org user)
 //   POST   /api/platform/orgs/:id/activate        reactivate
+//   GET    /api/platform/orgs/:id/usage           one tenant's meters (?disk=1)
+//   POST   /api/platform/orgs/:id/storage-extension     grant temporary storage
+//   DELETE /api/platform/orgs/:id/storage-extension     revoke it early
 //   POST   /api/platform/orgs/:id/reset-admin-password  new temp password for the admin
 //   DELETE /api/platform/orgs/:id                 backup + cascade-delete a tenant
+//   GET    /api/platform/activity                 platform org-lifecycle audit
+//   GET    /api/platform/plans                    plan catalogue + tenant counts
+//   GET    /api/platform/admins                   list SuperAdmin accounts
+//   POST   /api/platform/admins                   invite a SuperAdmin
+//   POST   /api/platform/admins/:id/reset-password
+//   POST   /api/platform/admins/:id/deactivate
+//   POST   /api/platform/admins/:id/activate
+//   GET    /api/platform/health                   system status for SuperAdmin
 //
 // All tenant queries here name orgId explicitly (or use skipOrgScope), so the
 // org-scope plugin never silently narrows a Super Admin's cross-tenant view to
@@ -15,6 +26,7 @@
 const express = require('express')
 const fs = require('fs')
 const path = require('path')
+const mongoose = require('mongoose')
 const { EJSON } = require('bson')
 
 const Organization = require('../models/Organization')
@@ -28,12 +40,28 @@ const WorkflowExecution = require('../models/WorkflowExecution')
 const Task = require('../models/Task')
 const Notification = require('../models/Notification')
 const AuditLog = require('../models/AuditLog')
-const DelegationOfAuthority = require('../models/DelegationOfAuthority')
 const { protect } = require('../middleware/auth')
 const { roleGuard } = require('../middleware/roleGuard')
 const { sendSuccess, sendError } = require('../utils/apiResponse')
 const { checkEmailDomain } = require('../utils/domainPolicy')
 const { generatePassword } = require('../utils/password')
+const { writeAuditLog } = require('../utils/writeAuditLog')
+const { applyLicensingPayload, usageSnapshot, freshPeriod, resetNotified } = require('../utils/licensing')
+const { countsFor } = require('../utils/usage')
+const { ensurePeriod } = require('../utils/usageMeter')
+const { purgeOrgFiles } = require('../utils/fileGc')
+const { measureOrg } = require('../utils/fileStore')
+const { PLAN_PRESETS, SELLABLE_PLANS } = require('../config/plans')
+
+const formatPlanMb = (mb) => {
+  const n = Number(mb) || 0
+  if (n <= 0) return 'Unlimited'
+  if (n >= 1024) {
+    const gb = n / 1024
+    return `${gb >= 10 ? Math.round(gb) : gb.toFixed(1)} GB`
+  }
+  return `${Math.round(n)} MB`
+}
 
 const router = express.Router()
 
@@ -41,12 +69,47 @@ router.use(protect, roleGuard('SuperAdmin'))
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+const PLATFORM_ACTIONS = [
+  'org_created',
+  'org_updated',
+  'org_suspended',
+  'org_activated',
+  'org_deleted',
+  'org_admin_password_reset',
+  'org_storage_extended',
+  'org_storage_extension_revoked',
+  'org_licence_expired'
+]
+
+// A temporary storage grant is a support action, not a plan change: it buys a
+// tenant time to clean up (or to sign a bigger contract) without stranding the
+// approvals that are already waiting on an attachment.
+const MAX_EXTENSION_MB = 100 * 1024
+const MAX_EXTENSION_DAYS = 90
+
+const MONGO_STATES = ['disconnected', 'connected', 'connecting', 'disconnecting']
+
+const auditPlatform = (req, action, org, detail, metadata = {}) =>
+  writeAuditLog({
+    action,
+    performedBy: req.user._id,
+    targetEntity: org?.name || org?.subdomain || 'organization',
+    department: req.user.department,
+    ipAddress: req.ip,
+    detail,
+    metadata: {
+      ...metadata,
+      targetOrgId: org?._id ? String(org._id) : undefined,
+      subdomain: org?.subdomain
+    }
+  })
+
 // Every tenant-scoped collection — the blast radius of a tenant delete/backup.
 // Role and Organization are intentionally excluded (Role is global; the org
 // document is handled separately).
 const TENANT_MODELS = [
   User, Form, FormDraft, FormResponse, Workflow,
-  WorkflowExecution, Task, Notification, AuditLog, DelegationOfAuthority
+  WorkflowExecution, Task, Notification, AuditLog
 ]
 
 // Normalises a domains payload: array or comma-separated string → clean list.
@@ -57,14 +120,36 @@ const parseDomains = (input) => {
   )]
 }
 
+// Raw counts for the org card. `users`/`forms`/`workflows` follow the licensing
+// rules (utils/usage.js) so the numbers here match what the quota gate enforces;
+// totals are kept alongside so a Super Admin can still see deactivated seats.
 const usageFor = async (orgId) => {
-  const [users, forms, workflows, pendingTasks] = await Promise.all([
-    User.countDocuments({ orgId }),
-    Form.countDocuments({ orgId }),
-    Workflow.countDocuments({ orgId }),
-    Task.countDocuments({ orgId, status: 'pending' })
+  const [licensed, usersTotal, formsTotal, workflowsTotal, pendingTasks] = await Promise.all([
+    countsFor(orgId),
+    User.countDocuments({ orgId }).setOptions({ skipOrgScope: true }),
+    Form.countDocuments({ orgId }).setOptions({ skipOrgScope: true }),
+    Workflow.countDocuments({ orgId }).setOptions({ skipOrgScope: true }),
+    Task.countDocuments({ orgId, status: 'pending' }).setOptions({ skipOrgScope: true })
   ])
-  return { users, forms, workflows, pendingTasks }
+  return { ...licensed, usersTotal, formsTotal, workflowsTotal, pendingTasks }
+}
+
+// Org card payload: document + admin + counts + the licence/limit snapshot the
+// UI meters render.
+//
+// `usage` stays the flat count object the panel has always rendered, which means
+// it shadows the stored usage sub-document. That is deliberate — the stored
+// meters (submission window, storage bytes, buffer) are richer than raw numbers
+// and are published under `licensing` instead, already paired with their limits.
+const withLicensing = async (org, extra = {}) => {
+  const plain = typeof org.toObject === 'function' ? org.toObject() : org
+  const counts = await usageFor(plain._id)
+  return {
+    ...plain,
+    ...extra,
+    usage: counts,
+    licensing: usageSnapshot(plain, counts)
+  }
 }
 
 // Dumps an org's document + every tenant collection scoped to it into a
@@ -105,10 +190,8 @@ router.get('/orgs', async (req, res, next) => {
     const adminById = new Map(admins.map((a) => [String(a._id), a]))
 
     const withUsage = await Promise.all(
-      orgs.map(async (org) => ({
-        ...org,
-        admin: org.adminUserId ? adminById.get(String(org.adminUserId)) || null : null,
-        usage: await usageFor(org._id)
+      orgs.map((org) => withLicensing(org, {
+        admin: org.adminUserId ? adminById.get(String(org.adminUserId)) || null : null
       }))
     )
     return sendSuccess(res, { orgs: withUsage })
@@ -122,7 +205,7 @@ router.get('/orgs', async (req, res, next) => {
 // first login (models/User.mustChangePassword).
 router.post('/orgs', async (req, res, next) => {
   try {
-    const { name, subdomain, allowedDomains, features, limits, adminEmail, adminName } = req.body || {}
+    const { name, subdomain, allowedDomains, features, adminEmail, adminName } = req.body || {}
     if (!name || !subdomain) {
       return sendError(res, 'name and subdomain are required', 'MISSING_FIELDS', 400)
     }
@@ -139,7 +222,6 @@ router.post('/orgs', async (req, res, next) => {
 
     const parsedDomains = parseDomains(allowedDomains)
     const parsedFeatures = {
-      aiRouting: features?.aiRouting !== false,
       externalUsers: features?.externalUsers === true
     }
 
@@ -147,16 +229,24 @@ router.post('/orgs', async (req, res, next) => {
     const policy = checkEmailDomain({ name, allowedDomains: parsedDomains, features: parsedFeatures }, email)
     if (!policy.allowed) return sendError(res, policy.reason, 'ADMIN_DOMAIN_NOT_ALLOWED', 400)
 
-    const org = await Organization.create({
+    // Build the org in memory so a bad plan/limit payload is rejected before we
+    // write anything (and before a temp password is generated).
+    const org = new Organization({
       name: String(name).trim(),
       subdomain: sub,
       allowedDomains: parsedDomains,
-      features: parsedFeatures,
-      limits: {
-        maxUsers: Math.max(0, parseInt(limits?.maxUsers, 10) || 0),
-        maxWorkflows: Math.max(0, parseInt(limits?.maxWorkflows, 10) || 0)
-      }
+      features: parsedFeatures
     })
+
+    const licensingErrors = applyLicensingPayload(org, req.body || {})
+    if (licensingErrors.length) {
+      return sendError(res, licensingErrors[0], 'INVALID_LICENSING', 400, { errors: licensingErrors })
+    }
+
+    // Start the submission allowance from day one rather than waiting for the
+    // first submission, so the UI can show a period immediately.
+    org.usage.submissions = freshPeriod(org)
+    await org.save()
 
     const tempPassword = generatePassword(14)
     let admin
@@ -168,7 +258,11 @@ router.post('/orgs', async (req, res, next) => {
         password: tempPassword,
         department: 'IT',
         role: adminRole._id,
-        mustChangePassword: true
+        mustChangePassword: true,
+        needsProductTour: true,
+        // The bootstrap admin holds the first builder seat — a tenant whose only
+        // user cannot create a form has nothing to log in for.
+        canBuild: true
       })
     } catch (adminErr) {
       // Never leave an org with no admin — roll the org back.
@@ -182,12 +276,14 @@ router.post('/orgs', async (req, res, next) => {
     org.adminUserId = admin._id
     await org.save()
 
+    auditPlatform(req, 'org_created', org, `Created organization "${org.name}" (${org.subdomain}) with admin ${admin.email}`, {
+      adminEmail: admin.email
+    })
+
     return sendSuccess(res, {
-      org: {
-        ...org.toObject(),
-        admin: { _id: admin._id, email: admin.email, name: admin.name },
-        usage: await usageFor(org._id)
-      },
+      org: await withLicensing(org, {
+        admin: { _id: admin._id, email: admin.email, name: admin.name }
+      }),
       // Shown to the Super Admin exactly once — the password is hashed at rest.
       admin: { email: admin.email, name: admin.name, tempPassword, warning: policy.warning || null }
     }, 201)
@@ -205,23 +301,89 @@ router.put('/orgs/:id', async (req, res, next) => {
     const org = await Organization.findById(req.params.id)
     if (!org) return sendError(res, 'Organization not found', 'ORG_NOT_FOUND', 404)
 
-    const { name, allowedDomains, features, limits } = req.body || {}
+    const { name, allowedDomains, features } = req.body || {}
     if (name !== undefined) org.name = String(name).trim()
     if (allowedDomains !== undefined) org.allowedDomains = parseDomains(allowedDomains)
     if (features !== undefined) {
-      if (features.aiRouting !== undefined) org.features.aiRouting = Boolean(features.aiRouting)
       if (features.externalUsers !== undefined) org.features.externalUsers = Boolean(features.externalUsers)
     }
-    if (limits !== undefined) {
-      if (limits.maxUsers !== undefined) org.limits.maxUsers = Math.max(0, parseInt(limits.maxUsers, 10) || 0)
-      if (limits.maxWorkflows !== undefined) org.limits.maxWorkflows = Math.max(0, parseInt(limits.maxWorkflows, 10) || 0)
+
+    const before = { plan: org.plan, limits: org.limits.toObject ? org.limits.toObject() : { ...org.limits } }
+    const licensingErrors = applyLicensingPayload(org, req.body || {})
+    if (licensingErrors.length) {
+      return sendError(res, licensingErrors[0], 'INVALID_LICENSING', 400, { errors: licensingErrors })
     }
+
+    // A plan change re-dates the allowance: the new submission cap should apply
+    // from now, not from a window that was sized for the old plan.
+    if (org.plan !== before.plan
+      || Number(org.limits.maxSubmissionsPerPeriod || 0) !== Number(before.limits.maxSubmissionsPerPeriod || 0)) {
+      const period = freshPeriod(org)
+      // Keep the count — the tenant did submit those — only re-window it.
+      org.usage.submissions.periodStart = period.periodStart
+      org.usage.submissions.periodEnd = period.periodEnd
+      resetNotified(org, 'sub')
+    }
+    if (Number(org.limits.maxStorageMb || 0) !== Number(before.limits.maxStorageMb || 0)) {
+      resetNotified(org, 'stor')
+    }
+
     await org.save()
-    return sendSuccess(res, { org: { ...org.toObject(), usage: await usageFor(org._id) } })
+
+    const planChanged = org.plan !== before.plan
+    auditPlatform(
+      req,
+      'org_updated',
+      org,
+      planChanged
+        ? `Updated organization "${org.name}" (${org.subdomain}) — plan ${before.plan} → ${org.plan}`
+        : `Updated organization "${org.name}" (${org.subdomain})`,
+      planChanged ? { planFrom: before.plan, planTo: org.plan } : {}
+    )
+    return sendSuccess(res, { org: await withLicensing(org) })
   } catch (err) {
     if (err.name === 'ValidationError') {
       return sendError(res, err.message, 'INVALID_ORG', 400)
     }
+    next(err)
+  }
+})
+
+// GET /api/platform/orgs/:id/usage — one tenant's meters, freshly counted.
+//
+// The list endpoint already carries a snapshot per org; this exists for the org
+// detail view, which needs it after an edit, and for support work — with
+// `?disk=1` it also measures the attachment directory so drift between the stored
+// meter and the filesystem is visible without waiting for the nightly job.
+router.get('/orgs/:id/usage', async (req, res, next) => {
+  try {
+    // Rolling here as well as on the tenant's own endpoint: a Super Admin
+    // investigating "why are they blocked?" must not be shown a stale window.
+    await ensurePeriod(req.params.id)
+
+    const org = await Organization.findById(req.params.id).lean()
+    if (!org) return sendError(res, 'Organization not found', 'ORG_NOT_FOUND', 404)
+
+    const counts = await usageFor(org._id)
+    const payload = {
+      org: { _id: org._id, name: org.name, subdomain: org.subdomain, status: org.status },
+      counts,
+      usage: usageSnapshot(org, counts),
+      storageExtension: org.storageExtension?.extraMb ? org.storageExtension : null
+    }
+
+    if (String(req.query.disk || '') === '1') {
+      const actual = measureOrg(org._id)
+      payload.disk = {
+        bytes: actual.bytes,
+        files: actual.files,
+        driftBytes: actual.bytes - Number(org.usage?.storageBytes || 0),
+        driftFiles: actual.files - Number(org.usage?.fileCount || 0)
+      }
+    }
+
+    return sendSuccess(res, payload)
+  } catch (err) {
     next(err)
   }
 })
@@ -237,6 +399,7 @@ router.post('/orgs/:id/suspend', async (req, res, next) => {
     }
     org.status = 'suspended'
     await org.save()
+    auditPlatform(req, 'org_suspended', org, `Suspended organization "${org.name}" (${org.subdomain})`)
     return sendSuccess(res, { org: org.toObject() })
   } catch (err) {
     next(err)
@@ -250,7 +413,75 @@ router.post('/orgs/:id/activate', async (req, res, next) => {
     if (!org) return sendError(res, 'Organization not found', 'ORG_NOT_FOUND', 404)
     org.status = 'active'
     await org.save()
+    auditPlatform(req, 'org_activated', org, `Activated organization "${org.name}" (${org.subdomain})`)
     return sendSuccess(res, { org: org.toObject() })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// POST /api/platform/orgs/:id/storage-extension — grant temporary extra storage.
+// Support lever for a tenant that has filled both its plan and its completion
+// buffer: raises the ceiling for a fixed number of days without touching the
+// contracted limit, so the plan value stays the source of truth at renewal.
+router.post('/orgs/:id/storage-extension', async (req, res, next) => {
+  try {
+    const org = await Organization.findById(req.params.id)
+    if (!org) return sendError(res, 'Organization not found', 'ORG_NOT_FOUND', 404)
+
+    const extraMb = Number(req.body?.extraMb)
+    const days = Number(req.body?.days)
+    const reason = String(req.body?.reason || '').trim()
+
+    if (!Number.isFinite(extraMb) || extraMb <= 0 || extraMb > MAX_EXTENSION_MB) {
+      return sendError(res, `extraMb must be between 1 and ${MAX_EXTENSION_MB}.`, 'VALIDATION_ERROR', 400)
+    }
+    if (!Number.isFinite(days) || days <= 0 || days > MAX_EXTENSION_DAYS) {
+      return sendError(res, `days must be between 1 and ${MAX_EXTENSION_DAYS}.`, 'VALIDATION_ERROR', 400)
+    }
+    if (!Number(org.limits?.maxStorageMb || 0)) {
+      return sendError(res, 'This organization already has unlimited storage.', 'STORAGE_UNLIMITED', 400)
+    }
+
+    const expiresAt = new Date(Date.now() + days * 86400000)
+    org.storageExtension = { extraMb, expiresAt, grantedBy: req.user._id, reason }
+    // A bigger ceiling means the old "you are full" emails are stale.
+    resetNotified(org, 'stor')
+    await org.save()
+
+    auditPlatform(
+      req,
+      'org_storage_extended',
+      org,
+      `Granted ${extraMb} MB extra storage to "${org.name}" for ${days} day(s)${reason ? ` — ${reason}` : ''}`,
+      { extraMb, days, expiresAt, reason }
+    )
+    return sendSuccess(res, { org: await withLicensing(org) })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// DELETE /api/platform/orgs/:id/storage-extension — end the grant early.
+router.delete('/orgs/:id/storage-extension', async (req, res, next) => {
+  try {
+    const org = await Organization.findById(req.params.id)
+    if (!org) return sendError(res, 'Organization not found', 'ORG_NOT_FOUND', 404)
+
+    const had = Number(org.storageExtension?.extraMb || 0)
+    org.storageExtension = { extraMb: 0, expiresAt: null, grantedBy: null, reason: '' }
+    await org.save()
+
+    if (had) {
+      auditPlatform(
+        req,
+        'org_storage_extension_revoked',
+        org,
+        `Revoked the ${had} MB storage extension on "${org.name}"`,
+        { extraMb: had }
+      )
+    }
+    return sendSuccess(res, { org: await withLicensing(org) })
   } catch (err) {
     next(err)
   }
@@ -288,6 +519,10 @@ router.post('/orgs/:id/reset-admin-password', async (req, res, next) => {
 
     if (!org.adminUserId) { org.adminUserId = admin._id; await org.save() }
 
+    auditPlatform(req, 'org_admin_password_reset', org, `Reset admin password for "${org.name}" (${admin.email})`, {
+      adminEmail: admin.email
+    })
+
     return sendSuccess(res, { admin: { email: admin.email, name: admin.name, tempPassword } })
   } catch (err) {
     next(err)
@@ -305,7 +540,15 @@ router.delete('/orgs/:id', async (req, res, next) => {
       return sendError(res, 'The default organization cannot be deleted.', 'CANNOT_DELETE_DEFAULT', 400)
     }
 
-    const backup = await backupOrg(org.toObject())
+    const snapshot = org.toObject()
+    const backup = await backupOrg(snapshot)
+
+    // Await so the platform event is written under the SuperAdmin's org before
+    // the tenant's own AuditLog docs are wiped.
+    await auditPlatform(req, 'org_deleted', snapshot, `Deleted organization "${snapshot.name}" (${snapshot.subdomain})`, {
+      backupDir: path.basename(backup.dir),
+      backupDocuments: backup.documents
+    })
 
     let deleted = 0
     for (const model of TENANT_MODELS) {
@@ -314,8 +557,328 @@ router.delete('/orgs/:id', async (req, res, next) => {
     }
     await Organization.deleteOne({ _id: org._id })
 
-    console.log(`[platform] Deleted org "${org.name}" (${org.subdomain}): ${deleted} docs removed. Backup → ${backup.dir}`)
-    return sendSuccess(res, { deleted, backup: { documents: backup.documents, dir: path.basename(backup.dir) } })
+    // The backup above already contains every record; the tenant's attachment
+    // directory is what the database cannot hold, so it is removed last — after
+    // the deletes succeeded, never before.
+    const filesPurged = await purgeOrgFiles(org._id)
+
+    console.log(`[platform] Deleted org "${org.name}" (${org.subdomain}): ${deleted} docs removed, attachments ${filesPurged ? 'purged' : 'left in place'}. Backup → ${backup.dir}`)
+    return sendSuccess(res, {
+      deleted,
+      filesPurged,
+      backup: { documents: backup.documents, dir: path.basename(backup.dir) }
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// GET /api/platform/activity — SuperAdmin org-lifecycle audit trail
+router.get('/activity', async (req, res, next) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1)
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 25))
+    const action = String(req.query.action || '').trim()
+    const search = String(req.query.search || '').trim()
+
+    const query = {
+      action: action && PLATFORM_ACTIONS.includes(action)
+        ? action
+        : { $in: PLATFORM_ACTIONS }
+    }
+    if (search) {
+      const regex = new RegExp(String(search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+      query.$or = [{ targetEntity: regex }, { detail: regex }]
+    }
+
+    const [total, logs] = await Promise.all([
+      AuditLog.countDocuments(query).setOptions({ skipOrgScope: true }),
+      AuditLog.find(query)
+        .setOptions({ skipOrgScope: true })
+        .populate({ path: 'performedBy', select: 'name email' })
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean()
+    ])
+
+    return sendSuccess(res, {
+      total,
+      page,
+      totalPages: Math.ceil(total / limit) || 1,
+      count: logs.length,
+      logs,
+      actions: PLATFORM_ACTIONS
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// GET /api/platform/plans — catalogue + how many tenants sit on each tier.
+// Limits are config-driven today (server/config/plans.js); this endpoint is
+// read-only so the Super Admin UI can show what is sold without editing code.
+router.get('/plans', async (req, res, next) => {
+  try {
+    const orgs = await Organization.find({ isDefault: { $ne: true } })
+      .select('plan status')
+      .lean()
+
+    const counts = {}
+    for (const key of [...SELLABLE_PLANS, 'custom']) counts[key] = { total: 0, active: 0, suspended: 0 }
+    for (const org of orgs) {
+      const plan = counts[org.plan] ? org.plan : 'custom'
+      counts[plan].total += 1
+      if ((org.status || 'active') === 'suspended') counts[plan].suspended += 1
+      else counts[plan].active += 1
+    }
+
+    const limitLabel = (n) => (n ? String(n) : 'Unlimited')
+
+    const plans = SELLABLE_PLANS.map((key) => {
+      const preset = PLAN_PRESETS[key]
+      const limits = preset.limits || {}
+      return {
+        key,
+        label: preset.label,
+        trialDays: preset.trialDays || null,
+        limits: {
+          maxUsers: limits.maxUsers || 0,
+          maxBuilders: limits.maxBuilders || 0,
+          maxForms: limits.maxForms || 0,
+          maxWorkflows: limits.maxWorkflows || 0,
+          maxSubmissionsPerPeriod: limits.maxSubmissionsPerPeriod || 0,
+          maxStorageMb: limits.maxStorageMb || 0,
+          maxFiles: limits.maxFiles || 0
+        },
+        limitsDisplay: {
+          users: limitLabel(limits.maxUsers),
+          builders: limitLabel(limits.maxBuilders),
+          forms: limitLabel(limits.maxForms),
+          workflows: limitLabel(limits.maxWorkflows),
+          submissions: limitLabel(limits.maxSubmissionsPerPeriod),
+          storage: formatPlanMb(limits.maxStorageMb),
+          files: limitLabel(limits.maxFiles)
+        },
+        tenants: counts[key] || { total: 0, active: 0, suspended: 0 }
+      }
+    })
+
+    return sendSuccess(res, {
+      plans,
+      custom: {
+        key: 'custom',
+        label: PLAN_PRESETS.custom.label,
+        tenants: counts.custom || { total: 0, active: 0, suspended: 0 }
+      },
+      totalTenants: orgs.length
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// GET /api/platform/admins — every SuperAdmin account on this deployment.
+router.get('/admins', async (req, res, next) => {
+  try {
+    const role = await Role.findOne({ name: 'SuperAdmin' }).lean()
+    if (!role) return sendSuccess(res, { admins: [] })
+
+    const admins = await User.find({ role: role._id })
+      .setOptions({ skipOrgScope: true })
+      .select('name email department isActive isProtected mustChangePassword lastLogin createdAt')
+      .sort({ createdAt: 1 })
+      .lean()
+
+    return sendSuccess(res, {
+      admins: admins.map((u) => ({
+        ...u,
+        isSelf: String(u._id) === String(req.user._id)
+      })),
+      count: admins.length
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// POST /api/platform/admins — provision another platform SuperAdmin.
+router.post('/admins', async (req, res, next) => {
+  try {
+    const email = String(req.body.email || '').trim().toLowerCase()
+    const name = String(req.body.name || '').trim() || 'Platform Admin'
+    if (!EMAIL_RE.test(email)) return sendError(res, 400, 'A valid email is required')
+
+    const role = await Role.findOne({ name: 'SuperAdmin' })
+    if (!role) return sendError(res, 500, 'SuperAdmin role is missing — run seed:superadmin')
+
+    const defaultOrg = await Organization.findOne({ isDefault: true }).lean()
+    if (!defaultOrg) return sendError(res, 500, 'Default organization is missing')
+
+    const existing = await User.findOne({ email, orgId: defaultOrg._id })
+      .setOptions({ skipOrgScope: true })
+      .lean()
+    if (existing) return sendError(res, 409, 'A user with this email already exists on the platform')
+
+    const tempPassword = generatePassword()
+    const user = await User.create({
+      orgId: defaultOrg._id,
+      name,
+      email,
+      password: tempPassword,
+      department: 'IT',
+      role: role._id,
+      mustChangePassword: true,
+      needsProductTour: true,
+      isProtected: false,
+      isActive: true
+    })
+
+    writeAuditLog({
+      action: 'platform_admin_created',
+      performedBy: req.user._id,
+      targetEntity: email,
+      department: req.user.department,
+      ipAddress: req.ip,
+      detail: `Provisioned SuperAdmin "${name}" <${email}>`,
+      metadata: { adminUserId: String(user._id) }
+    })
+
+    return sendSuccess(res, {
+      admin: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        tempPassword
+      }
+    }, 201)
+  } catch (err) {
+    next(err)
+  }
+})
+
+// POST /api/platform/admins/:id/reset-password
+router.post('/admins/:id/reset-password', async (req, res, next) => {
+  try {
+    const role = await Role.findOne({ name: 'SuperAdmin' }).lean()
+    if (!role) return sendError(res, 500, 'SuperAdmin role is missing')
+
+    const user = await User.findOne({ _id: req.params.id, role: role._id })
+      .setOptions({ skipOrgScope: true })
+    if (!user) return sendError(res, 404, 'Platform admin not found')
+
+    const tempPassword = generatePassword()
+    user.password = tempPassword
+    user.mustChangePassword = true
+    user.tokenVersion = (user.tokenVersion || 0) + 1
+    await user.save()
+
+    writeAuditLog({
+      action: 'platform_admin_password_reset',
+      performedBy: req.user._id,
+      targetEntity: user.email,
+      department: req.user.department,
+      ipAddress: req.ip,
+      detail: `Reset password for SuperAdmin <${user.email}>`,
+      metadata: { adminUserId: String(user._id) }
+    })
+
+    return sendSuccess(res, {
+      admin: { _id: user._id, email: user.email, tempPassword }
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// POST /api/platform/admins/:id/deactivate|activate
+// Separate paths — newer path-to-regexp rejects `:action(a|b)` regex groups.
+const setAdminActive = (activate) => async (req, res, next) => {
+  try {
+    const role = await Role.findOne({ name: 'SuperAdmin' }).lean()
+    if (!role) return sendError(res, 500, 'SuperAdmin role is missing')
+
+    const user = await User.findOne({ _id: req.params.id, role: role._id })
+      .setOptions({ skipOrgScope: true })
+    if (!user) return sendError(res, 404, 'Platform admin not found')
+
+    if (String(user._id) === String(req.user._id)) {
+      return sendError(res, 400, 'You cannot deactivate your own account')
+    }
+    if (user.isProtected && !activate) {
+      return sendError(res, 400, 'The seeded platform admin cannot be deactivated')
+    }
+
+    if (!activate) {
+      const activeCount = await User.countDocuments({ role: role._id, isActive: true })
+        .setOptions({ skipOrgScope: true })
+      if (activeCount <= 1) {
+        return sendError(res, 400, 'Cannot deactivate the last active platform admin')
+      }
+    }
+
+    user.isActive = activate
+    if (!activate) user.tokenVersion = (user.tokenVersion || 0) + 1
+    await user.save()
+
+    writeAuditLog({
+      action: activate ? 'platform_admin_activated' : 'platform_admin_deactivated',
+      performedBy: req.user._id,
+      targetEntity: user.email,
+      department: req.user.department,
+      ipAddress: req.ip,
+      detail: `${activate ? 'Activated' : 'Deactivated'} SuperAdmin <${user.email}>`,
+      metadata: { adminUserId: String(user._id) }
+    })
+
+    return sendSuccess(res, {
+      admin: {
+        _id: user._id,
+        email: user.email,
+        isActive: user.isActive
+      }
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+router.post('/admins/:id/deactivate', setAdminActive(false))
+router.post('/admins/:id/activate', setAdminActive(true))
+
+// GET /api/platform/health — system status for the SuperAdmin Health page
+router.get('/health', async (req, res, next) => {
+  try {
+    const readyState = mongoose.connection.readyState
+    const dbOk = readyState === 1
+
+    const [totalOrgs, activeOrgs, suspendedOrgs] = await Promise.all([
+      Organization.countDocuments({ isDefault: { $ne: true } }),
+      Organization.countDocuments({ isDefault: { $ne: true }, status: 'active' }),
+      Organization.countDocuments({ isDefault: { $ne: true }, status: 'suspended' })
+    ])
+
+    return sendSuccess(res, {
+      overall: dbOk ? 'healthy' : 'degraded',
+      api: {
+        status: 'ok',
+        service: 'netflow-server',
+        env: process.env.NODE_ENV || 'development',
+        uptimeSeconds: Math.floor(process.uptime()),
+        timestamp: new Date().toISOString()
+      },
+      database: {
+        status: dbOk ? 'ok' : 'degraded',
+        readyState: MONGO_STATES[readyState] || String(readyState),
+        name: mongoose.connection.name || null,
+        host: mongoose.connection.host || null
+      },
+      organizations: {
+        total: totalOrgs,
+        active: activeOrgs,
+        suspended: suspendedOrgs
+      }
+    })
   } catch (err) {
     next(err)
   }

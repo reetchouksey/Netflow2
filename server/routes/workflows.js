@@ -13,12 +13,19 @@ const { sendSuccess, sendError } = require('../utils/apiResponse')
 const { writeAuditLog } = require('../utils/writeAuditLog')
 const { createNotification } = require('../utils/createNotification')
 const { triggerWorkflow } = require('../utils/workflowEngine')
+const { applyInboundWebhookPatch, ensureWebhookToken } = require('../utils/inboundWebhook')
+const WebhookDeliveryLog = require('../models/WebhookDeliveryLog')
+const IntegrationDeadLetter = require('../models/IntegrationDeadLetter')
+const { requireQuota, requireCanBuild, checkQuota, respond } = require('../middleware/quota')
+const { meterSubmission } = require('../utils/usageMeter')
+const { releaseFor } = require('../utils/fileGc')
+const { DESIGNER_ROLES, isDesigner } = require('../utils/roles')
+const { normalizeLinkedForms, claimLinkedForms } = require('../utils/linkedForms')
 
 const router = express.Router()
 
-const BUILDER_ROLES = ['Admin', 'CEO', 'Manager', 'HR', 'VP']
-const isElevated = (user) => BUILDER_ROLES.includes(user?.role?.name)
-const isBuilder = (user) => BUILDER_ROLES.includes(user?.role?.name)
+const isElevated = isDesigner
+const isBuilder = isDesigner
 
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
@@ -52,21 +59,23 @@ router.get('/', protect, async (req, res, next) => {
 })
 
 // POST /api/workflows
-router.post('/', protect, roleGuard(...BUILDER_ROLES), async (req, res, next) => {
+router.post('/', protect, roleGuard(...DESIGNER_ROLES), requireCanBuild, requireQuota('workflows'), async (req, res, next) => {
   try {
     const {
-      title, description, nodes, edges, department, linkedFormId, access,
-      triggerOn, preventDuplicates, notifyOnSlaBreach, advanced
+      title, description, nodes, edges, department, linkedFormId, linkedFormIds, access,
+      triggerOn, preventDuplicates, notifyOnSlaBreach, advanced, inboundWebhook
     } = req.body
     if (!title) return sendError(res, 'title is required', 'MISSING_FIELDS', 400)
 
-    const workflow = await Workflow.create({
+    const linked = normalizeLinkedForms({ linkedFormIds, linkedFormId })
+    const workflow = new Workflow({
       title,
       description,
       nodes: Array.isArray(nodes) ? nodes : [],
       edges: Array.isArray(edges) ? edges : [],
       department,
-      linkedFormId: linkedFormId || undefined,
+      linkedFormId: linked.linkedFormId || undefined,
+      linkedFormIds: linked.linkedFormIds,
       access: access || undefined,
       triggerOn: triggerOn || undefined,
       preventDuplicates: preventDuplicates === true,
@@ -76,6 +85,11 @@ router.post('/', protect, roleGuard(...BUILDER_ROLES), async (req, res, next) =>
       createdBy: req.user._id,
       version: 1
     })
+    applyInboundWebhookPatch(workflow, inboundWebhook)
+    await workflow.save()
+    if (linked.linkedFormIds.length) {
+      await claimLinkedForms(Workflow, workflow._id, linked.linkedFormIds)
+    }
 
     return sendSuccess(res, { workflow: workflow.toObject() }, 201)
   } catch (err) {
@@ -120,17 +134,33 @@ router.get('/:id', protect, async (req, res, next) => {
 })
 
 // PUT /api/workflows/:id
-router.put('/:id', protect, roleGuard(...BUILDER_ROLES), async (req, res, next) => {
+router.put('/:id', protect, roleGuard(...DESIGNER_ROLES), requireCanBuild, async (req, res, next) => {
   try {
     const existing = await Workflow.findById(req.params.id)
     if (!existing) return sendError(res, 'Workflow not found', 'WORKFLOW_NOT_FOUND', 404)
 
-    const { _id, status, ...updates } = req.body
+    const { _id, status, inboundWebhook, linkedFormId, linkedFormIds, ...updates } = req.body
 
     // Always update in place — the edit button is Admin-only and the user
     // explicitly chose to overwrite. The previous versioning branch created a
     // new draft for published workflows, which caused duplicates in the list.
     Object.assign(existing, updates)
+    if (linkedFormId !== undefined || linkedFormIds !== undefined) {
+      // Prefer explicit array; legacy single-field write replaces the whole list.
+      const linked = linkedFormIds !== undefined
+        ? normalizeLinkedForms({ linkedFormIds, linkedFormId })
+        : normalizeLinkedForms({
+            linkedFormId,
+            linkedFormIds: linkedFormId ? [linkedFormId] : [],
+          })
+      existing.linkedFormIds = linked.linkedFormIds
+      existing.linkedFormId = linked.linkedFormId
+      if (linked.linkedFormIds.length) {
+        await claimLinkedForms(Workflow, existing._id, linked.linkedFormIds)
+      }
+    }
+    // Merge webhook settings carefully so a partial patch cannot wipe the token.
+    if (inboundWebhook !== undefined) applyInboundWebhookPatch(existing, inboundWebhook)
     await existing.save()
     return sendSuccess(res, { workflow: existing.toObject(), versioned: false })
   } catch (err) {
@@ -139,7 +169,7 @@ router.put('/:id', protect, roleGuard(...BUILDER_ROLES), async (req, res, next) 
 })
 
 // POST /api/workflows/:id/publish
-router.post('/:id/publish', protect, roleGuard(...BUILDER_ROLES), async (req, res, next) => {
+router.post('/:id/publish', protect, roleGuard(...DESIGNER_ROLES), requireCanBuild, async (req, res, next) => {
   try {
     const workflow = await Workflow.findById(req.params.id)
     if (!workflow) return sendError(res, 'Workflow not found', 'WORKFLOW_NOT_FOUND', 404)
@@ -155,6 +185,7 @@ router.post('/:id/publish', protect, roleGuard(...BUILDER_ROLES), async (req, re
       )
     }
 
+    ensureWebhookToken(workflow)
     workflow.status = 'published'
     await workflow.save()
     return sendSuccess(res, { workflow: workflow.toObject() })
@@ -163,8 +194,40 @@ router.post('/:id/publish', protect, roleGuard(...BUILDER_ROLES), async (req, re
   }
 })
 
+// GET /api/workflows/:id/webhook-deliveries — recent inbound webhook attempts
+router.get('/:id/webhook-deliveries', protect, roleGuard(...DESIGNER_ROLES), async (req, res, next) => {
+  try {
+    const workflow = await Workflow.findById(req.params.id).select('_id').lean()
+    if (!workflow) return sendError(res, 'Workflow not found', 'WORKFLOW_NOT_FOUND', 404)
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200)
+    const deliveries = await WebhookDeliveryLog.find({ workflowId: workflow._id })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean()
+    return sendSuccess(res, { count: deliveries.length, deliveries })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// GET /api/workflows/:id/integration-dlq — failed outbound Integration calls
+router.get('/:id/integration-dlq', protect, roleGuard(...DESIGNER_ROLES), async (req, res, next) => {
+  try {
+    const workflow = await Workflow.findById(req.params.id).select('_id').lean()
+    if (!workflow) return sendError(res, 'Workflow not found', 'WORKFLOW_NOT_FOUND', 404)
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200)
+    const items = await IntegrationDeadLetter.find({ workflowId: workflow._id, resolved: false })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean()
+    return sendSuccess(res, { count: items.length, items })
+  } catch (err) {
+    next(err)
+  }
+})
+
 // POST /api/workflows/:id/pause
-router.post('/:id/pause', protect, roleGuard(...BUILDER_ROLES), async (req, res, next) => {
+router.post('/:id/pause', protect, roleGuard(...DESIGNER_ROLES), requireCanBuild, async (req, res, next) => {
   try {
     const workflow = await Workflow.findById(req.params.id)
     if (!workflow) return sendError(res, 'Workflow not found', 'WORKFLOW_NOT_FOUND', 404)
@@ -178,14 +241,23 @@ router.post('/:id/pause', protect, roleGuard(...BUILDER_ROLES), async (req, res,
 })
 
 // DELETE /api/workflows/:id  (HARD delete — removes the workflow AND its runs + tasks)
-router.delete('/:id', protect, roleGuard(...BUILDER_ROLES), async (req, res, next) => {
+router.delete('/:id', protect, roleGuard(...DESIGNER_ROLES), requireCanBuild, async (req, res, next) => {
   try {
     const workflow = await Workflow.findById(req.params.id)
     if (!workflow) return sendError(res, 'Workflow not found', 'WORKFLOW_NOT_FOUND', 404)
 
+    // Snapshot what holds files before the deletes. Form responses survive a
+    // workflow delete (they belong to the form), so their attachments are left
+    // alone — only each run's generated documents and each task's own uploads go.
+    const [taskDocs, execDocs] = await Promise.all([
+      Task.find({ workflowId: workflow._id }).select('formData attachments').lean(),
+      WorkflowExecution.find({ workflowId: workflow._id }).select('variables').lean()
+    ])
+
     const tasks = await Task.deleteMany({ workflowId: workflow._id })
     const execs = await WorkflowExecution.deleteMany({ workflowId: workflow._id })
     await workflow.deleteOne()
+    const freed = await releaseFor(req.orgId, { tasks: taskDocs, executions: execDocs })
 
     writeAuditLog({
       action: 'workflow_deleted',
@@ -194,12 +266,17 @@ router.delete('/:id', protect, roleGuard(...BUILDER_ROLES), async (req, res, nex
       department: workflow.department,
       ipAddress: req.ip,
       detail: `${req.user.name} permanently deleted workflow "${workflow.title}" (${execs.deletedCount} run(s), ${tasks.deletedCount} task(s) removed)`,
-      metadata: { workflowId: String(workflow._id), executionsDeleted: execs.deletedCount, tasksDeleted: tasks.deletedCount }
+      metadata: {
+        workflowId: String(workflow._id),
+        executionsDeleted: execs.deletedCount,
+        tasksDeleted: tasks.deletedCount,
+        filesDeleted: freed.files
+      }
     })
 
     return sendSuccess(res, {
       message: 'Workflow deleted',
-      deleted: { workflow: 1, executions: execs.deletedCount, tasks: tasks.deletedCount }
+      deleted: { workflow: 1, executions: execs.deletedCount, tasks: tasks.deletedCount, files: freed.files }
     })
   } catch (err) {
     next(err)
@@ -217,12 +294,24 @@ router.post('/:id/execute', protect, async (req, res, next) => {
 
     const { formResponseId, variables } = req.body || {}
 
+    // A run started from an existing form response was already metered when that
+    // response was submitted. A run with no response behind it (API/manual
+    // trigger) is a submission in its own right, so it is counted here — that is
+    // what stops the allowance from being bypassed by calling /execute directly.
+    const meters = !formResponseId
+    if (meters) {
+      const overQuota = await checkQuota(req.organization, 'submissions')
+      if (overQuota) return respond(res, overQuota)
+    }
+
     const execution = await triggerWorkflow(
       workflow._id,
       formResponseId || null,
       req.user._id,
       variables || {}
     )
+
+    if (meters) await meterSubmission(req.orgId)
 
     return sendSuccess(res, {
       executionId: execution._id,
@@ -302,7 +391,7 @@ router.post('/executions/:id/cancel', protect, async (req, res, next) => {
 })
 
 // GET /api/workflows/:id/executions
-router.get('/:id/executions', protect, roleGuard(...BUILDER_ROLES), async (req, res, next) => {
+router.get('/:id/executions', protect, roleGuard(...DESIGNER_ROLES), async (req, res, next) => {
   try {
     const executions = await WorkflowExecution.find({ workflowId: req.params.id })
       .populate('triggeredBy', 'name email')

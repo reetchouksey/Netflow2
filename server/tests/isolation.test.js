@@ -96,7 +96,11 @@ const seedOrg = async (subdomain, managerRoleId) => {
       email: `manager@${subdomain}.test`,
       password: PASSWORD,
       department: 'IT',
-      role: managerRoleId
+      role: managerRoleId,
+      // Holds a builder seat, like every pre-licensing builder after the
+      // migration — otherwise the builder gate answers before the tenant check
+      // and these cases would assert 403 instead of the 404 they are about.
+      canBuild: true
     })
     const form = await Form.create({
       title: `Secret form of ${subdomain}`,

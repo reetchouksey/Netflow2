@@ -20,6 +20,8 @@ const { writeAuditLog } = require('../utils/writeAuditLog')
 const { isFieldVisible } = require('../utils/conditionalLogic')
 const { validateField } = require('../utils/validation')
 const { resolvePref } = require('../utils/notificationPrefs')
+const { releaseFor } = require('../utils/fileGc')
+const { canReach, teamMemberIds, hasOrgWideReach } = require('../utils/team')
 const {
   sendApprovalEmail,
   sendRejectionEmail
@@ -27,9 +29,18 @@ const {
 
 const router = express.Router()
 
-const ELEVATED_ROLES = ['Admin', 'CEO', 'Manager']
-const isElevated = (user) => ELEVATED_ROLES.includes(user?.role?.name)
 const sameId = (a, b) => String(a) === String(b)
+
+// ?scope=team can span the whole workspace for an Admin or CEO. Counts on the
+// ops dashboard come from /api/team, which aggregates instead, so this list only
+// has to be long enough to browse.
+const TEAM_SCOPE_LIMIT = 200
+
+// Beyond their own queue, a leader reaches the requests of the people who
+// report to them; Admin and the CEO reach the whole workspace. See utils/team —
+// this used to be a flat role list that gave every Manager the entire tenant.
+const overridesTask = (user, task) =>
+  canReach(user, [task?.submittedBy?._id || task?.submittedBy, task?.assignedTo?._id || task?.assignedTo])
 
 // Build the full multi-stage approval chain for a task's workflow execution:
 // every approval node in graph order, who each stage is assigned to, and
@@ -152,7 +163,8 @@ const tryAdvanceWorkflow = async (taskId, outcome) => {
 // Returns tasks relevant to the current user. By default this includes BOTH
 // tasks assigned to them (their approval queue) AND tasks they submitted
 // (their own requests), so employees who only submit forms still see their
-// requests here. Use ?scope=assigned or ?scope=submitted to narrow it.
+// requests here. Use ?scope=assigned or ?scope=submitted to narrow it, or
+// ?scope=team for what the people reporting to you have in flight.
 router.get('/my-tasks', protect, async (req, res, next) => {
   try {
     const me = req.user._id
@@ -167,7 +179,20 @@ router.get('/my-tasks', protect, async (req, res, next) => {
     // `assignedTo`) — otherwise co-approvers wouldn't see the task.
     if (scope === 'assigned') query.$or = [{ assignedTo: me }, { parallelApprovers: me }]
     else if (scope === 'submitted') query.submittedBy = me
-    else query.$or = [{ assignedTo: me }, { parallelApprovers: me }, { submittedBy: me }]
+    else if (scope === 'team') {
+      // A leader watching their people: what their reports raised and what is
+      // sitting with them, excluding the leader's own rows (those are the other
+      // scopes). Admin and the CEO answer for the whole workspace, so for them
+      // "team" is everyone else. Someone with nobody reporting to them gets an
+      // empty list, not an error — the tab simply has nothing in it.
+      if (hasOrgWideReach(req.user)) {
+        query.submittedBy = { $ne: me }
+      } else {
+        const team = [...(await teamMemberIds(me))]
+        if (!team.length) return sendSuccess(res, { count: 0, tasks: [] })
+        query.$or = [{ submittedBy: { $in: team } }, { assignedTo: { $in: team } }]
+      }
+    } else query.$or = [{ assignedTo: me }, { parallelApprovers: me }, { submittedBy: me }]
 
     const tasks = await Task.find(query)
       .populate('submittedBy', 'name email department')
@@ -179,6 +204,9 @@ router.get('/my-tasks', protect, async (req, res, next) => {
         populate: { path: 'formId', select: 'title fields' }
       })
       .sort({ dueDate: 1, createdAt: -1 })
+      // Your own queue is naturally bounded; a CEO's "team" is the whole
+      // workspace, and every row costs an approval-chain build. Cap that one.
+      .limit(scope === 'team' ? TEAM_SCOPE_LIMIT : 0)
       .lean()
 
     // Attach each task's approval chain so dashboards / inbox rows can show
@@ -215,10 +243,26 @@ router.get('/my-tasks', protect, async (req, res, next) => {
       tasks.map((t) => t.workflowExecutionId && String(t.workflowExecutionId)).filter(Boolean)
     )]
     if (execIds.length) {
-      const execs = await WorkflowExecution.find({ _id: { $in: execIds } }).select('status').lean()
-      const statusById = new Map(execs.map((e) => [String(e._id), e.status]))
+      const execs = await WorkflowExecution.find({ _id: { $in: execIds } })
+        .select('status variables triggeredByExternal')
+        .lean()
+      const byId = new Map(execs.map((e) => [String(e._id), e]))
       for (const t of tasks) {
-        if (t.workflowExecutionId) t.executionStatus = statusById.get(String(t.workflowExecutionId)) || null
+        if (!t.workflowExecutionId) continue
+        const exec = byId.get(String(t.workflowExecutionId))
+        if (!exec) continue
+        t.executionStatus = exec.status || null
+        // Inbound-webhook runs have no FormResponse — surface variables so the
+        // inbox/detail UI can show what the external form submitted.
+        if (!t.formResponseId && exec.variables?.formData && typeof exec.variables.formData === 'object') {
+          t.triggerFormData = exec.variables.formData
+        }
+        t.triggerSubmitter =
+          (exec.variables?.submitter && typeof exec.variables.submitter === 'object'
+            ? exec.variables.submitter
+            : null) ||
+          exec.triggeredByExternal ||
+          null
       }
     }
 
@@ -254,7 +298,8 @@ router.get('/:id', protect, async (req, res, next) => {
     const allowed =
       sameId(task.assignedTo?._id, req.user._id) ||
       sameId(task.submittedBy?._id, req.user._id) ||
-      isElevated(req.user)
+      (task.parallelApprovers || []).some((p) => sameId(p?._id || p, req.user._id)) ||
+      await overridesTask(req.user, task)
 
     if (!allowed) {
       return sendError(res, 'Not authorised to view this task', 'FORBIDDEN', 403)
@@ -276,15 +321,39 @@ router.get('/:id', protect, async (req, res, next) => {
     if (task.workflowExecutionId) {
       const exec = await WorkflowExecution
         .findById(task.workflowExecutionId)
-        .select('variables')
+        .select('variables executionLog triggeredByExternal')
         .lean()
       const docs = Array.isArray(exec?.variables?.documents) ? exec.variables.documents : []
       task.priorDocuments = docs.filter((d) => d.nodeId !== task.currentNode)
       const forms = Array.isArray(exec?.variables?.forms) ? exec.variables.forms : []
       task.priorForms = forms.filter((f) => f.nodeId !== task.currentNode)
+      // Webhook-triggered runs store payload on the execution, not a FormResponse.
+      if (!task.formResponseId && exec?.variables?.formData && typeof exec.variables.formData === 'object') {
+        task.triggerFormData = exec.variables.formData
+      }
+      task.triggerSubmitter =
+        (exec?.variables?.submitter && typeof exec.variables.submitter === 'object'
+          ? exec.variables.submitter
+          : null) ||
+        exec?.triggeredByExternal ||
+        null
+      // Integration (api) node outcomes for the Manager UI.
+      task.integrationEvents = (Array.isArray(exec?.executionLog) ? exec.executionLog : [])
+        .filter((e) => e && e.nodeType === 'api')
+        .map((e) => ({
+          nodeId: e.nodeId,
+          status: e.status,
+          ok: e.output?.ok !== false && !e.output?.error && e.status !== 'failed',
+          error: e.output?.error || null,
+          httpStatus: e.output?.status ?? null,
+          attempts: e.output?.attempts ?? null,
+          skipped: !!e.output?.skipped,
+          exitedAt: e.exitedAt || null
+        }))
     } else {
       task.priorDocuments = []
       task.priorForms = []
+      task.integrationEvents = []
     }
 
     return sendSuccess(res, { task })
@@ -303,10 +372,11 @@ router.delete('/:id', protect, async (req, res, next) => {
     const task = await Task.findById(req.params.id).lean()
     if (!task) return sendError(res, 'Task not found', 'TASK_NOT_FOUND', 404)
 
-    if (!sameId(task.submittedBy, req.user._id) && !isElevated(req.user)) {
+    if (!sameId(task.submittedBy, req.user._id) && !(await overridesTask(req.user, task))) {
       return sendError(res, 'Not authorised to delete this request', 'FORBIDDEN', 403)
     }
 
+    let freed = { bytes: 0, files: 0 }
     if (task.workflowExecutionId) {
       const execution = await WorkflowExecution.findById(task.workflowExecutionId).lean()
       // Guard: only finished requests can be deleted.
@@ -314,38 +384,60 @@ router.delete('/:id', protect, async (req, res, next) => {
         return sendError(res, 'This request is still in progress and cannot be deleted', 'REQUEST_IN_PROGRESS', 409)
       }
 
-      const siblingTasks = await Task.find({ workflowExecutionId: task.workflowExecutionId }).select('_id').lean()
+      const siblingTasks = await Task.find({ workflowExecutionId: task.workflowExecutionId })
+        .select('_id formData attachments').lean()
       const taskIds = siblingTasks.map((t) => t._id)
+      const response = execution?.formResponseId
+        ? await FormResponse.findById(execution.formResponseId).select('formData attachments').lean()
+        : null
 
       await Notification.deleteMany({ taskId: { $in: taskIds } })
       await Task.deleteMany({ workflowExecutionId: task.workflowExecutionId })
       if (execution?.formResponseId) await FormResponse.deleteOne({ _id: execution.formResponseId })
       await WorkflowExecution.deleteOne({ _id: task.workflowExecutionId })
+
+      // The whole request is gone, so its attachments — the submitter's uploads,
+      // each stage's uploads and any generated PDF — go with it.
+      freed = await releaseFor(req.orgId, {
+        responses: response ? [response] : [],
+        tasks: siblingTasks,
+        executions: execution ? [execution] : []
+      })
     } else {
       // Standalone task (no workflow) — only delete when resolved.
       if (!['approved', 'rejected', 'completed', 'cancelled'].includes(task.status)) {
         return sendError(res, 'Only finished requests can be deleted', 'REQUEST_NOT_RESOLVED', 409)
       }
+      const response = task.formResponseId
+        ? await FormResponse.findById(task.formResponseId).select('formData attachments').lean()
+        : null
       await Notification.deleteMany({ taskId: task._id })
       if (task.formResponseId) await FormResponse.deleteOne({ _id: task.formResponseId })
       await Task.deleteOne({ _id: task._id })
+      freed = await releaseFor(req.orgId, {
+        responses: response ? [response] : [],
+        tasks: [task]
+      })
     }
 
-    return sendSuccess(res, { deleted: true })
+    return sendSuccess(res, { deleted: true, files: freed.files })
   } catch (err) {
     next(err)
   }
 })
 
-// Internal helper: ensure caller can act on this task.
-const requireApprover = (task, user) => {
-  const allowed = sameId(task.assignedTo, user._id) || isElevated(user)
-  if (allowed) return null
+// Internal helper: ensure caller can act on this task. Acting on someone else's
+// task is an override, so it follows the reporting line rather than the role
+// name — see overridesTask above.
+const requireApprover = async (task, user) => {
+  if (sameId(task.assignedTo, user._id)) return null
 
   if (task.approvalType === 'parallel') {
     const inParallel = (task.parallelApprovers || []).some(p => sameId(p, user._id))
     if (inParallel) return null
   }
+
+  if (await overridesTask(user, task)) return null
   return 'Not authorised to act on this task'
 }
 
@@ -434,7 +526,7 @@ router.post('/:id/approve', protect, async (req, res, next) => {
       return sendError(res, `Task is already ${task.status}`, 'INVALID_STATE', 400)
     }
 
-    const denial = requireApprover(task, req.user)
+    const denial = await requireApprover(task, req.user)
     if (denial) return sendError(res, denial, 'FORBIDDEN', 403)
 
     if (task.requireSignature && !isValidSignature(signature)) {
@@ -547,7 +639,7 @@ router.post('/:id/submit', protect, async (req, res, next) => {
       return sendError(res, `Task is already ${task.status}`, 'INVALID_STATE', 400)
     }
 
-    const denial = requireApprover(task, req.user)
+    const denial = await requireApprover(task, req.user)
     if (denial) return sendError(res, denial, 'FORBIDDEN', 403)
 
     const fields = Array.isArray(task.formFields) ? task.formFields : []
@@ -636,7 +728,7 @@ router.post('/:id/review', protect, async (req, res, next) => {
       return sendError(res, 'This task is not a review task', 'INVALID_ACTION', 400)
     }
 
-    const denial = requireApprover(task, req.user)
+    const denial = await requireApprover(task, req.user)
     if (denial) return sendError(res, denial, 'FORBIDDEN', 403)
 
     if (decision === 'changes' && (!comment || !String(comment).trim())) {
@@ -697,7 +789,7 @@ router.post('/:id/reject', protect, async (req, res, next) => {
       return sendError(res, `Task is already ${task.status}`, 'INVALID_STATE', 400)
     }
 
-    const denial = requireApprover(task, req.user)
+    const denial = await requireApprover(task, req.user)
     if (denial) return sendError(res, denial, 'FORBIDDEN', 403)
 
     if (task.requireSignature && !isValidSignature(signature)) {
@@ -809,7 +901,7 @@ router.post('/:id/request-changes', protect, async (req, res, next) => {
       return sendError(res, `Task is already ${task.status}`, 'INVALID_STATE', 400)
     }
 
-    const denial = requireApprover(task, req.user)
+    const denial = await requireApprover(task, req.user)
     if (denial) return sendError(res, denial, 'FORBIDDEN', 403)
 
     if (task.requireSignature && !isValidSignature(signature)) {

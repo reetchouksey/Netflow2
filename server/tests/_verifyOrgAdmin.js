@@ -1,7 +1,7 @@
 // Multi-tenancy polish - tests/_verifyOrgAdmin.js
 // End-to-end verification for auto Org-Admin provisioning + delete/backup:
 //   • SuperAdmin creates an org → a first Admin is auto-created (temp password)
-//   • org admin first login: MFA setup → forced password change (mustChangePassword)
+//   • org admin first login → forced password change (mustChangePassword)
 //   • admin email is validated against the org's allowedDomains
 //   • reset-admin-password issues a new temp password
 //   • DELETE org backs up + cascade-deletes; default org stays hidden & safe
@@ -15,7 +15,6 @@ require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') }
 const fs = require('fs')
 const path = require('path')
 const mongoose = require('mongoose')
-const speakeasy = require('speakeasy')
 
 const Organization = require('../models/Organization')
 const User = require('../models/User')
@@ -70,21 +69,14 @@ const wipe = async () => {
   }
 }
 
-// Drives an org admin's first login: temp password → MFA setup → enable.
+// Drives an org admin's first login with the temp password (MFA is optional).
 // Returns { token, user } once the session is live.
-const firstLoginWithMfa = async (email, password, subdomain) => {
+const firstLogin = async (email, password, subdomain) => {
   const login = await api('POST', '/auth/login', null, { email, password, subdomain })
-  if (!login.body?.mfaSetupRequired) {
-    throw new Error(`expected mfaSetupRequired, got ${JSON.stringify(login.body)}`)
+  if (!login.body?.token) {
+    throw new Error(`expected session token, got ${JSON.stringify(login.body)}`)
   }
-  const challenge = login.body.challenge
-  const setup = await api('POST', '/auth/mfa/setup', null, { challenge })
-  const secret = setup.body?.manualKey
-  if (!secret) throw new Error(`mfa/setup gave no manualKey: ${JSON.stringify(setup.body)}`)
-  const code = speakeasy.totp({ secret, encoding: 'base32' })
-  const enable = await api('POST', '/auth/mfa/enable', null, { challenge, code })
-  if (!enable.body?.token) throw new Error(`mfa/enable failed: ${JSON.stringify(enable.body)}`)
-  return { token: enable.body.token, user: enable.body.user, secret }
+  return { token: login.body.token, user: login.body.user }
 }
 
 const run = async () => {
@@ -125,10 +117,10 @@ const run = async () => {
   check('off-domain admin rejected → 400', badDomain.status === 400 && badDomain.body?.code === 'ADMIN_DOMAIN_NOT_ALLOWED', JSON.stringify(badDomain.body))
   check('rejected org was NOT created', !(await Organization.findOne({ subdomain: 'oa-bad' })))
 
-  // ── first login: MFA setup → forced password change ────────────────
-  console.log('\n── admin first login (MFA + forced change) ──')
-  const session = await firstLoginWithMfa('admin@acme.com', tempPassword, 'oa-acme')
-  check('admin got a session after MFA', !!session.token)
+  // ── first login → forced password change ───────────────────────────
+  console.log('\n── admin first login (forced password change) ──')
+  const session = await firstLogin('admin@acme.com', tempPassword, 'oa-acme')
+  check('admin got a session', !!session.token)
   check('session user still mustChangePassword', session.user?.mustChangePassword === true)
 
   const me = await api('GET', '/auth/me', session.token)
@@ -141,11 +133,13 @@ const run = async () => {
   check('change-password → 200 + new token', changed.status === 200 && !!changed.body?.token, JSON.stringify(changed.body))
   check('flag cleared after change', changed.body?.user?.mustChangePassword === false)
 
-  // Old temp password must no longer work; the new one logs in (then MFA verify).
+  // Old temp password must no longer work; the new one signs in straight away —
+  // MFA is opt-in per user (Profile → Security), so a freshly provisioned admin
+  // has none to satisfy yet.
   const oldTry = await api('POST', '/auth/login', null, { email: 'admin@acme.com', password: tempPassword, subdomain: 'oa-acme' })
   check('old temp password rejected → 401', oldTry.status === 401, JSON.stringify(oldTry.body))
   const newTry = await api('POST', '/auth/login', null, { email: 'admin@acme.com', password: newPass, subdomain: 'oa-acme' })
-  check('new password → MFA challenge (already enrolled)', newTry.body?.mfaRequired === true, JSON.stringify(newTry.body))
+  check('new password signs in (MFA not enrolled yet)', !!newTry.body?.token && !newTry.body?.mfaRequired, JSON.stringify(newTry.body))
 
   // ── reset admin password ───────────────────────────────────────────
   console.log('\n── reset admin password ──')

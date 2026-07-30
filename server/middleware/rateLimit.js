@@ -1,18 +1,30 @@
-// Rate limiting for sensitive auth endpoints. In-memory store (per-process) —
-// fine for a single instance. For multi-instance, swap in a shared store
-// (e.g. rate-limit-redis) without changing call sites.
+// Rate limiting for sensitive endpoints. Uses Redis when REDIS_URL is set
+// (multi-instance cloud); otherwise express-rate-limit's default memory store.
 
 const rateLimit = require('express-rate-limit')
+const { RedisStore } = require('rate-limit-redis')
+const { getRedis } = require('../utils/redis')
 
-// Login / forgot / reset: brute-force protection per IP.
+const skipWhenDisabled = () => process.env.DISABLE_RATE_LIMIT === '1'
+
+const redisStore = (prefix) => {
+  const redis = getRedis()
+  if (!redis) return undefined
+  // ioredis buffers commands until connected, so we can attach before 'ready'.
+  return new RedisStore({
+    sendCommand: (...args) => redis.call(...args),
+    prefix
+  })
+}
+
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   standardHeaders: true,
   legacyHeaders: false,
-  max: 5,                  // 5 requests per IP per window
-  // Don't count successful logins against the limit — only failures/attempts
-  // that keep hammering the endpoint matter. (Applies to any 2xx.)
+  max: 5,
+  skip: skipWhenDisabled,
   skipSuccessfulRequests: true,
+  store: redisStore('nf:rl:auth:'),
   handler: (req, res) => {
     res.status(429).json({
       success: false,
@@ -22,4 +34,20 @@ const authLimiter = rateLimit({
   }
 })
 
-module.exports = { authLimiter }
+const hooksLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  max: 60,
+  skip: skipWhenDisabled,
+  store: redisStore('nf:rl:hooks:'),
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'Too many webhook requests. Please slow down.',
+      code: 'RATE_LIMITED'
+    })
+  }
+})
+
+module.exports = { authLimiter, hooksLimiter }

@@ -4,9 +4,7 @@
 // no workflow trigger — pure data collection.
 
 const express = require('express')
-const path = require('path')
 const fs = require('fs')
-const crypto = require('crypto')
 const multer = require('multer')
 
 const Form = require('../models/Form')
@@ -15,8 +13,38 @@ const Organization = require('../models/Organization')
 const { sendSuccess, sendError } = require('../utils/apiResponse')
 const { isFieldVisible } = require('../utils/conditionalLogic')
 const { validateField } = require('../utils/validation')
+const { checkQuota, checkStorage } = require('../middleware/quota')
+const { writeBlockFor } = require('../middleware/licence')
+const { meterSubmission, addStorage } = require('../utils/usageMeter')
+const { dirForOrg, safeFilename, urlFor } = require('../utils/fileStore')
 
 const router = express.Router()
+
+// The public routes run without `protect`, so the licence/quota gates that
+// middleware/auth applies to everyone else have to be called explicitly here.
+// A public link is still the tenant's capacity being consumed — by strangers,
+// which makes it the easiest limit to blow through.
+const tenantOf = (form) => (form?.orgId ? Organization.findById(form.orgId).lean() : Promise.resolve(null))
+
+const gateTenant = async (res, org, resource) => {
+  if (!org) return false
+  const blocked = writeBlockFor(org)
+  if (blocked) {
+    sendError(res, blocked.error, blocked.code, blocked.status, blocked.extra)
+    return true
+  }
+  if (resource) {
+    const overQuota = await checkQuota(org, resource)
+    if (overQuota) {
+      // Deliberately vague to an anonymous submitter: they cannot fix a plan
+      // limit and should not learn the tenant's licence details.
+      sendError(res, 'This form is not accepting submissions right now. Please contact the form owner.',
+        'LIMIT_REACHED', 403, { resource })
+      return true
+    }
+  }
+  return false
+}
 
 // GET /api/public/org?subdomain=acme
 // Pre-login tenant lookup for the login page: which org lives on this
@@ -95,6 +123,9 @@ router.post('/forms/:token/submit', rateLimit, async (req, res, next) => {
     const form = await findPublicForm(req.params.token)
     if (!form) return sendError(res, 'This form is not available.', 'FORM_NOT_FOUND', 404)
 
+    const org = await tenantOf(form)
+    if (await gateTenant(res, org, 'submissions')) return
+
     const { formData, submitter } = req.body || {}
     if (!formData || typeof formData !== 'object') {
       return sendError(res, 'formData object is required', 'MISSING_FORM_DATA', 400)
@@ -133,6 +164,8 @@ router.post('/forms/:token/submit', rateLimit, async (req, res, next) => {
       status: 'submitted'
     })
 
+    await meterSubmission(form.orgId)
+
     // No workflow trigger by design — this is pure data collection.
     return sendSuccess(res, { formResponseId: formResponse._id }, 201)
   } catch (err) {
@@ -141,15 +174,19 @@ router.post('/forms/:token/submit', rateLimit, async (req, res, next) => {
 })
 
 // --- token-gated file upload for public forms with file fields --------------
-const UPLOAD_DIR = path.join(__dirname, '..', 'uploads')
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true })
-
+// Anonymous uploads still land in the owning tenant's folder, so they count
+// against that tenant's storage and are served with the same access check as
+// everything else (utils/fileStore). The org comes from the form behind the
+// token, which is resolved before multer runs.
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).slice(0, 12)
-    cb(null, `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`)
-  }
+  destination: (req, file, cb) => {
+    try {
+      cb(null, dirForOrg(req.publicOrgId))
+    } catch (err) {
+      cb(err)
+    }
+  },
+  filename: (req, file, cb) => cb(null, safeFilename(file.originalname))
 })
 
 const MAX_CEILING_MB = 25
@@ -160,12 +197,16 @@ router.post('/forms/:token/upload', rateLimit, async (req, res, next) => {
     const form = await findPublicForm(req.params.token)
     if (!form) return sendError(res, 'This form is not available.', 'FORM_NOT_FOUND', 404)
 
+    const org = await tenantOf(form)
+    if (await gateTenant(res, org)) return
+    req.publicOrgId = form.orgId
+
     const reqMb = Math.min(
       Math.max(parseInt(req.query.maxMb, 10) || MAX_CEILING_MB, 1),
       MAX_CEILING_MB
     )
     const upload = multer({ storage, limits: { fileSize: reqMb * 1024 * 1024 } })
-    upload.single('file')(req, res, (err) => {
+    upload.single('file')(req, res, async (err) => {
       if (err) {
         const code = err.code === 'LIMIT_FILE_SIZE' ? 'FILE_TOO_LARGE' : 'UPLOAD_FAILED'
         const msg = err.code === 'LIMIT_FILE_SIZE'
@@ -174,10 +215,23 @@ router.post('/forms/:token/upload', rateLimit, async (req, res, next) => {
         return sendError(res, msg, code, 400)
       }
       if (!req.file) return sendError(res, 'No file provided', 'NO_FILE', 400)
+
+      // Multer has already written the file, so an over-quota upload has to be
+      // deleted rather than merely refused — otherwise the disk fills with bytes
+      // the tenant was never allowed to store. No buffer here: an anonymous
+      // upload is never the thing unblocking an approval.
+      const room = await checkStorage(org, req.file.size)
+      if (!room.ok) {
+        fs.promises.unlink(req.file.path).catch(() => {})
+        return sendError(res, 'This form is not accepting attachments right now. Please contact the form owner.',
+          'LIMIT_REACHED', 403, { resource: room.extra?.resource || 'storage' })
+      }
+      await addStorage(form.orgId, req.file.size)
+
       return sendSuccess(res, {
         file: {
           name: req.file.originalname,
-          url: `/uploads/${req.file.filename}`,
+          url: urlFor(form.orgId, req.file.filename),
           mime: req.file.mimetype,
           size: req.file.size
         }

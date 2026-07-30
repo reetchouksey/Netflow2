@@ -3,22 +3,28 @@
 // approval-rate, department-kpis. All protected for Manager+ roles.
 
 const express = require('express')
+const mongoose = require('mongoose')
 
 const Task = require('../models/Task')
 const Form = require('../models/Form')
+const FormResponse = require('../models/FormResponse')
 const Workflow = require('../models/Workflow')
 const WorkflowExecution = require('../models/WorkflowExecution')
+const User = require('../models/User')
 const { protect } = require('../middleware/auth')
 const { roleGuard } = require('../middleware/roleGuard')
 const { sendSuccess } = require('../utils/apiResponse')
+const { visibleUserIds, reachOf } = require('../utils/team')
+const { REPORT_ROLES } = require('../utils/roles')
 
 const router = express.Router()
 
-router.use(protect)
-
-// Routes used by the Dashboard are open to all authenticated users.
-// The more detailed analytics routes (sla-breaches, department-kpis) are
-// restricted to Manager+ roles and add their own guard inline.
+// Reporting is a leader capability, so the whole router is guarded rather than
+// route by route. summary / completion-time / approval-rate / activity used to
+// be open to any signed-in user "because the dashboard needs them" — but only
+// the Admin's builder dashboard calls them, and leaving them open let an
+// Employee read workspace-wide figures the Reports nav never offers them.
+router.use(protect, roleGuard(...REPORT_ROLES))
 
 const STATUS_COLOR = {
   approved: '#22c55e',
@@ -56,12 +62,49 @@ const buildDateFilter = (req) => {
   return filter
 }
 
+// Reports answer to the same reporting line as the inbox: Admin and the CEO
+// read the whole workspace, a Manager/HR/VP reads the people who report to them
+// (plus their own records), and ?department= narrows further within that.
+//
+// Both models carry the person who started the request — Task.submittedBy and
+// WorkflowExecution.triggeredBy — so one id set filters every metric on the
+// page. `{}` means no restriction.
+const buildScope = async (req) => {
+  const reach = reachOf(req.user)
+  let ids = await visibleUserIds(req.user)   // null = org-wide
+
+  const department = String(req.query.department || '').trim()
+  if (department) {
+    const inDept = await User.find({ department }).select('_id').lean()
+    const deptIds = inDept.map((u) => String(u._id))
+    ids = ids ? deptIds.filter((id) => ids.has(id)) : deptIds
+  }
+
+  if (!ids) return { reach, department: null, task: {}, exec: {}, response: {} }
+
+  // Aggregation pipelines get no schema casting, so hex strings would silently
+  // match nothing. Query helpers cast for themselves but accept these too.
+  const list = [...ids].map((id) => new mongoose.Types.ObjectId(String(id)))
+  return {
+    reach,
+    department: department || null,
+    task: { submittedBy: { $in: list } },
+    exec: { triggeredBy: { $in: list } },
+    response: { submittedBy: { $in: list } }
+  }
+}
+
 // GET /api/analytics/summary
 router.get('/summary', async (req, res, next) => {
   try {
     const dateFilter = buildDateFilter(req)
+    const scope = await buildScope(req)
+    const execFilter = { ...dateFilter, ...scope.exec }
+    const taskFilter = { ...dateFilter, ...scope.task }
 
     const SLA_MS = 7 * 24 * 60 * 60 * 1000 // 7-day SLA window in milliseconds
+
+    const responseFilter = { ...dateFilter, ...scope.response }
 
     const [
       totalExecutions,
@@ -71,20 +114,22 @@ router.get('/summary', async (req, res, next) => {
       pendingTasks,
       totalForms,
       totalWorkflows,
+      totalSubmissions,
       approvalAgg,
       slaAgg
     ] = await Promise.all([
-      WorkflowExecution.countDocuments(dateFilter),
-      WorkflowExecution.countDocuments({ ...dateFilter, status: 'running' }),
-      WorkflowExecution.countDocuments({ ...dateFilter, status: 'completed' }),
-      WorkflowExecution.countDocuments({ ...dateFilter, status: 'paused' }),
-      Task.countDocuments({ ...dateFilter, status: 'pending' }),
+      WorkflowExecution.countDocuments(execFilter),
+      WorkflowExecution.countDocuments({ ...execFilter, status: 'running' }),
+      WorkflowExecution.countDocuments({ ...execFilter, status: 'completed' }),
+      WorkflowExecution.countDocuments({ ...execFilter, status: 'paused' }),
+      Task.countDocuments({ ...taskFilter, status: 'pending' }),
       Form.countDocuments(),
       Workflow.countDocuments({}),
+      FormResponse.countDocuments(responseFilter),
       Task.aggregate([
         {
           $match: {
-            ...dateFilter,
+            ...taskFilter,
             status: { $in: ['approved', 'rejected'] }
           }
         },
@@ -94,7 +139,7 @@ router.get('/summary', async (req, res, next) => {
       WorkflowExecution.aggregate([
         {
           $match: {
-            ...dateFilter,
+            ...execFilter,
             status: 'completed',
             completedAt: { $exists: true, $ne: null }
           }
@@ -133,7 +178,12 @@ router.get('/summary', async (req, res, next) => {
       : null
 
     return sendSuccess(res, {
+      // What the numbers below cover, so the page can say so out loud rather
+      // than letting a Manager read their own slice as an org-wide total.
+      scope: { reach: scope.reach, department: scope.department },
       summary: {
+        // Catalogue counts: forms and workflows are shared across the workspace,
+        // so these stay org-wide even for a scoped leader.
         totalWorkflows,
         totalExecutions,
         runningExecutions,
@@ -141,6 +191,7 @@ router.get('/summary', async (req, res, next) => {
         pausedExecutions,
         pendingTasks,
         totalForms,
+        totalSubmissions,
         approvedTasks: approved,
         rejectedTasks: rejected,
         approvalRate,
@@ -161,9 +212,11 @@ router.get('/completion-time', async (req, res, next) => {
     cutoff.setUTCDate(1)
     cutoff.setUTCHours(0, 0, 0, 0)
 
+    const scope = await buildScope(req)
     const rows = await WorkflowExecution.aggregate([
       {
         $match: {
+          ...scope.exec,
           status: 'completed',
           completedAt: { $ne: null },
           createdAt: { $gte: cutoff }
@@ -197,16 +250,18 @@ router.get('/completion-time', async (req, res, next) => {
 })
 
 // GET /api/analytics/sla-breaches
-router.get('/sla-breaches', roleGuard('Admin', 'CEO', 'Manager', 'HR', 'VP'), async (req, res, next) => {
+router.get('/sla-breaches', async (req, res, next) => {
   try {
     const weeks = Math.min(52, Math.max(1, parseInt(req.query.weeks) || 8))
     const cutoff = new Date()
     cutoff.setUTCDate(cutoff.getUTCDate() - weeks * 7)
     cutoff.setUTCHours(0, 0, 0, 0)
 
+    const scope = await buildScope(req)
     const rows = await Task.aggregate([
       {
         $match: {
+          ...scope.task,
           createdAt: { $gte: cutoff },
           dueDate: { $ne: null },
           $expr: { $gt: ['$updatedAt', '$dueDate'] }
@@ -242,8 +297,9 @@ router.get('/sla-breaches', roleGuard('Admin', 'CEO', 'Manager', 'HR', 'VP'), as
 router.get('/approval-rate', async (req, res, next) => {
   try {
     const dateFilter = buildDateFilter(req)
+    const scope = await buildScope(req)
     const rows = await Task.aggregate([
-      { $match: dateFilter },
+      { $match: { ...dateFilter, ...scope.task } },
       { $group: { _id: '$status', count: { $sum: 1 } } }
     ])
 
@@ -286,10 +342,12 @@ router.get('/activity', async (req, res, next) => {
     cutoffIst.setHours(0, 0, 0, 0)
     const cutoffUtc = new Date(cutoffIst.getTime() - IST_OFFSET_MS)
 
+    const scope = await buildScope(req)
+
     // Historical aggregation: group by local (IST) date + status
     const [rows, liveRunning, livePaused] = await Promise.all([
       WorkflowExecution.aggregate([
-        { $match: { createdAt: { $gte: cutoffUtc } } },
+        { $match: { ...scope.exec, createdAt: { $gte: cutoffUtc } } },
         {
           $group: {
             _id: {
@@ -302,8 +360,8 @@ router.get('/activity', async (req, res, next) => {
         { $sort: { '_id.day': 1 } }
       ]),
       // Real-time counts for currently active executions (any start date)
-      WorkflowExecution.countDocuments({ status: 'running' }),
-      WorkflowExecution.countDocuments({ status: 'paused'  }),
+      WorkflowExecution.countDocuments({ ...scope.exec, status: 'running' }),
+      WorkflowExecution.countDocuments({ ...scope.exec, status: 'paused'  }),
     ])
 
     // Build the full day range keyed by IST date string, all zeros initially.
@@ -344,9 +402,10 @@ router.get('/activity', async (req, res, next) => {
 router.get('/department-kpis', roleGuard('Admin', 'CEO', 'Manager', 'HR', 'VP'), async (req, res, next) => {
   try {
     const dateFilter = buildDateFilter(req)
+    const scope = await buildScope(req)
 
     const rows = await Task.aggregate([
-      { $match: dateFilter },
+      { $match: { ...dateFilter, ...scope.task } },
       {
         $lookup: {
           from: 'users',

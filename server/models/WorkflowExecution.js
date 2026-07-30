@@ -9,6 +9,14 @@ const workflowExecutionSchema = new mongoose.Schema({
   workflowId: { type: mongoose.Schema.Types.ObjectId, ref: 'Workflow', required: true },
   formResponseId: { type: mongoose.Schema.Types.ObjectId, ref: 'FormResponse' },
   triggeredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  // When started via inbound webhook — human attribution without a User row.
+  triggeredByExternal: {
+    name: { type: String },
+    email: { type: String },
+    source: { type: String }
+  },
+  // Public, unguessable token for GET /api/hooks/status/:statusToken
+  statusToken: { type: String, index: true, sparse: true, unique: true },
   status: {
     type: String,
     enum: ['running', 'completed', 'failed', 'paused', 'cancelled'],
@@ -27,6 +35,9 @@ const workflowExecutionSchema = new mongoose.Schema({
   completedAt: { type: Date },
   failedAt: { type: Date },
   failureReason: { type: String },
+  // Timer node: when status=paused, resume after this time at timerNextNodeId.
+  timerResumeAt: { type: Date, index: true },
+  timerNextNodeId: { type: String },
   variables: { type: mongoose.Schema.Types.Mixed, default: {} }
 }, { timestamps: true })
 

@@ -112,4 +112,9 @@ const resolveOrgFromSubdomain = async (subdomain) => {
   return Organization.findOne({ subdomain: String(subdomain).toLowerCase(), status: 'active' }).lean()
 }
 
-module.exports = { resolveTenantForUser, tenant, subdomainFromHost, resolveOrgFromSubdomain }
+module.exports = {
+  resolveTenantForUser,
+  tenant,
+  subdomainFromHost,
+  resolveOrgFromSubdomain
+}
