@@ -82,23 +82,7 @@ const sendTaskAssignedEmail = ({ to, assigneeName, taskTitle, submittedBy, dueDa
       `Approve: ${taskUrl}?action=approve\n` +
       `Reject:  ${taskUrl}?action=reject\n\n` +
       `Or open NetFlow to review: ${taskUrl}\n\n` +
-      `NetFlow Team`,
-     html:
-      `<div style="font-family:Arial,sans-serif;font-size:14px;color:#111827;line-height:1.6">` +
-        `<p>Hi ${assigneeName},</p>` +
-        `<p>A new task has been assigned to you.</p>` +
-        `<table style="border-collapse:collapse;margin:12px 0">` +
-          `<tr><td style="padding:2px 8px;color:#6b7280">Task</td><td style="padding:2px 8px;font-weight:bold">${taskTitle}</td></tr>` +
-          `<tr><td style="padding:2px 8px;color:#6b7280">Submitted by</td><td style="padding:2px 8px;font-weight:bold">${submittedBy || 'System'}</td></tr>` +
-          `<tr><td style="padding:2px 8px;color:#6b7280">Due by</td><td style="padding:2px 8px">${new Date(dueDate).toDateString()}</td></tr>` +
-        `</table>` +
-        `<p style="margin:20px 0">` +
-          `<a href="${taskUrl}?action=approve" style="background:#059669;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:bold;display:inline-block;margin-right:10px">Approve</a>` +
-          `<a href="${taskUrl}?action=reject" style="background:#e11d48;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:bold;display:inline-block">Reject</a>` +
-        `</p>` +
-        `<p style="font-size:12px;color:#6b7280">The buttons open NetFlow, where you sign in and confirm the action.</p>` +
-        `<p>NetFlow Team</p>` +
-      `</div>`
+      `NetFlow Team`
   }).catch(err => console.error('sendTaskAssignedEmail error:', err.message))
 }
 

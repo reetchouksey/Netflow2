@@ -8,6 +8,10 @@ const WorkflowExecution = require('../models/WorkflowExecution')
 const Task = require('../models/Task')
 const User = require('../models/User')
 const Role = require('../models/Role')
+const Organization = require('../models/Organization')
+
+const { getOrgId } = require('../tenancy/tenantContext')
+const { listFor: departmentsFor } = require('./departments')
 
 const { createNotification } = require('./createNotification')
 const { writeAuditLog } = require('./writeAuditLog')
@@ -22,18 +26,23 @@ const findRoleIdByName = async (name) => {
   return role?._id || null
 }
 
-// Departments mirrored from User.department enum.
-const KNOWN_DEPARTMENTS = ['HR', 'Finance', 'IT', 'Operations', 'Sales', 'Legal']
-
 const normaliseToken = (s) =>
   String(s || '').trim().toLowerCase().replace(/\s+/g, '_')
+
+// The tenant's own team list (utils/departments), read through the ambient org
+// context the engine already runs inside.
+const orgDepartments = async () => {
+  const orgId = getOrgId()
+  const org = orgId ? await Organization.findById(orgId).select('departments').lean() : null
+  return departmentsFor(org)
+}
 
 // Resolve a `<department>_manager` semantic token (e.g. "hr_manager",
 // "finance_manager") to the first active Manager in that department.
 const resolveDepartmentManager = async (token) => {
-  const m = token.match(/^([a-z]+)_manager$/)
-  if (!m) return null
-  const dept = KNOWN_DEPARTMENTS.find((d) => d.toLowerCase() === m[1])
+  if (!/_manager$/.test(token)) return null
+  const departments = await orgDepartments()
+  const dept = departments.find((d) => `${normaliseToken(d)}_manager` === token)
   if (!dept) return null
   const managerRoleId = await findRoleIdByName('Manager')
   if (!managerRoleId) return null
@@ -221,9 +230,23 @@ const updateNodeLog = async (execution, nodeId, status, output = {}) => {
   await execution.save()
 }
 
+const notifyExternalResult = async (execution, outcome) => {
+  try {
+    const Workflow = require('../models/Workflow')
+    const { sendResultCallback } = require('./resultCallback')
+    const workflow = await Workflow.findById(execution.workflowId).lean()
+    if (!workflow) return
+    await sendResultCallback(workflow, execution, outcome)
+  } catch (err) {
+    console.error('notifyExternalResult:', err.message)
+  }
+}
+
 const completeExecution = async (execution) => {
   execution.status = 'completed'
   execution.completedAt = new Date()
+  execution.timerResumeAt = undefined
+  execution.timerNextNodeId = undefined
   if (execution.currentNodeId) {
     await updateNodeLog(execution, execution.currentNodeId, 'completed')
   } else {
@@ -236,6 +259,9 @@ const completeExecution = async (execution) => {
     targetEntity: `Workflow Execution #${execution._id}`,
     detail: 'Workflow completed successfully'
   })
+
+  const outcome = execution.variables?.lastApprovalOutcome === 'rejected' ? 'rejected' : 'completed'
+  await notifyExternalResult(execution, outcome)
 
   return { completed: true, executionId: execution._id }
 }
@@ -268,7 +294,8 @@ const maybeGeneratePdf = async (execution, node, workflow) => {
     if (execution.formResponseId) {
       const FormResponse = require('../models/FormResponse')
       await FormResponse.findByIdAndUpdate(execution.formResponseId, {
-        $push: { attachments: { filename: doc.name, path: doc.url, mimetype: doc.mime } },
+        // size is stored so deleting the submission can credit the bytes back.
+        $push: { attachments: { filename: doc.name, path: doc.url, mimetype: doc.mime, size: doc.size } },
       })
     }
 
@@ -288,6 +315,8 @@ const failExecution = async (execution, reason) => {
   execution.status = 'failed'
   execution.failedAt = new Date()
   execution.failureReason = reason
+  execution.timerResumeAt = undefined
+  execution.timerNextNodeId = undefined
   if (execution.currentNodeId) {
     await updateNodeLog(execution, execution.currentNodeId, 'failed', { reason })
   } else {
@@ -301,49 +330,24 @@ const failExecution = async (execution, reason) => {
     detail: reason
   })
 
+  const outcome = /reject/i.test(String(reason || '')) ? 'rejected' : 'failed'
+  await notifyExternalResult(execution, outcome)
+
   return { failed: true, reason }
 }
 
 // ---------- node handlers ----------
 
 // Resolves who an approval / submit task should be assigned to. Order: a pinned
-// user (config.approverId) -> dynamic DoA/LLM routing -> semantic tokens
-// (direct_manager / hr_partner / ceo / <dept>_manager) -> plain role-name lookup
-// scoped to the submitter's department. Shared by the approval + submit handlers.
+// user (config.approverId) -> semantic tokens (direct_manager / hr_partner /
+// ceo / <dept>_manager) -> plain role-name lookup scoped to the submitter's
+// department. Shared by the approval + submit handlers.
 // Returns { assignedTo, routingReason, routingSla }.
 const resolveAssignee = async (execution, node, workflow) => {
   let assignedTo = node.config?.approverId || null
   const submitter = execution.variables?.submitter || null
   let routingReason = null
   let routingSla = null
-
-  // Pass 0 (#01 Approval-Routing AI): when the node opts into dynamic routing
-  // (config.approverStrategy = 'llm' | 'doa' | 'dynamic'), infer the approver
-  // from the Delegation-of-Authority matrix + live org chart instead of a
-  // hard-coded role. Falls through to the static passes below if it yields
-  // nothing, so existing workflows are unaffected.
-  const strategy = node.config?.approverStrategy
-  if (!assignedTo && ['llm', 'doa', 'dynamic'].includes(strategy)) {
-    try {
-      const { resolveDynamicApprover } = require('./approverInference')
-      const routed = await resolveDynamicApprover(execution, node, workflow)
-      if (routed?.userId) {
-        assignedTo = routed.userId
-        routingReason = routed.reason
-        routingSla = routed.slaHours
-        writeAuditLog({
-          action: 'approver_inferred',
-          performedBy: execution.triggeredBy,
-          targetEntity: `${workflow.title} — ${node.id}`,
-          department: execution.variables?.department,
-          detail: routed.reason,
-          metadata: { source: routed.source, chain: routed.chainPreview }
-        })
-      }
-    } catch (err) {
-      console.error(`Dynamic approver routing failed on node "${node.id}":`, err.message)
-    }
-  }
 
   // Pass 1: semantic tokens (direct_manager, hr_partner, hr_manager, ceo, ...).
   // These need submitter context, which is why we resolve them first.
@@ -450,14 +454,12 @@ const handleApprovalNode = async (execution, node, workflow) => {
 
   const approver = await User.findById(assignedTo).select('name email notificationPrefs').lean()
   if (approver?.email && resolvePref(approver, 'assignment').email) {
-    const submitter = await User.findById(execution.triggeredBy).select('name').lean()
     sendTaskAssignedEmail({
       to: approver.email,
       assigneeName: approver.name,
       taskTitle: task.title,
-      submittedBy: submitter?.name || 'System',
-      dueDate: task.dueDate,
-      taskId: task._id
+      submittedBy: 'NetFlow workflow',
+      dueDate: task.dueDate
     })
   }
 
@@ -727,10 +729,31 @@ const handleNotificationNode = async (execution, node, workflow) => {
 }
 
 const handleTimerNode = async (execution, node, workflow) => {
-  // Phase 2: skip timer instantly. Phase 3: real delay via job queue.
-  console.log(`Timer node "${node.id}" skipped in Phase 2 — would wait ${node.config?.slaHours || 0}hrs`)
-  await updateNodeLog(execution, node.id, 'skipped', { note: 'Timer skipped in dev' })
-  return await processNode(execution, node.nextNode, workflow)
+  // Real wait: pause the execution and resume via timerCron when timerResumeAt elapses.
+  // slaHours may be fractional (e.g. minutes stored as hours/60 from the UI).
+  const hours = Number(node.config?.slaHours)
+  const waitMs = Number.isFinite(hours) && hours > 0
+    ? Math.max(1000, Math.round(hours * 3600 * 1000))
+    : 1000
+
+  // Short waits (≤ 30s): sleep in-process so local demos feel instant/responsive.
+  if (waitMs <= 30000) {
+    await new Promise((r) => setTimeout(r, waitMs))
+    await updateNodeLog(execution, node.id, 'completed', { waitedMs: waitMs, mode: 'inline' })
+    return await processNode(execution, node.nextNode, workflow)
+  }
+
+  execution.status = 'paused'
+  execution.timerResumeAt = new Date(Date.now() + waitMs)
+  execution.timerNextNodeId = node.nextNode || null
+  execution.markModified('timerResumeAt')
+  await updateNodeLog(execution, node.id, 'completed', {
+    waitedMs: waitMs,
+    mode: 'scheduled',
+    resumeAt: execution.timerResumeAt
+  })
+  await execution.save()
+  return { paused: true, timer: true, resumeAt: execution.timerResumeAt }
 }
 
 const handleAssignmentNode = async (execution, node, workflow) => {
@@ -753,6 +776,7 @@ const handleApiNode = async (execution, node, workflow) => {
   const url = String(cfg.apiUrl || '').trim()
   const method = cfg.apiMethod || 'POST'
   const continueOnError = cfg.continueOnError !== false
+  let body
 
   const audit = (ok, detail, extra = {}) => writeAuditLog({
     action: 'webhook_called',
@@ -764,12 +788,47 @@ const handleApiNode = async (execution, node, workflow) => {
   })
 
   // Shared failure path: continue past the node or fail the whole run.
-  const onFail = async (reason) => {
-    audit(false, `Webhook failed: ${reason}`)
+  const onFail = async (reason, extra = {}) => {
+    audit(false, `Webhook failed: ${reason}`, extra)
+    execution.variables = execution.variables || {}
+    execution.variables.lastIntegrationError = {
+      nodeId: node.id,
+      reason,
+      at: new Date().toISOString(),
+      ...extra
+    }
+    execution.markModified('variables')
+    await execution.save()
+
+    // Dead-letter for exhausted outbound failures (observability / replay later).
+    try {
+      const IntegrationDeadLetter = require('../models/IntegrationDeadLetter')
+      await IntegrationDeadLetter.create({
+        orgId: execution.orgId || workflow.orgId,
+        workflowId: workflow._id,
+        executionId: execution._id,
+        nodeId: node.id,
+        url,
+        method,
+        error: reason,
+        httpStatus: extra.status ?? null,
+        attempts: extra.attempts ?? null,
+        requestBodyPreview: body ? String(body).slice(0, 2000) : ''
+      })
+    } catch (dlqErr) {
+      console.error('IntegrationDeadLetter write failed:', dlqErr.message)
+    }
+
     if (continueOnError) {
-      await updateNodeLog(execution, node.id, 'completed', { error: reason, skipped: true })
+      await updateNodeLog(execution, node.id, 'completed', {
+        error: reason,
+        skipped: true,
+        ok: false,
+        ...extra
+      })
       return await processNode(execution, node.nextNode, workflow)
     }
+    await updateNodeLog(execution, node.id, 'failed', { error: reason, ok: false, ...extra })
     return await failExecution(execution, `Integration node "${node.id}" failed: ${reason}`)
   }
 
@@ -781,16 +840,21 @@ const handleApiNode = async (execution, node, workflow) => {
   const headers = (Array.isArray(cfg.apiHeaders) ? cfg.apiHeaders : [])
     .filter((h) => h && h.key)
     .map((h) => ({ key: h.key, value: interpolate(h.value, vars) }))
-  const body = cfg.apiBody ? interpolate(cfg.apiBody, vars) : undefined
+  body = cfg.apiBody ? interpolate(cfg.apiBody, vars) : undefined
 
   let result
   try {
-    result = await callWebhook({ url, method, headers, body, auth: cfg.apiAuth })
+    result = await callWebhook({ url, method, headers, body, auth: cfg.apiAuth, retries: 3 })
   } catch (err) {
-    return await onFail(err.message || 'Request error')
+    return await onFail(err.message || 'Request error', { attempts: err.attempts || 3 })
   }
 
-  if (!result.ok) return await onFail(`Received HTTP ${result.status}`)
+  if (!result.ok) {
+    return await onFail(`Received HTTP ${result.status}`, {
+      status: result.status,
+      attempts: result.attempts
+    })
+  }
 
   // Success: optionally expose the response to downstream nodes/conditions.
   if (cfg.saveResponseAs) {
@@ -800,16 +864,44 @@ const handleApiNode = async (execution, node, workflow) => {
     await execution.save()
   }
 
-  await updateNodeLog(execution, node.id, 'completed', { status: result.status })
-  audit(true, `Webhook ${method} ${url} -> ${result.status}`, { status: result.status })
+  await updateNodeLog(execution, node.id, 'completed', {
+    status: result.status,
+    attempts: result.attempts,
+    ok: true
+  })
+  audit(true, `Webhook ${method} ${url} -> ${result.status}`, {
+    status: result.status,
+    attempts: result.attempts
+  })
   return await processNode(execution, node.nextNode, workflow)
 }
 
 // ---------- public API ----------
 
+// Generous next to any real graph (the longest hand-built chains are well under
+// 30 nodes), low enough that a runaway loop is caught long before the call stack
+// or the executionLog becomes a problem.
+const MAX_HOPS_PER_WALK = 100
+
 const processNode = async (execution, nodeId, workflow) => {
   if (!nodeId) {
     return await failExecution(execution, 'No nextNode to process')
+  }
+
+  // The canvas allows back-edges on purpose — a Review node's "changes" path
+  // normally loops to an earlier submit step — so a graph can legitimately be
+  // cyclic. What it must never do is loop through nodes that don't pause for a
+  // human: processNode recurses, so that walk would run until the stack gives
+  // out and take the server with it. Hops are counted per walk on the in-memory
+  // document; every resume loads a fresh one, so review loops stay unbounded
+  // across rounds while a single runaway walk is cut short.
+  const hops = (execution.$locals.hops || 0) + 1
+  execution.$locals.hops = hops
+  if (hops > MAX_HOPS_PER_WALK) {
+    return await failExecution(
+      execution,
+      `Stopped after ${MAX_HOPS_PER_WALK} steps at node "${nodeId}" — this path loops without reaching an approval or end node`
+    )
   }
 
   const node = workflow.nodes.find(n => n.id === nodeId)
@@ -891,18 +983,22 @@ const triggerWorkflow = async (workflowId, formResponseId, userId, extraVariable
 
   // Cache submitter context so approval / condition nodes can route on the
   // submitter's role + department without re-querying for every node.
-  const submitter = await User.findById(userId).populate('role').lean()
-  if (submitter) {
-    variables.submitter = {
-      id: submitter._id,
-      name: submitter.name,
-      email: submitter.email,
-      role: submitter.role?.name || null,
-      department: submitter.department || null,
-      managerId: submitter.managerId || null,
-      hrId: submitter.hrId || null
+  // Inbound webhooks may already supply variables.submitter (external guest);
+  // only overwrite when the caller did not provide one.
+  if (!variables.submitter && userId) {
+    const submitter = await User.findById(userId).populate('role').lean()
+    if (submitter) {
+      variables.submitter = {
+        id: submitter._id,
+        name: submitter.name,
+        email: submitter.email,
+        role: submitter.role?.name || null,
+        department: submitter.department || null,
+        managerId: submitter.managerId || null,
+        hrId: submitter.hrId || null
+      }
+      if (submitter.department) variables.department = submitter.department
     }
-    if (submitter.department) variables.department = submitter.department
   }
 
   if (formResponseId) {
@@ -912,20 +1008,47 @@ const triggerWorkflow = async (workflowId, formResponseId, userId, extraVariable
     }
   }
 
+  // An inbound webhook starts a run with no signed-in person behind it, so it
+  // needs two things: attribution without a User row, and a status token the
+  // caller can poll with, since it cannot hold a session to ask again.
+  const externalSubmitter = variables.submitter?.source === 'webhook'
+    ? {
+        name: variables.submitter.name || 'External submitter',
+        email: variables.submitter.email || '',
+        source: 'webhook'
+      }
+    : undefined
+
+  const crypto = require('crypto')
+  const statusToken = externalSubmitter ? crypto.randomBytes(24).toString('hex') : undefined
+
   const execution = await WorkflowExecution.create({
+    orgId: workflow.orgId,
     workflowId,
     formResponseId,
     triggeredBy: userId,
+    ...(externalSubmitter ? { triggeredByExternal: externalSubmitter } : {}),
+    ...(statusToken ? { statusToken } : {}),
     status: 'running',
     variables
   })
+
+  const startDetail = externalSubmitter
+    ? `Execution #${execution._id} started via inbound webhook `
+      + `from ${externalSubmitter.name}${externalSubmitter.email ? ` <${externalSubmitter.email}>` : ''}`
+    : `Execution #${execution._id} started`
 
   writeAuditLog({
     action: 'workflow_started',
     performedBy: userId,
     targetEntity: `Workflow: ${workflow.title}`,
-    detail: `Execution #${execution._id} started`,
-    metadata: { workflowId, formResponseId, executionId: execution._id }
+    detail: startDetail,
+    metadata: {
+      workflowId,
+      formResponseId,
+      executionId: execution._id,
+      ...(externalSubmitter ? { externalSubmitter } : {})
+    }
   })
 
   // Walk the graph. Will resolve when the engine pauses (approval node)
@@ -978,6 +1101,7 @@ const advanceWorkflow = async (taskId, outcome = 'approved') => {
   }
   // Carry submitted Submit-node form values forward so later reviewers/approvers
   // can see the structured data (name, account no., e-signature, …), not just files.
+  // Also merge into variables.formData so Integration nodes can use {{formData.x}}.
   if (task.formData && typeof task.formData === 'object' && Object.keys(task.formData).length > 0) {
     const priorForms = Array.isArray(execution.variables.forms) ? execution.variables.forms : []
     execution.variables.forms = [
@@ -989,6 +1113,12 @@ const advanceWorkflow = async (taskId, outcome = 'approved') => {
         data: task.formData,
       },
     ]
+    execution.variables.formData = {
+      ...(execution.variables.formData && typeof execution.variables.formData === 'object'
+        ? execution.variables.formData
+        : {}),
+      ...task.formData
+    }
   }
   execution.markModified('variables')
 
@@ -1025,4 +1155,4 @@ const advanceWorkflow = async (taskId, outcome = 'approved') => {
   return await processNode(execution, currentNode.nextNode, workflow)
 }
 
-module.exports = { triggerWorkflow, advanceWorkflow, processNode }
+module.exports = { triggerWorkflow, advanceWorkflow, processNode, isUserOOO }

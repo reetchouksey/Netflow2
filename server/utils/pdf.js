@@ -11,8 +11,8 @@ const PDFDocument = require('pdfkit')
 const FormResponse = require('../models/FormResponse')
 const Form = require('../models/Form')
 const Task = require('../models/Task')
-
-const UPLOAD_DIR = path.join(__dirname, '..', 'uploads')
+const { UPLOAD_ROOT: UPLOAD_DIR, dirForOrg, urlFor } = require('./fileStore')
+const { addStorage } = require('./usageMeter')
 
 // pdfkit only ships the 14 standard PDF fonts (none are script faces), and the
 // app's e-sign fonts are Adobe Fonts we can't embed. So we bundle one free,
@@ -52,7 +52,9 @@ const fmtDate = (d) => {
   }
 }
 
-// Resolve a stored "/uploads/<file>" URL (or a data: URL) to raw image bytes.
+// Resolve a stored attachment URL (or a data: URL) to raw image bytes. Handles
+// both layouts: "/api/files/<orgId>/<name>?k=..." for anything uploaded since
+// per-org storage landed, and the legacy flat "/uploads/<name>".
 const signatureBuffer = (url) => {
   try {
     if (!url || typeof url !== 'string') return null
@@ -60,8 +62,11 @@ const signatureBuffer = (url) => {
       const b64 = url.split(',')[1] || ''
       return b64 ? Buffer.from(b64, 'base64') : null
     }
-    const base = path.basename(url.split('?')[0])
-    const p = path.join(UPLOAD_DIR, base)
+    const clean = url.split('?')[0]
+    const orgScoped = /\/api\/files\/([0-9a-fA-F]{24})\/([^/]+)$/.exec(clean)
+    const p = orgScoped
+      ? path.join(UPLOAD_DIR, orgScoped[1], orgScoped[2])
+      : path.join(UPLOAD_DIR, path.basename(clean))
     return fs.existsSync(p) ? fs.readFileSync(p) : null
   } catch {
     return null
@@ -107,8 +112,6 @@ const buildPdf = (outPath, draw) =>
  * content issues — the caller decides whether a hard failure should bubble up).
  */
 const generateApprovalPdf = async (execution, workflow) => {
-  if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true })
-
   const formResponse = execution.formResponseId
     ? await FormResponse.findById(execution.formResponseId).lean()
     : null
@@ -131,8 +134,11 @@ const generateApprovalPdf = async (execution, workflow) => {
   const formData = formResponse?.formData || execution.variables?.formData || {}
   const fields = Array.isArray(form?.fields) ? form.fields : []
 
+  // Generated documents are the tenant's data like any attachment: same per-org
+  // folder, same access check when opened, same storage meter.
+  const orgId = execution.orgId || formResponse?.orgId || workflow?.orgId
   const filename = `approval-${execution._id}-${Date.now()}.pdf`
-  const outPath = path.join(UPLOAD_DIR, filename)
+  const outPath = path.join(dirForOrg(orgId), filename)
 
   await buildPdf(outPath, (doc) => {
     const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right
@@ -290,9 +296,14 @@ const generateApprovalPdf = async (execution, workflow) => {
   let size = 0
   try { size = fs.statSync(outPath).size } catch { /* noop */ }
 
+  // Counted against the tenant's storage but never blocked: this runs at the end
+  // of an approval that has already happened, and refusing to write the record of
+  // it would lose the audit document, not save meaningful space.
+  if (orgId && size) await addStorage(orgId, size)
+
   return {
     name: `${(workflow?.title || 'Approved Request').replace(/[^\w\- ]+/g, '').trim() || 'Approved Request'} (signed).pdf`,
-    url: `/uploads/${filename}`,
+    url: urlFor(orgId, filename),
     mime: 'application/pdf',
     size,
   }

@@ -11,13 +11,40 @@
     "seed:superadmin": "node seeds/seedSuperAdmin.js",
     "backup": "node scripts/backupDb.js",
     "migrate:org": "node scripts/migrateOrgId.js",
-    "seed:doa": "node seeds/seedDoa.js",
+    "migrate:licensing": "node scripts/migrateLicensing.js",
+    "migrate:uploads": "node scripts/migrateUploads.js",
+    "backfill:storage": "node scripts/backfillStorage.js",
     "seed:ceo": "node seeds/seedCeo.js",
     "clean-demo": "node seeds/cleanDemo.js",
     "seed:demo": "node seeds/seedDemo.js",
     "seed:exec": "node seeds/seedExecutions.js",
     "seed:real": "node seeds/seedRealistic.js",
-    "test:isolation": "node tests/isolation.test.js"
+    "test:isolation": "node tests/isolation.test.js",
+    "test:step9": "node tests/_verifyStep9.js",
+    "test:orgadmin": "node tests/_verifyOrgAdmin.js",
+    "test:perm": "node tests/permissions.test.js",
+    "test:adm": "node tests/admin_users.test.js",
+    "test:prf": "node tests/profile.test.js",
+    "test:tsk": "node tests/tasks_approvals.test.js",
+    "test:wfb": "node tests/workflow_engine.test.js",
+    "test:ntf": "node tests/notifications.test.js",
+    "test:ana": "node tests/analytics_audit.test.js",
+    "test:plat": "node tests/platform_orgs.test.js",
+    "test:edg": "node tests/edge_security.test.js",
+    "test:hooks": "node tests/hooks_inbound.test.js",
+    "test:licu": "node tests/licensing_unit.test.js",
+    "test:lic": "node tests/licensing.test.js",
+    "test:licq": "node tests/licensing_quota.test.js",
+    "test:licusage": "node tests/licensing_usage.test.js",
+    "test:ui:perm": "node tests/ui_permissions.test.js",
+    "test:ui:adm": "node tests/ui_admin.test.js",
+    "test:ui:prf": "node tests/ui_profile.test.js",
+    "test:ui:tsk": "node tests/ui_tasks.test.js",
+    "test:ui:wfb": "node tests/ui_workflows.test.js",
+    "test:ui:ntf": "node tests/ui_notifications.test.js",
+    "test:ui:ana": "node tests/ui_analytics.test.js",
+    "test:ui:plat": "node tests/ui_platform.test.js",
+    "test:all": "node tests/runAll.js"
   },
   "keywords": [
     "flowsphere",
@@ -37,6 +64,7 @@
     "express-rate-limit": "^8.5.2",
     "express-validator": "^7.3.2",
     "helmet": "^8.1.0",
+    "ioredis": "^5.11.1",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.6.2",
     "morgan": "^1.10.1",
@@ -45,9 +73,11 @@
     "nodemailer": "^8.0.7",
     "pdfkit": "^0.19.1",
     "qrcode": "^1.5.4",
+    "rate-limit-redis": "^6.0.0",
     "speakeasy": "^2.0.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14"
+    "nodemon": "^3.1.14",
+    "playwright": "^1.62.0"
   }
 }

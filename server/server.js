@@ -20,9 +20,22 @@ const app = express()
 app.set('trust proxy', 1)
 
 connectDB().then(() => {
+  // DISABLE_CRON=1 skips the hourly escalation sweep — used by the automated
+  // test server so a shared/production database is never swept during a run.
+  if (process.env.DISABLE_CRON === '1') {
+    console.log('Background jobs disabled (DISABLE_CRON=1)')
+    return
+  }
   const { startEscalationCron } = require('./jobs/escalationCron')
   startEscalationCron()
   console.log('Escalation cron started')
+  const { startTimerCron } = require('./jobs/timerCron')
+  startTimerCron()
+  console.log('Timer cron started (every minute)')
+  const { startLicenceCron } = require('./jobs/licenceCron')
+  startLicenceCron()
+  const { startUsageCron } = require('./jobs/usageCron')
+  startUsageCron()
 })
 
 app.use(helmet())
@@ -41,16 +54,48 @@ app.use(cors({
   credentials: true
 }))
 app.use(morgan('dev'))
-app.use(express.json({ limit: '2mb' }))
+// Capture raw body for /api/hooks HMAC verification (X-NetFlow-Signature).
+app.use(express.json({
+  limit: '2mb',
+  verify: (req, res, buf) => {
+    if (req.originalUrl && req.originalUrl.startsWith('/api/hooks')) {
+      req.rawBody = Buffer.from(buf)
+    }
+  }
+}))
 app.use(express.urlencoded({ extended: false }))
 
-// Serve uploaded form attachments. crossOriginResourcePolicy is relaxed so the
-// frontend (different origin in dev) can load/download them.
-app.use(
-  '/uploads',
-  helmet.crossOriginResourcePolicy({ policy: 'cross-origin' }),
-  express.static(path.join(__dirname, 'uploads'))
-)
+// Attachments uploaded from now on are org-scoped and access-checked — see
+// routes/files.js. Mounted before the API routers because it authenticates
+// itself (a signed URL or a bearer token) and must keep working while a tenant
+// is read-only.
+app.use('/api/files', require('./routes/files'))
+
+// Legacy attachments: everything uploaded before per-org storage landed sits in
+// one flat, publicly-served directory. Those URLs are embedded in existing form
+// data, so removing the mount would break historical submissions. Run
+// `npm run migrate:uploads` to move them into org folders and rewrite the stored
+// URLs, then set SERVE_LEGACY_UPLOADS=0 to close this door for good.
+if (process.env.SERVE_LEGACY_UPLOADS !== '0') {
+  app.use(
+    '/uploads',
+    helmet.crossOriginResourcePolicy({ policy: 'cross-origin' }),
+    // Flat files only. Without this, /uploads/<orgId>/<file> would walk straight
+    // into the per-org directories and undo the access control above.
+    (req, res, next) => {
+      const rel = String(req.path || '').replace(/^\/+/, '')
+      if (!rel || rel.includes('/')) {
+        return res.status(404).json({ success: false, error: 'File not found', code: 'FILE_NOT_FOUND' })
+      }
+      next()
+    },
+    express.static(path.join(__dirname, 'uploads'), {
+      index: false,
+      dotfiles: 'deny',
+      setHeaders: (res) => res.setHeader('X-Content-Type-Options', 'nosniff')
+    })
+  )
+}
 
 app.get('/api/health', (req, res) => {
   res.json({
@@ -66,14 +111,23 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', require('./routes/auth'))
 app.use('/api/users', require('./routes/users'))
 app.use('/api/roles', require('./routes/roles'))
+// Routes — Shell 2 (an Org Admin configuring their own tenant)
+app.use('/api/departments', require('./routes/departments'))
+app.use('/api/organization', require('./routes/organization'))
 app.use('/api/forms', require('./routes/forms'))
 app.use('/api/uploads', require('./routes/uploads'))
 
 // Public (unauthenticated) form links — collect data from non-users.
 app.use('/api/public', require('./routes/public'))
 
+// Inbound webhook triggers (n8n-style) — external forms POST here to start a run.
+app.use('/api/hooks', require('./routes/hooks'))
+
 // Routes — M2
 app.use('/api/workflows', require('./routes/workflows'))
+
+// Routes — Shell 3 (a leader operating: approvals, their team, reports)
+app.use('/api/team', require('./routes/team'))
 
 // Routes — M3
 app.use('/api/tasks', require('./routes/tasks'))
@@ -81,9 +135,10 @@ app.use('/api/notifications', require('./routes/notifications'))
 app.use('/api/audit-logs', require('./routes/auditLogs'))
 app.use('/api/analytics', require('./routes/analytics'))
 
-// Routes — AI-01 (Approval-Routing AI / Delegation-of-Authority)
-app.use('/api/approval-routing', require('./routes/approvalRouting'))
+// Routes — Licensing (a tenant reading its own licence state and usage meters)
+app.use('/api/usage', require('./routes/usage'))
 
+// Routes — AI-01 (Approval-Routing AI / Delegation-of-Authority)
 // Routes — AI-02 (In-app AI assistant chatbot)
 app.use('/api/assistant', require('./routes/assistant'))
 

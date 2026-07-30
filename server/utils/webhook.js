@@ -3,10 +3,9 @@
 // global fetch shipped with Node 18+ (no extra dependency). Three concerns:
 //   1. interpolate() - fill {{formData.x}} placeholders from execution variables
 //   2. isSafeUrl()   - block SSRF (private/loopback targets) unless explicitly allowed
-//   3. callWebhook()  - do the request with a hard timeout and normalised result
-//
-// Kept dependency-free and side-effect-free so the engine handler stays thin and
-// this file is easy to unit-test.
+//   3. callWebhook()  - do the request with retries, timeout, normalised result
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 // Resolve a dotted path ("submitter.email") against a plain object.
 const getPath = (obj, path) => {
@@ -17,9 +16,6 @@ const getPath = (obj, path) => {
   }, obj)
 }
 
-// Replace {{ path }} tokens in a template string with values pulled from
-// `variables` (e.g. execution.variables). Missing values become ''. Objects are
-// JSON-stringified so a whole `{{formData}}` can be embedded if desired.
 const interpolate = (template, variables) => {
   if (template === null || template === undefined) return ''
   return String(template).replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, path) => {
@@ -32,30 +28,26 @@ const interpolate = (template, variables) => {
   })
 }
 
-// True when private/loopback/link-local targets are permitted (local dev). Off
-// by default so production can only reach public HTTPS endpoints.
 const allowPrivate = () => String(process.env.WEBHOOK_ALLOW_PRIVATE || '').toLowerCase() === 'true'
 
-// Blocklist of hostnames / IP literals that could reach internal infrastructure.
 const isPrivateHost = (hostname) => {
   const host = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '')
   if (!host) return true
   if (host === 'localhost' || host.endsWith('.local') || host.endsWith('.internal')) return true
-  if (host === '::1' || host === '0:0:0:0:0:0:0:1') return true          // IPv6 loopback
-  if (host.startsWith('fc') || host.startsWith('fd') || host.startsWith('fe80')) return true // IPv6 ULA / link-local
+  if (host === '::1' || host === '0:0:0:0:0:0:0:1') return true
+  if (host.startsWith('fc') || host.startsWith('fd') || host.startsWith('fe80')) return true
 
   const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
   if (m) {
     const [a, b] = [Number(m[1]), Number(m[2])]
-    if (a === 127 || a === 0 || a === 10) return true                    // loopback / "this" / 10.0.0.0/8
-    if (a === 169 && b === 254) return true                              // link-local 169.254.0.0/16
-    if (a === 192 && b === 168) return true                              // 192.168.0.0/16
-    if (a === 172 && b >= 16 && b <= 31) return true                     // 172.16.0.0/12
+    if (a === 127 || a === 0 || a === 10) return true
+    if (a === 169 && b === 254) return true
+    if (a === 192 && b === 168) return true
+    if (a === 172 && b >= 16 && b <= 31) return true
   }
   return false
 }
 
-// Validate a webhook target. Returns { ok: true } or { ok: false, reason }.
 const isSafeUrl = (rawUrl) => {
   let url
   try {
@@ -73,7 +65,6 @@ const isSafeUrl = (rawUrl) => {
   return { ok: true }
 }
 
-// Normalise headers: accept either a plain object or an array of {key,value}.
 const normaliseHeaders = (headers) => {
   const out = {}
   if (Array.isArray(headers)) {
@@ -86,36 +77,34 @@ const normaliseHeaders = (headers) => {
   return out
 }
 
+const { resolveSecret, resolveHeadersSecrets } = require('./secrets')
+
 const applyAuth = (headers, auth) => {
   if (!auth || !auth.mode || auth.mode === 'none') return headers
   if (auth.mode === 'bearer' && auth.token) {
-    headers.Authorization = `Bearer ${auth.token}`
+    headers.Authorization = `Bearer ${resolveSecret(auth.token)}`
   } else if (auth.mode === 'basic' && (auth.username || auth.password)) {
-    const encoded = Buffer.from(`${auth.username || ''}:${auth.password || ''}`).toString('base64')
+    const user = resolveSecret(auth.username || '')
+    const pass = resolveSecret(auth.password || '')
+    const encoded = Buffer.from(`${user}:${pass}`).toString('base64')
     headers.Authorization = `Basic ${encoded}`
   }
   return headers
 }
 
-// Perform the request. Never throws for HTTP errors — returns { ok, status, data }.
-// Throws only for network/timeout failures so the caller can branch on
-// continueOnError. `data` is parsed JSON when possible, otherwise raw text.
-const callWebhook = async ({ url, method = 'POST', headers, body, auth, timeoutMs = 10000 }) => {
-  const finalHeaders = applyAuth(normaliseHeaders(headers), auth)
-  const verb = String(method || 'POST').toUpperCase()
-  const sendsBody = !['GET', 'HEAD'].includes(verb) && body !== undefined && body !== null && body !== ''
+const shouldRetryStatus = (status, attempt, maxAttempts) => {
+  if (status === 429 && attempt < maxAttempts) return true
+  return status === 502 || status === 503 || status === 504
+}
 
-  if (sendsBody && !Object.keys(finalHeaders).some((h) => h.toLowerCase() === 'content-type')) {
-    finalHeaders['Content-Type'] = 'application/json'
-  }
-
+const once = async ({ url, method, headers, body, timeoutMs }) => {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const res = await fetch(url, {
-      method: verb,
-      headers: finalHeaders,
-      body: sendsBody ? body : undefined,
+      method,
+      headers,
+      body,
       signal: controller.signal
     })
     const text = await res.text()
@@ -130,6 +119,57 @@ const callWebhook = async ({ url, method = 'POST', headers, body, auth, timeoutM
   } finally {
     clearTimeout(timer)
   }
+}
+
+// Perform the request with retries. Returns { ok, status, data, attempts }.
+// Throws only when every attempt fails with a network/timeout error.
+const callWebhook = async ({
+  url,
+  method = 'POST',
+  headers,
+  body,
+  auth,
+  timeoutMs = 10000,
+  retries = 3
+}) => {
+  const finalHeaders = applyAuth(resolveHeadersSecrets(normaliseHeaders(headers)), auth)
+  const verb = String(method || 'POST').toUpperCase()
+  const sendsBody = !['GET', 'HEAD'].includes(verb) && body !== undefined && body !== null && body !== ''
+
+  if (sendsBody && !Object.keys(finalHeaders).some((h) => h.toLowerCase() === 'content-type')) {
+    finalHeaders['Content-Type'] = 'application/json'
+  }
+
+  const maxAttempts = Math.max(1, Number(retries) || 1)
+  let lastNetworkErr = null
+  let lastResult = null
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const result = await once({
+        url,
+        method: verb,
+        headers: finalHeaders,
+        body: sendsBody ? body : undefined,
+        timeoutMs
+      })
+      lastResult = { ...result, attempts: attempt }
+      if (result.ok || !shouldRetryStatus(result.status, attempt, maxAttempts)) {
+        return lastResult
+      }
+      await sleep(300 * (3 ** (attempt - 1)))
+    } catch (err) {
+      lastNetworkErr = err
+      if (attempt >= maxAttempts) break
+      await sleep(300 * (3 ** (attempt - 1)))
+    }
+  }
+
+  if (lastResult) return lastResult
+
+  const e = new Error(lastNetworkErr?.message || 'Request error')
+  e.attempts = maxAttempts
+  throw e
 }
 
 module.exports = { interpolate, isSafeUrl, callWebhook, normaliseHeaders }
