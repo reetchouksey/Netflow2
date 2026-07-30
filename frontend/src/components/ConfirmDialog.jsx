@@ -12,9 +12,10 @@ export default function ConfirmDialog() {
 
   useEffect(() => {
     if (!state) return
+    // Escape only. Enter is deliberately left to the focused button so a stray
+    // keypress can't confirm a destructive action the user hasn't chosen.
     const onKey = (e) => {
       if (e.key === 'Escape') confirmController.cancel()
-      else if (e.key === 'Enter') confirmController.accept()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -29,25 +30,33 @@ export default function ConfirmDialog() {
       onClick={confirmController.cancel}
     >
       <div
-        className="w-full max-w-md rounded-xl bg-surface shadow-2xl"
+        className="w-full max-w-md rounded-xl bg-surface border border-line shadow-2xl"
         onClick={(e) => e.stopPropagation()}
         role="alertdialog"
         aria-modal="true"
+        aria-labelledby="confirm-dialog-title"
+        aria-describedby={message ? 'confirm-dialog-message' : undefined}
       >
         <div className="px-6 pt-5 pb-4">
-          <h2 className="text-base font-semibold text-fg">{title}</h2>
-          {message && <p className="mt-2 text-sm text-fg-muted whitespace-pre-line">{message}</p>}
+          <h2 id="confirm-dialog-title" className="text-base font-semibold text-fg">{title}</h2>
+          {message && (
+            <p id="confirm-dialog-message" className="mt-2 text-sm text-fg-muted whitespace-pre-line">
+              {message}
+            </p>
+          )}
         </div>
         <div className="flex justify-end gap-2 border-t border-line px-6 py-3">
+          {/* Destructive dialogs open with Cancel focused so Enter is a safe default. */}
           <button
             onClick={confirmController.cancel}
+            autoFocus={danger}
             className="px-4 py-2 rounded-lg text-sm font-medium text-fg-muted hover:bg-surface-3 transition"
           >
             {cancelLabel}
           </button>
           <button
             onClick={confirmController.accept}
-            autoFocus
+            autoFocus={!danger}
             className={`px-4 py-2 rounded-lg text-sm font-medium text-white transition ${
               danger ? 'bg-rose-600 hover:bg-rose-700' : 'bg-indigo-600 hover:bg-indigo-700'
             }`}

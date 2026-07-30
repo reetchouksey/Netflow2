@@ -6,31 +6,25 @@ import { initials } from './auth'
 
 // ---------- shared helpers ----------
 
-export const relativeTime = (iso) => {
-  if (!iso) return ''
-  const diff = Date.now() - new Date(iso).getTime()
-  const s = Math.floor(diff / 1000)
-  if (s < 60) return 'just now'
-  const m = Math.floor(s / 60)
-  if (m < 60) return `${m} min ago`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h} hr${h === 1 ? '' : 's'} ago`
-  const d = Math.floor(h / 24)
-  if (d < 7) return `${d} day${d === 1 ? '' : 's'} ago`
-  return new Date(iso).toLocaleDateString()
-}
+import { formatDateTime, formatDateTimeWithRelative, relativeTime } from './datetime'
 
+// Re-exported so existing `import { relativeTime } from './adapters'` callers
+// keep working while the formatting itself lives in utils/datetime.
+export { relativeTime }
+
+// Identity hues, not statuses — each needs its own dark pair rather than a
+// semantic token, so two people never end up the same colour.
 const AVATAR_PALETTE = [
-  'bg-blue-100 text-blue-700',
-  'bg-orange-100 text-orange-700',
-  'bg-purple-100 text-purple-700',
-  'bg-pink-100 text-pink-700',
-  'bg-green-100 text-green-700',
-  'bg-indigo-100 text-indigo-700',
-  'bg-amber-100 text-amber-700',
-  'bg-emerald-100 text-emerald-700'
+  'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-200',
+  'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-200',
+  'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-200',
+  'bg-pink-100 text-pink-700 dark:bg-pink-500/20 dark:text-pink-200',
+  'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-200',
+  'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-200',
+  'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200',
+  'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200'
 ]
-const colourForName = (name) => {
+export const colourForName = (name) => {
   if (!name) return AVATAR_PALETTE[0]
   let hash = 0
   for (const c of name) hash = (hash * 31 + c.charCodeAt(0)) >>> 0
@@ -52,11 +46,11 @@ const TASK_STATUS_MAP = {
 }
 
 const ACTION_DOT = {
-  submitted: 'bg-blue-500',
-  approved: 'bg-green-500',
-  rejected: 'bg-red-500',
+  submitted: 'bg-info-solid',
+  approved: 'bg-success-solid',
+  rejected: 'bg-danger-solid',
   escalated: 'bg-orange-500',
-  request_changes: 'bg-amber-500',
+  request_changes: 'bg-warning-solid',
   reassigned: 'bg-purple-500'
 }
 
@@ -78,13 +72,22 @@ const APPROVER_ROLE_LABELS = {
 export const adaptTask = (apiTask) => {
   if (!apiTask) return null
 
-  const submitter = apiTask.submittedBy?.name || 'Unknown'
+  // Webhook / external forms may send submitter on the execution; prefer that
+  // over the workflow owner recorded as submittedBy for attribution.
+  const external = apiTask.triggerSubmitter
+  const submitter = external?.name
+    || apiTask.submittedBy?.name
+    || 'Unknown'
+  const submitterLabel = external?.email
+    ? `${submitter} (${external.email})`
+    : submitter
   const status = TASK_STATUS_MAP[apiTask.status] || 'Pending'
   const dueMs = apiTask.dueDate ? new Date(apiTask.dueDate).getTime() - Date.now() : 0
   const dueInMinutes = Math.round(dueMs / 60000)
   const slaBreached = apiTask.status === 'escalated' || apiTask.isEscalated || dueInMinutes < 0
 
-  const formData = apiTask.formResponseId?.formData || {}
+  // Internal form → formResponseId; inbound webhook → triggerFormData on the task.
+  const formData = apiTask.formResponseId?.formData || apiTask.triggerFormData || {}
   // Map field id -> definition so we can show the human label (not the raw id)
   // and detect file fields to render as download links.
   const fieldDefs = apiTask.formResponseId?.formId?.fields || []
@@ -96,7 +99,9 @@ export const adaptTask = (apiTask) => {
     return null
   }
 
-  const submission = Object.entries(formData).map(([k, v]) => {
+  const submission = Object.entries(formData)
+    .filter(([k]) => k !== 'submitter')
+    .map(([k, v]) => {
     const def = fieldMap.get(k)
     const label = def?.label || titleCase(k)
     // Grid/table fields carry an array of row objects — pass the column defs +
@@ -113,22 +118,27 @@ export const adaptTask = (apiTask) => {
       value: typeof v === 'object' ? JSON.stringify(v) : String(v ?? '')
     }
   })
-  if (submitter) submission.unshift({ label: 'Submitted by', value: submitter })
-  if (apiTask.submittedBy?.department) submission.push({ label: 'Department', value: apiTask.submittedBy.department })
+  if (submitterLabel) submission.unshift({ label: 'Submitted by', value: submitterLabel })
+  if (!external && apiTask.submittedBy?.department) {
+    submission.push({ label: 'Department', value: apiTask.submittedBy.department })
+  }
 
   const history = (apiTask.approvalHistory || []).map((h) => {
     const who = h.performedBy?.name || 'System'
     const verb = h.action === 'submitted' ? 'submitted' : h.action.replace(/_/g, ' ')
     return {
       label: `${who} ${verb}${h.comment ? ` — "${h.comment}"` : ''}`,
-      time: h.performedAt ? new Date(h.performedAt).toLocaleString() : '',
-      dotColor: ACTION_DOT[h.action] || 'bg-gray-400',
+      time: formatDateTimeWithRelative(h.performedAt),
+      at: h.performedAt || null,
+      dotColor: ACTION_DOT[h.action] || 'bg-fg-subtle',
       signature: h.signature || null
     }
   })
 
-  // SLA: approx 48h default if no dueDate. Time-since-created vs total budget.
+  // SLA is only real when the workflow set a due date; otherwise the panel says
+  // so instead of inventing a 48h budget.
   const createdMs = apiTask.createdAt ? new Date(apiTask.createdAt).getTime() : Date.now()
+  const hasSla = !!apiTask.dueDate
   const totalHours = apiTask.dueDate
     ? Math.max(1, Math.round((new Date(apiTask.dueDate).getTime() - createdMs) / 3600000))
     : 48
@@ -169,6 +179,19 @@ export const adaptTask = (apiTask) => {
           data: f.data && typeof f.data === 'object' ? f.data : {},
         }))
       : [],
+    // Outbound Integration (api) node results from the parent execution.
+    integrationEvents: Array.isArray(apiTask.integrationEvents)
+      ? apiTask.integrationEvents.map((e) => ({
+          nodeId: e.nodeId,
+          status: e.status,
+          ok: e.ok !== false,
+          error: e.error || null,
+          httpStatus: e.httpStatus ?? null,
+          attempts: e.attempts ?? null,
+          skipped: !!e.skipped,
+          exitedAt: e.exitedAt || null,
+        }))
+      : [],
     detail: apiTask.type || apiTask.workflowId?.title || 'General',
     requester: submitter,
     approver,
@@ -196,7 +219,8 @@ export const adaptTask = (apiTask) => {
       isCurrent: !!s.isCurrent,
       assignee: s.assignee?.name || null,
       decidedBy: s.decidedBy || null,
-      decidedAt: s.decidedAt ? new Date(s.decidedAt).toLocaleString() : null,
+      decidedAt: formatDateTime(s.decidedAt) || null,
+      decidedAtIso: s.decidedAt || null,
       quorum: s.quorum || null // { total, approved, required } for committee stages
     })),
     approvalSummary: apiTask.approvalSummary || null,
@@ -216,9 +240,10 @@ export const adaptTask = (apiTask) => {
       id: idOf(p.userId),
       name: p.userId?.name || null,
       status: p.status || 'pending',
-      decidedAt: p.decidedAt ? new Date(p.decidedAt).toLocaleString() : null
+      decidedAt: formatDateTime(p.decidedAt) || null,
+      decidedAtIso: p.decidedAt || null
     })),
-    sla: { totalHours, assignedHoursAgo },
+    sla: { totalHours, assignedHoursAgo, hasSla },
     comments: []
   }
 }
@@ -226,11 +251,11 @@ export const adaptTask = (apiTask) => {
 // ---------- notifications ----------
 
 const NOTIF_DOT = {
-  approval:   'bg-green-100',
-  rejection:  'bg-red-100',
-  escalation: 'bg-orange-100',
-  assignment: 'bg-blue-100',
-  reminder:   'bg-yellow-100'
+  approval:   'bg-success-subtle',
+  rejection:  'bg-danger-subtle',
+  escalation: 'bg-warning-subtle',
+  assignment: 'bg-info-subtle',
+  reminder:   'bg-warning-subtle'
 }
 
 export const adaptNotification = (n) => ({
@@ -291,7 +316,23 @@ export const adaptWorkflow = (w) => ({
   steps: Array.isArray(w.nodes) ? w.nodes.length : 0,
   nodes: w.nodes || [],
   edges: w.edges || [],
-  linkedFormId: w.linkedFormId,
+  linkedFormId: w.linkedFormId
+    ? String(w.linkedFormId)
+    : (Array.isArray(w.linkedFormIds) && w.linkedFormIds[0] ? String(w.linkedFormIds[0]) : null),
+  linkedFormIds: Array.isArray(w.linkedFormIds) && w.linkedFormIds.length
+    ? w.linkedFormIds.map(String)
+    : (w.linkedFormId ? [String(w.linkedFormId)] : []),
+  inboundWebhook: w.inboundWebhook
+    ? {
+        enabled: w.inboundWebhook.enabled === true,
+        token: w.inboundWebhook.token || '',
+        secret: w.inboundWebhook.secret || '',
+        callbackUrl: w.inboundWebhook.callbackUrl || '',
+        expectedFields: Array.isArray(w.inboundWebhook.expectedFields)
+          ? w.inboundWebhook.expectedFields
+          : [],
+      }
+    : { enabled: false, token: '', secret: '', callbackUrl: '', expectedFields: [] },
   createdAt: w.createdAt,
   createdBy: w.createdBy?.name || 'Unknown',
   version: w.version || 1

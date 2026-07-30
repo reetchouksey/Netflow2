@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { NODE_STYLES } from "./nodeStyles";
+import NodeTypeIcon from "../../components/NodeTypeIcon";
 
-export const NODE_W = 160;
-export const NODE_H = 60;
+export const NODE_W = 180;
+export const NODE_H = 68;
+
+const zoomBtnCls =
+  "w-8 h-8 inline-flex items-center justify-center rounded-lg border border-line bg-surface text-fg-muted hover:bg-surface-2 hover:text-fg text-sm font-semibold shadow-sm transition";
 
 // The nodes live in a large logical "world". The viewport (the visible box) is
 // much smaller — users zoom + pan to navigate big graphs (20+ nodes) instead of
@@ -12,9 +16,6 @@ const WORLD_H = 4000;
 const MIN_SCALE = 0.2;
 const MAX_SCALE = 2;
 const clampScale = (s) => Math.max(MIN_SCALE, Math.min(MAX_SCALE, s));
-
-const zoomBtnCls =
-  "w-7 h-7 inline-flex items-center justify-center rounded-md border border-line bg-surface text-fg-muted hover:bg-surface-2 hover:text-fg text-sm font-semibold transition";
 
 export default function WorkflowEditor({
   nodes,
@@ -27,6 +28,12 @@ export default function WorkflowEditor({
   onAddConnection,
   onDeleteConnection,
   readOnly = false,
+  // Bump when the graph is replaced (edit load / template) so we auto-fit again.
+  fitKey = 0,
+  // Live structural problems from graphIssues — highlight + banner on the canvas.
+  problemNodeIds = null,
+  flowProblems = [],
+  onSelectProblem,
 }) {
   const containerRef = useRef(null);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -34,6 +41,10 @@ export default function WorkflowEditor({
   const [pendingConn, setPendingConn] = useState(null);
   const [hoveredConnIdx, setHoveredConnIdx] = useState(null);
   const [hoverTargetId, setHoverTargetId] = useState(null);
+  const [problemsOpen, setProblemsOpen] = useState(true);
+  const problemSet = problemNodeIds instanceof Set
+    ? problemNodeIds
+    : new Set(problemNodeIds || []);
 
   // view = pan offset (x, y in screen px) + zoom (scale). Kept as one object so
   // wheel/zoom updates stay internally consistent under rapid events.
@@ -41,6 +52,10 @@ export default function WorkflowEditor({
   const [isPanning, setIsPanning] = useState(false);
   const panRef = useRef(null); // { lastX, lastY } while panning
   const didPanRef = useRef(false); // suppress the deselect-click after a pan
+  // First paint of this editor session — auto-fit once the canvas has a real size.
+  const didInitialFitRef = useRef(false);
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
 
   // Convert pointer (client) coordinates into world coordinates.
   const toWorld = (clientX, clientY) => {
@@ -49,6 +64,41 @@ export default function WorkflowEditor({
       x: (clientX - rect.left - view.x) / view.scale,
       y: (clientY - rect.top - view.y) / view.scale,
     };
+  };
+
+  // Zoom + center so every node fits within the viewport. Cap at 1× so a
+  // two-node scratch graph isn't blown up to fill the whole screen.
+  const computeFit = (el, list, { maxScale = 1 } = {}) => {
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    if (rect.width < 8 || rect.height < 8) return null;
+    if (!list.length) return { scale: 1, x: 24, y: 24 };
+
+    const padX = Math.max(48, Math.min(96, rect.width * 0.08));
+    const padY = Math.max(48, Math.min(96, rect.height * 0.1));
+    const minX = Math.min(...list.map((n) => n.x));
+    const minY = Math.min(...list.map((n) => n.y));
+    const maxX = Math.max(...list.map((n) => n.x + NODE_W));
+    const maxY = Math.max(...list.map((n) => n.y + NODE_H));
+    const w = Math.max(1, maxX - minX);
+    const h = Math.max(1, maxY - minY);
+    const scale = clampScale(
+      Math.min(
+        maxScale,
+        (rect.width - padX * 2) / w,
+        (rect.height - padY * 2) / h
+      )
+    );
+    return {
+      scale,
+      x: (rect.width - w * scale) / 2 - minX * scale,
+      y: (rect.height - h * scale) / 2 - minY * scale,
+    };
+  };
+
+  const fitView = () => {
+    const next = computeFit(containerRef.current, nodes, { maxScale: 1 });
+    if (next) setView(next);
   };
 
   // Wheel-to-zoom, focused on the cursor. Registered natively (passive:false)
@@ -72,6 +122,48 @@ export default function WorkflowEditor({
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
+  // On first visit (and after the fullscreen layout settles), fit every node
+  // into view. ResizeObserver covers the case where the canvas mounts at 0×0
+  // before the flex layout assigns height. `fitKey` resets this when the graph
+  // is replaced (edit load / template).
+  useEffect(() => {
+    didInitialFitRef.current = false;
+    const el = containerRef.current;
+    if (!el) return undefined;
+
+    const tryFit = () => {
+      if (didInitialFitRef.current) return;
+      const list = nodesRef.current;
+      if (!list.length) return;
+      const next = computeFit(el, list, { maxScale: 1 });
+      if (!next) return;
+      didInitialFitRef.current = true;
+      setView(next);
+    };
+
+    tryFit();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(tryFit) : null;
+    ro?.observe(el);
+    // Layout can settle a frame or two after step-2 becomes fullscreen.
+    const t1 = window.setTimeout(tryFit, 50);
+    const t2 = window.setTimeout(tryFit, 200);
+    return () => {
+      ro?.disconnect();
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, [fitKey]);
+
+  // Edit mode often mounts with a bootstrap graph, then swaps in the real
+  // nodes — if the first fit already ran on empty/bootstrap, retry once.
+  useEffect(() => {
+    if (didInitialFitRef.current || !nodes.length) return;
+    const next = computeFit(containerRef.current, nodes, { maxScale: 1 });
+    if (!next) return;
+    didInitialFitRef.current = true;
+    setView(next);
+  }, [nodes]);
+
   const zoomAtCenter = (factor) => {
     const rect = containerRef.current?.getBoundingClientRect();
     const fx = rect ? rect.width / 2 : 0;
@@ -85,37 +177,42 @@ export default function WorkflowEditor({
 
   const resetView = () => setView({ scale: 1, x: 24, y: 24 });
 
-  // Zoom + center so every node fits within the viewport.
-  const fitView = () => {
-    const el = containerRef.current;
-    if (!el || nodes.length === 0) {
-      resetView();
-      return;
-    }
-    const rect = el.getBoundingClientRect();
-    const pad = 48;
-    const minX = Math.min(...nodes.map((n) => n.x));
-    const minY = Math.min(...nodes.map((n) => n.y));
-    const maxX = Math.max(...nodes.map((n) => n.x + NODE_W));
-    const maxY = Math.max(...nodes.map((n) => n.y + NODE_H));
-    const w = Math.max(1, maxX - minX);
-    const h = Math.max(1, maxY - minY);
-    const scale = clampScale(
-      Math.min((rect.width - pad * 2) / w, (rect.height - pad * 2) / h)
-    );
-    setView({
-      scale,
-      x: (rect.width - w * scale) / 2 - minX * scale,
-      y: (rect.height - h * scale) / 2 - minY * scale,
-    });
-  };
-
   const handleNodeMouseDown = (e, node) => {
     if (readOnly) return;
     e.stopPropagation();
     onSelectNode?.(node.id);
     const w = toWorld(e.clientX, e.clientY);
     setDragState({ id: node.id, offsetX: w.x - node.x, offsetY: w.y - node.y });
+  };
+
+  // Nodes were mouse-only: a keyboard user couldn't reach one, let alone move
+  // or delete it. Arrows nudge by the same 10px grid the drag snaps to (×4 with
+  // Shift), Enter/Space selects so the config panel opens, Delete removes.
+  const NUDGE = 10;
+  const handleNodeKeyDown = (e, node) => {
+    if (readOnly) return;
+    const step = e.shiftKey ? NUDGE * 4 : NUDGE;
+    const nudge = {
+      ArrowLeft: [-step, 0],
+      ArrowRight: [step, 0],
+      ArrowUp: [0, -step],
+      ArrowDown: [0, step],
+    }[e.key];
+    if (nudge) {
+      e.preventDefault();
+      onSelectNode?.(node.id);
+      onMoveNode?.(node.id, Math.max(0, node.x + nudge[0]), Math.max(0, node.y + nudge[1]));
+      return;
+    }
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onSelectNode?.(node.id);
+      return;
+    }
+    if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      onDeleteNode?.(node.id);
+    }
   };
 
   const handleStartConnect = (e, nodeId) => {
@@ -198,30 +295,66 @@ export default function WorkflowEditor({
     onSelectNode?.(null);
   };
 
+  const problemCount = Array.isArray(flowProblems) ? flowProblems.length : 0;
+
   return (
-    <section className="flex-1 min-w-0 bg-surface-2/60 flex flex-col">
-      <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-line bg-surface">
-        {!readOnly ? (
-          <p className="text-[11px] text-fg-muted leading-tight">
-            Tip: drag a node’s bottom dot onto another to connect. Scroll to
-            zoom, drag empty space to pan.
-          </p>
-        ) : (
-          <span />
-        )}
-        <div className="flex items-center gap-1 shrink-0">
+    <section className="flex-1 min-w-0 bg-surface-2 flex flex-col relative">
+      {!readOnly && problemCount > 0 && (
+        <div className="shrink-0 border-b border-danger-line bg-danger-subtle/90 px-4 py-2.5">
+          <div className="flex items-start gap-2.5">
+            <span className="mt-0.5 w-5 h-5 rounded-full bg-danger-subtle border border-danger-line text-danger-fg flex items-center justify-center shrink-0" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m0 3.75h.008M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+              </svg>
+            </span>
+            <div className="min-w-0 flex-1">
+              <button
+                type="button"
+                onClick={() => setProblemsOpen((o) => !o)}
+                className="flex items-center gap-1.5 text-left w-full"
+                aria-expanded={problemsOpen}
+              >
+                <span className="text-xs font-semibold text-danger-fg">
+                  {problemCount} connection {problemCount === 1 ? 'problem' : 'problems'}
+                </span>
+                <span className="text-[11px] text-danger-fg/80">
+                  {problemsOpen ? 'Hide' : 'Show'}
+                </span>
+              </button>
+              {problemsOpen && (
+                <ul className="mt-1.5 space-y-1 max-h-28 overflow-y-auto">
+                  {flowProblems.map((issue, i) => (
+                    <li key={i}>
+                      <button
+                        type="button"
+                        onClick={() => onSelectProblem?.(issue)}
+                        className="text-left text-[11px] text-danger-fg/95 hover:underline leading-snug"
+                      >
+                        {issue.message}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="flex items-center justify-end gap-3 px-4 py-2 border-b border-line bg-surface/90 backdrop-blur-sm">
+        <div className="flex items-center gap-1.5 shrink-0 rounded-xl border border-line bg-surface-2/80 p-1">
           <button
             type="button"
             onClick={() => zoomAtCenter(1 / 1.2)}
             className={zoomBtnCls}
             title="Zoom out"
+            aria-label="Zoom out"
           >
             −
           </button>
           <button
             type="button"
             onClick={resetView}
-            className="h-7 min-w-[3.25rem] px-2 inline-flex items-center justify-center rounded-md border border-line bg-surface text-[11px] font-medium text-fg-muted hover:bg-surface-2 transition"
+            className="h-8 min-w-[3.5rem] px-2 inline-flex items-center justify-center rounded-lg border border-transparent bg-surface text-[11px] font-semibold text-fg hover:bg-surface-2 transition"
             title="Reset zoom to 100%"
           >
             {Math.round(view.scale * 100)}%
@@ -231,13 +364,14 @@ export default function WorkflowEditor({
             onClick={() => zoomAtCenter(1.2)}
             className={zoomBtnCls}
             title="Zoom in"
+            aria-label="Zoom in"
           >
             +
           </button>
           <button
             type="button"
             onClick={fitView}
-            className="ml-1 h-7 px-2.5 inline-flex items-center justify-center rounded-md border border-line bg-surface text-[11px] font-medium text-fg hover:bg-surface-2 transition"
+            className="ml-0.5 h-8 px-3 inline-flex items-center justify-center rounded-lg bg-indigo-600 hover:bg-indigo-700 text-[11px] font-semibold text-white shadow-sm transition"
             title="Fit all nodes in view"
           >
             Fit
@@ -249,7 +383,7 @@ export default function WorkflowEditor({
         ref={containerRef}
         className={`relative flex-1 min-h-0 overflow-hidden ${
           isPanning ? "cursor-grabbing" : "cursor-grab"
-        } ${isDragOver ? "ring-2 ring-inset ring-blue-300" : ""}`}
+        } ${isDragOver ? "ring-2 ring-inset ring-indigo-400/60" : ""}`}
         onMouseDown={handleBackgroundMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={endInteractions}
@@ -300,7 +434,7 @@ export default function WorkflowEditor({
                 markerHeight="6"
                 orient="auto-start-reverse"
               >
-                <path d="M0 0 L10 5 L0 10 z" fill="#94a3b8" />
+                <path d="M0 0 L10 5 L0 10 z" fill="var(--color-fg-subtle)" />
               </marker>
               <marker
                 id="arrow-dashed"
@@ -311,7 +445,7 @@ export default function WorkflowEditor({
                 markerHeight="6"
                 orient="auto-start-reverse"
               >
-                <path d="M0 0 L10 5 L0 10 z" fill="#cbd5e1" />
+                <path d="M0 0 L10 5 L0 10 z" fill="var(--color-line)" />
               </marker>
               <marker
                 id="arrow-hover"
@@ -425,9 +559,11 @@ export default function WorkflowEditor({
               key={node.id}
               node={node}
               selected={selectedNodeId === node.id}
+              hasProblem={problemSet.has(node.id)}
               isPendingTarget={hoverTargetId === node.id}
               isPendingSource={pendingConn?.fromId === node.id}
               onMouseDown={(e) => handleNodeMouseDown(e, node)}
+              onKeyDown={(e) => handleNodeKeyDown(e, node)}
               onStartConnect={(e) => handleStartConnect(e, node.id)}
               onDelete={() => onDeleteNode?.(node.id)}
               readOnly={readOnly}
@@ -442,9 +578,11 @@ export default function WorkflowEditor({
 function WorkflowNode({
   node,
   selected,
+  hasProblem = false,
   isPendingTarget,
   isPendingSource,
   onMouseDown,
+  onKeyDown,
   onStartConnect,
   onDelete,
   readOnly = false,
@@ -454,25 +592,54 @@ function WorkflowNode({
     ? "cursor-default"
     : selected
     ? `ring-2 ${s.ring} shadow-md cursor-grabbing`
-    : "cursor-grab";
+    : "cursor-grab hover:shadow-md";
+  const problemCls = hasProblem && !selected
+    ? "ring-2 ring-rose-500/80 shadow-md"
+    : hasProblem && selected
+      ? "ring-2 ring-rose-500"
+      : "";
   return (
     <div
       onMouseDown={readOnly ? undefined : onMouseDown}
+      onKeyDown={readOnly ? undefined : onKeyDown}
       onClick={(e) => e.stopPropagation()}
-      className={`group absolute select-none rounded-md border px-3 py-2 text-center shadow-sm transition ${s.card} ${cursorCls} ${
-        !readOnly && isPendingTarget ? "ring-2 ring-blue-500/70 shadow-md" : ""
-      }`}
+      role={readOnly ? undefined : "button"}
+      tabIndex={readOnly ? undefined : 0}
+      aria-pressed={readOnly ? undefined : selected}
+      aria-invalid={hasProblem || undefined}
+      aria-label={readOnly ? undefined : `${node.title}${node.subtitle ? `, ${node.subtitle}` : ''}${hasProblem ? '. Connection problem' : ''}. Arrow keys to move, Delete to remove.`}
+      className={`group absolute select-none rounded-xl border px-3 py-2.5 shadow-sm backdrop-blur-[2px] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 ${s.card} ${cursorCls} ${problemCls} ${
+        !readOnly && isPendingTarget ? "ring-2 ring-indigo-500/70 shadow-md" : ""
+      } ${hasProblem ? "border-rose-400 dark:border-rose-500/70" : ""}`}
       style={{ left: node.x, top: node.y, width: NODE_W, height: NODE_H }}
     >
-      <div className={`text-[13px] font-semibold ${s.title}`}>{node.title}</div>
-      <div className={`text-[11px] mt-0.5 ${s.subtitle}`}>{node.subtitle}</div>
+      {hasProblem && (
+        <span
+          className="absolute -top-1.5 -left-1.5 w-4 h-4 rounded-full bg-rose-500 text-white flex items-center justify-center shadow-sm"
+          title="Connection problem"
+          aria-hidden="true"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          </svg>
+        </span>
+      )}
+      <div className="flex items-center gap-2.5 h-full">
+        <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${s.tile}`}>
+          <NodeTypeIcon name={s.icon} className="w-4 h-4" />
+        </span>
+        <div className="min-w-0 text-left">
+          <div className={`text-[13px] font-semibold truncate leading-tight ${s.title}`}>{node.title}</div>
+          <div className={`text-[11px] mt-0.5 truncate leading-tight ${s.subtitle}`}>{node.subtitle}</div>
+        </div>
+      </div>
 
       {!readOnly && (
         <div
           className={`absolute left-1/2 -translate-x-1/2 -top-1.5 w-3 h-3 rounded-full bg-surface border-2 transition ${
             isPendingTarget
-              ? "border-blue-500 scale-125"
-              : "border-line group-hover:border-gray-500"
+              ? "border-indigo-500 scale-125"
+              : "border-line group-hover:border-fg-subtle"
           }`}
         />
       )}
@@ -481,10 +648,10 @@ function WorkflowNode({
         <div
           onMouseDown={onStartConnect}
           title="Drag to connect"
-          className={`absolute left-1/2 -translate-x-1/2 -bottom-1.5 w-3 h-3 rounded-full bg-surface border-2 transition cursor-crosshair hover:scale-125 hover:bg-blue-50 ${
+          className={`absolute left-1/2 -translate-x-1/2 -bottom-1.5 w-3 h-3 rounded-full bg-surface border-2 transition cursor-crosshair hover:scale-125 hover:bg-indigo-50 dark:hover:bg-indigo-500/20 ${
             isPendingSource
-              ? "border-blue-500 scale-125 bg-blue-50"
-              : "border-line hover:border-blue-500"
+              ? "border-indigo-600 scale-125 bg-indigo-50 dark:bg-indigo-500/20"
+              : "border-line hover:border-indigo-500"
           }`}
         />
       )}
@@ -497,7 +664,8 @@ function WorkflowNode({
             onDelete();
           }}
           title="Delete node"
-          className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-surface border border-line text-fg-muted hover:text-rose-600 hover:border-rose-300 shadow-sm text-[11px] leading-none flex items-center justify-center"
+          aria-label={`Delete ${node.title}`}
+          className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-surface border border-line text-fg-muted hover:text-danger-fg hover:border-danger-line shadow-sm text-[11px] leading-none flex items-center justify-center"
         >
           ×
         </button>
@@ -519,13 +687,14 @@ function DottedBackground() {
           id="dots"
           x="0"
           y="0"
-          width="20"
-          height="20"
+          width="24"
+          height="24"
           patternUnits="userSpaceOnUse"
         >
-          <circle cx="1" cy="1" r="1" fill="#e5e7eb" />
+          <circle cx="1.25" cy="1.25" r="1.1" fill="var(--color-line)" opacity="0.85" />
         </pattern>
       </defs>
+      <rect width="100%" height="100%" fill="var(--color-surface-2)" />
       <rect width="100%" height="100%" fill="url(#dots)" />
     </svg>
   );

@@ -7,51 +7,82 @@ import { fieldMaxMb, MAX_UPLOAD_MB } from '../utils/uploads'
 import { PATTERN_PRESETS } from '../components/FormFields'
 import { toast } from '../lib/toastStore'
 import { confirm } from '../lib/confirmStore'
+import { reportLimit } from '../lib/limitFeedback'
+import { AlertBanner } from '../components/Alert'
+import { Skeleton } from '../components/Skeleton'
+import { createDraftStore, useBeforeUnloadWarning } from '../utils/localDraft'
+import { useFocusTrap, useScrollLock } from '../utils/a11y'
+
+const draftStore = createDraftStore('netflow.form.draft.v1')
+
+const AI_EXAMPLE_PROMPTS = [
+  'Leave request with type, dates, and reason',
+  'Expense claim with amount, receipts, and cost center',
+  'IT access request with system, role, and manager',
+]
 
 const FIELD_TYPES = [
   {
     type: 'text',
-    label: 'Text input',
+    label: 'Text',
+    tile: 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300',
+    chip: 'bg-sky-50 text-sky-800 border-sky-200 hover:bg-sky-100 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30',
     defaults: { label: 'Untitled field', placeholder: '', required: false, multiline: false, maxLength: null },
   },
   {
     type: 'dropdown',
     label: 'Dropdown',
+    tile: 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300',
+    chip: 'bg-violet-50 text-violet-800 border-violet-200 hover:bg-violet-100 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/30',
     defaults: { label: 'Select an option', placeholder: 'Choose...', required: false, options: ['Option 1', 'Option 2'] },
   },
   {
     type: 'date',
-    label: 'Date picker',
+    label: 'Date',
+    tile: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300',
+    chip: 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30',
     defaults: { label: 'Pick a date', required: false },
   },
   {
     type: 'file',
-    label: 'File upload',
+    label: 'File',
+    tile: 'bg-teal-100 text-teal-700 dark:bg-teal-500/20 dark:text-teal-300',
+    chip: 'bg-teal-50 text-teal-800 border-teal-200 hover:bg-teal-100 dark:bg-teal-500/15 dark:text-teal-300 dark:border-teal-500/30',
     defaults: { label: 'Upload file', required: false, fileTypes: 'PDF / DOCX', maxSize: 5 },
   },
   {
     type: 'checkbox',
     label: 'Checkbox',
+    tile: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300',
+    chip: 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30',
     defaults: { label: 'Check this box', required: false },
   },
   {
     type: 'signature',
     label: 'Signature',
+    tile: 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300',
+    chip: 'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/30',
     defaults: { label: 'Signature', required: false },
   },
   {
     type: 'number',
     label: 'Number',
+    tile: 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300',
+    chip: 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30',
     defaults: { label: 'Enter a number', placeholder: '', required: false, min: null, max: null },
   },
   {
     type: 'radio',
-    label: 'Radio group',
+    label: 'Radio',
+    tile: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300',
+    chip: 'bg-indigo-50 text-indigo-800 border-indigo-200 hover:bg-indigo-100 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-500/30',
     defaults: { label: 'Choose one', required: false, options: ['Option 1', 'Option 2'] },
   },
   {
     type: 'grid',
-    label: 'Table / Grid',
+    label: 'Table',
+    tile: 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300',
+    chip: 'bg-orange-50 text-orange-800 border-orange-200 hover:bg-orange-100 dark:bg-orange-500/15 dark:text-orange-300 dark:border-orange-500/30',
     defaults: {
       label: 'Table',
       required: false,
@@ -59,6 +90,80 @@ const FIELD_TYPES = [
     },
   },
 ]
+
+function FieldTypeIcon({ type, className = 'w-4 h-4' }) {
+  const props = {
+    className,
+    fill: 'none',
+    viewBox: '0 0 24 24',
+    stroke: 'currentColor',
+    strokeWidth: '2',
+    'aria-hidden': 'true',
+  }
+  switch (type) {
+    case 'text':
+      return (
+        <svg {...props}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h10M4 18h14" />
+        </svg>
+      )
+    case 'dropdown':
+      return (
+        <svg {...props}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l4-4 4 4M16 15l-4 4-4-4" />
+        </svg>
+      )
+    case 'date':
+      return (
+        <svg {...props}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3M4 11h16M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z" />
+        </svg>
+      )
+    case 'file':
+      return (
+        <svg {...props}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+        </svg>
+      )
+    case 'checkbox':
+      return (
+        <svg {...props}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      )
+    case 'signature':
+      return (
+        <svg {...props}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+        </svg>
+      )
+    case 'number':
+      return (
+        <svg {...props}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+        </svg>
+      )
+    case 'radio':
+      return (
+        <svg {...props}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      )
+    case 'grid':
+      return (
+        <svg {...props}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm0 4h16M4 14h16M10 4v16" />
+        </svg>
+      )
+    default:
+      return (
+        <svg {...props}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      )
+  }
+}
 
 const newFieldId = () =>
   typeof crypto !== 'undefined' && crypto.randomUUID
@@ -115,9 +220,15 @@ const subtitleFor = (f) => {
 
 function FieldPalette({ onAdd }) {
   return (
-    <aside className="w-44 shrink-0 border-r border-line bg-surface px-3 py-5">
-      <p className="text-[11px] font-semibold tracking-wider text-fg-muted mb-3 px-1">FIELD TYPES</p>
-      <ul className="space-y-2">
+    <aside
+      data-tour="form-builder-fields"
+      aria-label="Field types"
+      className="w-44 lg:w-52 shrink-0 border-r border-line bg-surface flex flex-col min-h-0"
+    >
+      <div className="px-4 pt-4 pb-3 border-b border-line">
+        <div className="text-[11px] font-semibold tracking-wider text-fg-muted">FIELDS</div>
+      </div>
+      <ul className="flex-1 overflow-y-auto px-3 py-3 space-y-1.5">
         {FIELD_TYPES.map((t) => (
           <li key={t.type}>
             <button
@@ -128,9 +239,16 @@ function FieldPalette({ onAdd }) {
                 e.dataTransfer.effectAllowed = 'copy'
               }}
               onClick={() => onAdd(t.type)}
-              className="w-full px-3 py-2 text-sm font-medium rounded-md border border-line bg-surface text-fg hover:bg-surface-2 hover:border-line transition cursor-grab active:scale-[0.99] text-left"
+              title={t.label}
+              aria-label={`Add ${t.label} field`}
+              className={`group w-full flex items-center gap-2.5 px-2.5 py-2 text-left rounded-lg border transition cursor-grab active:cursor-grabbing active:scale-[0.99] shadow-sm ${t.chip}`}
             >
-              {t.label}
+              <span className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 ${t.tile}`}>
+                <FieldTypeIcon type={t.type} />
+              </span>
+              <span className="min-w-0 flex-1 text-sm font-semibold leading-tight truncate">
+                {t.label}
+              </span>
             </button>
           </li>
         ))}
@@ -167,10 +285,10 @@ function FieldCard({
       onDragLeave={() => onDragLeave(field.id)}
       onDrop={(e) => onDrop(e, field.id)}
       onDragEnd={onDragEnd}
-      className={`group relative flex items-start gap-3 px-3 py-4 rounded-lg border bg-surface cursor-pointer transition ${
+      className={`group relative flex items-start gap-3 px-4 py-3.5 rounded-xl border bg-surface shadow-sm cursor-pointer transition ${
         selected
-          ? 'border-indigo-400 ring-2 ring-indigo-200'
-          : 'border-line hover:border-line'
+          ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+          : 'border-line hover:border-indigo-300 dark:hover:border-indigo-500/40'
       }`}
     >
       {/* drop-target indicator line */}
@@ -198,12 +316,20 @@ function FieldCard({
         </svg>
       </button>
 
+      <span
+        className={`mt-0.5 w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+          (FIELD_TYPES.find((t) => t.type === field.type) || FIELD_TYPES[0]).tile
+        }`}
+      >
+        <FieldTypeIcon type={field.type} />
+      </span>
+
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-fg">
+        <p className="text-sm font-semibold text-fg tracking-tight">
           {field.label}
-          {field.required && <span className="text-red-500 ml-0.5">*</span>}
+          {field.required && <span className="text-danger-fg ml-0.5">*</span>}
         </p>
-        <p className="text-xs text-fg-muted mt-0.5">{subtitleFor(field)}</p>
+        <p className="text-xs text-fg-muted mt-0.5 truncate">{subtitleFor(field)}</p>
       </div>
 
       <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition">
@@ -240,6 +366,7 @@ function FieldCard({
             onDuplicate(field.id)
           }}
           title="Duplicate"
+          aria-label={`Duplicate ${field.label || 'field'}`}
           className="w-7 h-6 rounded-md border border-line bg-surface-2 hover:bg-surface-3 text-fg-muted flex items-center justify-center transition"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -253,7 +380,8 @@ function FieldCard({
             onDelete(field.id)
           }}
           title="Delete"
-          className="w-7 h-6 rounded-md border border-red-200 bg-red-50 hover:bg-red-100 text-red-500 flex items-center justify-center transition"
+          aria-label={`Delete ${field.label || 'field'}`}
+          className="w-7 h-6 rounded-md border border-danger-line bg-danger-subtle hover:bg-danger-subtle text-danger-fg flex items-center justify-center transition"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3" />
@@ -265,39 +393,157 @@ function FieldCard({
 }
 
 const inputCls =
-  'w-full px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition'
+  'w-full px-3.5 py-2.5 text-sm rounded-lg border border-line bg-surface text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition'
+
+// Options are plain strings with no id, so the rows used to be keyed by index.
+// Deleting or reordering then made React hand the focused input to a different
+// option. A parallel key list, spliced alongside the options, keeps each row
+// tied to its own value.
+let optionKeySeq = 0
+const nextOptionKey = () => `opt-${++optionKeySeq}`
+
+function OptionsEditor({ field, update }) {
+  const options = field.options || []
+  const keys = useRef([])
+  if (keys.current.length !== options.length) {
+    keys.current = options.map((_, i) => keys.current[i] || nextOptionKey())
+  }
+
+  const setOptions = (next, keyList) => {
+    keys.current = keyList
+    update({ options: next })
+  }
+
+  const move = (idx, delta) => {
+    const to = idx + delta
+    if (to < 0 || to >= options.length) return
+    const next = [...options]
+    const nextKeys = [...keys.current]
+    ;[next[idx], next[to]] = [next[to], next[idx]]
+    ;[nextKeys[idx], nextKeys[to]] = [nextKeys[to], nextKeys[idx]]
+    setOptions(next, nextKeys)
+  }
+
+  return (
+    <div className="mb-3" role="group" aria-labelledby="fs-options-caption">
+      <span id="fs-options-caption" className="block text-xs font-medium text-fg mb-1">Options</span>
+      <div className="space-y-1.5">
+        {options.map((opt, idx) => (
+          <div key={keys.current[idx]} className="flex gap-1.5">
+            <input
+              type="text"
+              value={opt}
+              aria-label={`Option ${idx + 1}`}
+              onChange={(e) => {
+                const next = [...options]
+                next[idx] = e.target.value
+                setOptions(next, keys.current)
+              }}
+              className={inputCls}
+            />
+            <button
+              type="button"
+              onClick={() => move(idx, -1)}
+              disabled={idx === 0}
+              title="Move option up"
+              aria-label={`Move option ${idx + 1} up`}
+              className="w-7 shrink-0 rounded-md border border-line text-fg-subtle hover:text-fg hover:bg-surface-2 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center justify-center"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => move(idx, 1)}
+              disabled={idx === options.length - 1}
+              title="Move option down"
+              aria-label={`Move option ${idx + 1} down`}
+              className="w-7 shrink-0 rounded-md border border-line text-fg-subtle hover:text-fg hover:bg-surface-2 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center justify-center"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setOptions(
+                  options.filter((_, i) => i !== idx),
+                  keys.current.filter((_, i) => i !== idx)
+                )
+              }
+              title="Remove option"
+              aria-label={`Remove option ${idx + 1}`}
+              className="w-7 shrink-0 rounded-md border border-line text-fg-subtle hover:text-danger-fg hover:border-danger-line hover:bg-danger-subtle transition flex items-center justify-center"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={() =>
+          setOptions(
+            [...options, `Option ${options.length + 1}`],
+            [...keys.current, nextOptionKey()]
+          )
+        }
+        className="mt-2 w-full px-3 py-1.5 rounded-md border border-line text-sm text-fg hover:bg-surface-2 transition"
+      >
+        Add option
+      </button>
+    </div>
+  )
+}
 
 function FieldSettings({ field, fields = [], onChange, onDelete }) {
   if (!field) {
     return (
-      <aside className="w-72 shrink-0 border-l border-line bg-surface px-5 py-6">
-        <p className="text-[11px] font-semibold tracking-wider text-fg-muted mb-3">FIELD SETTINGS</p>
-        <p className="text-sm text-fg-subtle mt-10 text-center">Select a field on the canvas to configure it.</p>
+      <aside className="w-64 xl:w-80 shrink-0 border-l border-line bg-surface flex flex-col min-h-0">
+        <div className="px-4 xl:px-5 pt-4 pb-3 border-b border-line">
+          <div className="text-[11px] font-semibold tracking-wider text-fg-muted">SETTINGS</div>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center px-6 py-10 text-center">
+          <p className="text-sm text-fg-muted">Select a field</p>
+        </div>
       </aside>
     )
   }
 
   const update = (patch) => onChange({ ...field, ...patch })
-  const typeLabel = FIELD_TYPES.find((t) => t.type === field.type)?.label || field.type
+  const meta = FIELD_TYPES.find((t) => t.type === field.type) || FIELD_TYPES[0]
+  const typeLabel = meta.label || field.type
 
   return (
-    <aside className="w-72 shrink-0 border-l border-line bg-surface px-5 py-6 overflow-y-auto">
-      <p className="text-[11px] font-semibold tracking-wider text-fg-muted mb-3">FIELD SETTINGS</p>
+    <aside className="w-64 xl:w-80 shrink-0 border-l border-line bg-surface flex flex-col min-h-0">
+      <div className="px-4 xl:px-5 pt-4 pb-3 border-b border-line shrink-0">
+        <div className="text-[11px] font-semibold tracking-wider text-fg-muted">SETTINGS</div>
+      </div>
 
-      <div className="rounded-md border border-line bg-surface-2 px-3 py-2.5 mb-4">
-        <p className="text-sm font-semibold text-fg">{field.label}</p>
-        <p className="text-xs text-fg-muted">{typeLabel} field selected</p>
+      <div className="flex-1 overflow-y-auto px-4 xl:px-5 py-5">
+      <div className="rounded-xl border border-line bg-surface-2/50 px-4 py-3 mb-5 flex items-start gap-3">
+        <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${meta.tile}`}>
+          <FieldTypeIcon type={field.type} />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-fg truncate">{field.label}</p>
+          <p className="text-xs text-fg-muted mt-0.5">{typeLabel}</p>
+        </div>
       </div>
 
       <div className="mb-3">
-        <label className="block text-xs font-medium text-fg mb-1">Field label</label>
-        <input type="text" value={field.label} onChange={(e) => update({ label: e.target.value })} className={inputCls} />
+        <label htmlFor="fs-label" className="block text-xs font-medium text-fg mb-1">Field label</label>
+        <input id="fs-label" type="text" value={field.label} onChange={(e) => update({ label: e.target.value })} className={inputCls} />
       </div>
 
       {(field.type === 'text' || field.type === 'dropdown' || field.type === 'number') && (
         <div className="mb-3">
-          <label className="block text-xs font-medium text-fg mb-1">Placeholder</label>
-          <input type="text" value={field.placeholder || ''} onChange={(e) => update({ placeholder: e.target.value })} className={inputCls} />
+          <label htmlFor="fs-placeholder" className="block text-xs font-medium text-fg mb-1">Placeholder</label>
+          <input id="fs-placeholder" type="text" value={field.placeholder || ''} onChange={(e) => update({ placeholder: e.target.value })} className={inputCls} />
         </div>
       )}
 
@@ -316,47 +562,12 @@ function FieldSettings({ field, fields = [], onChange, onDelete }) {
       )}
 
       {(field.type === 'dropdown' || field.type === 'radio') && (
-        <div className="mb-3">
-          <label className="block text-xs font-medium text-fg mb-1">Options</label>
-          <div className="space-y-1.5">
-            {(field.options || []).map((opt, idx) => (
-              <div key={idx} className="flex gap-1.5">
-                <input
-                  type="text"
-                  value={opt}
-                  onChange={(e) => {
-                    const next = [...field.options]
-                    next[idx] = e.target.value
-                    update({ options: next })
-                  }}
-                  className={inputCls}
-                />
-                <button
-                  type="button"
-                  onClick={() => update({ options: field.options.filter((_, i) => i !== idx) })}
-                  title="Remove option"
-                  className="w-8 shrink-0 rounded-md border border-line text-fg-subtle hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition flex items-center justify-center"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={() => update({ options: [...(field.options || []), `Option ${(field.options?.length || 0) + 1}`] })}
-            className="mt-2 w-full px-3 py-1.5 rounded-md border border-line text-sm text-fg hover:bg-surface-2 transition"
-          >
-            Add option
-          </button>
-        </div>
+        <OptionsEditor key={field.id} field={field} update={update} />
       )}
 
       {field.type === 'grid' && (
-        <div className="mb-3">
-          <label className="block text-xs font-medium text-fg mb-1">Columns</label>
+        <div className="mb-3" role="group" aria-labelledby="fs-columns-caption">
+          <span id="fs-columns-caption" className="block text-xs font-medium text-fg mb-1">Columns</span>
           <div className="space-y-2">
             {(field.columns || []).map((col, idx) => {
               const setCol = (patch) =>
@@ -375,7 +586,8 @@ function FieldSettings({ field, fields = [], onChange, onDelete }) {
                       type="button"
                       onClick={() => update({ columns: field.columns.filter((_, i) => i !== idx) })}
                       title="Remove column"
-                      className="w-8 shrink-0 rounded-md border border-line text-fg-subtle hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition flex items-center justify-center"
+                      aria-label={`Remove column ${col.label || idx + 1}`}
+                      className="w-8 shrink-0 rounded-md border border-line text-fg-subtle hover:text-danger-fg hover:border-danger-line hover:bg-danger-subtle transition flex items-center justify-center"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -430,8 +642,9 @@ function FieldSettings({ field, fields = [], onChange, onDelete }) {
       {field.type === 'file' && (
         <>
           <div className="mb-3">
-            <label className="block text-xs font-medium text-fg mb-1">Allowed file types</label>
+            <label htmlFor="fs-file-types" className="block text-xs font-medium text-fg mb-1">Allowed file types</label>
             <input
+              id="fs-file-types"
               type="text"
               value={field.fileTypes || ''}
               placeholder="e.g. PDF / DOCX"
@@ -440,8 +653,9 @@ function FieldSettings({ field, fields = [], onChange, onDelete }) {
             />
           </div>
           <div className="mb-3">
-            <label className="block text-xs font-medium text-fg mb-1">Max size (MB)</label>
+            <label htmlFor="fs-max-size" className="block text-xs font-medium text-fg mb-1">Max size (MB)</label>
             <input
+              id="fs-max-size"
               type="number"
               min={1}
               max={MAX_UPLOAD_MB}
@@ -471,10 +685,11 @@ function FieldSettings({ field, fields = [], onChange, onDelete }) {
       <button
         type="button"
         onClick={() => onDelete(field.id)}
-        className="w-full px-3 py-2 rounded-md border border-red-200 text-red-600 hover:bg-red-50 text-sm font-medium transition"
+        className="w-full px-3 py-2.5 rounded-lg border border-danger-line text-danger-fg hover:bg-danger-subtle text-sm font-medium transition"
       >
         Delete field
       </button>
+      </div>
     </aside>
   )
 }
@@ -523,8 +738,9 @@ function ValidationEditor({ field, update }) {
         <>
           <div className="grid grid-cols-2 gap-2 mb-2">
             <div>
-              <label className="block text-xs font-medium text-fg mb-1">Min length</label>
+              <label htmlFor="fv-min-length" className="block text-xs font-medium text-fg mb-1">Min length</label>
               <input
+                id="fv-min-length"
                 type="number"
                 min="0"
                 value={minLength}
@@ -533,8 +749,9 @@ function ValidationEditor({ field, update }) {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-fg mb-1">Max length</label>
+              <label htmlFor="fv-max-length" className="block text-xs font-medium text-fg mb-1">Max length</label>
               <input
+                id="fv-max-length"
                 type="number"
                 min="1"
                 value={maxLength}
@@ -544,8 +761,8 @@ function ValidationEditor({ field, update }) {
             </div>
           </div>
           <div className="mb-2">
-            <label className="block text-xs font-medium text-fg mb-1">Format</label>
-            <select value={currentPreset} onChange={(e) => onPresetChange(e.target.value)} className={inputCls}>
+            <label htmlFor="fv-format" className="block text-xs font-medium text-fg mb-1">Format</label>
+            <select id="fv-format" value={currentPreset} onChange={(e) => onPresetChange(e.target.value)} className={inputCls}>
               <option value="none">No pattern</option>
               <option value="email">Email</option>
               <option value="phone">Phone number</option>
@@ -559,12 +776,14 @@ function ValidationEditor({ field, update }) {
               <input
                 type="text"
                 value={v.pattern ?? ''}
+                aria-label="Custom regex"
                 onChange={(e) => setV({ pattern: e.target.value })}
                 placeholder="e.g. ^[A-Z]{2}[0-9]{4}$"
                 className={`${inputCls} mb-2 font-mono text-xs`}
               />
               <input
                 type="text"
+                aria-label="Error message shown when the pattern fails"
                 value={v.patternLabel ?? ''}
                 onChange={(e) => setV({ patternLabel: e.target.value })}
                 placeholder="Error message (optional)"
@@ -578,8 +797,9 @@ function ValidationEditor({ field, update }) {
       {isNum && (
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="block text-xs font-medium text-fg mb-1">Min</label>
+            <label htmlFor="fv-min" className="block text-xs font-medium text-fg mb-1">Min</label>
             <input
+              id="fv-min"
               type="number"
               value={min}
               onChange={(e) => setV({ min: numOrNull(e.target.value) })}
@@ -587,8 +807,9 @@ function ValidationEditor({ field, update }) {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-fg mb-1">Max</label>
+            <label htmlFor="fv-max" className="block text-xs font-medium text-fg mb-1">Max</label>
             <input
+              id="fv-max"
               type="number"
               value={max}
               onChange={(e) => setV({ max: numOrNull(e.target.value) })}
@@ -643,14 +864,15 @@ function ConditionalLogicEditor({ field, fields = [], update }) {
       {enabled && (
         <div className="mt-3 space-y-2">
           {earlier.length === 0 ? (
-            <p className="text-[11px] text-amber-700">
+            <p className="text-[11px] text-warning-fg">
               Add at least one field above this one to use as the trigger.
             </p>
           ) : (
             <>
               <div>
-                <label className="block text-[11px] font-medium text-fg-muted mb-1">Show this field when</label>
+                <label htmlFor="fc-depends-on" className="block text-[11px] font-medium text-fg-muted mb-1">Show this field when</label>
                 <select
+                  id="fc-depends-on"
                   value={cl.dependsOn || ''}
                   onChange={(e) => setCL({ dependsOn: e.target.value })}
                   className={inputCls}
@@ -664,6 +886,7 @@ function ConditionalLogicEditor({ field, fields = [], update }) {
 
               <select
                 value={operator}
+                aria-label="Condition"
                 onChange={(e) => setCL({ operator: e.target.value })}
                 className={inputCls}
               >
@@ -712,27 +935,32 @@ function ConditionalLogicEditor({ field, fields = [], update }) {
 }
 
 function PreviewModal({ open, onClose, name, fields }) {
-  useEffect(() => {
-    if (!open) return
-    const onEsc = (e) => e.key === 'Escape' && onClose()
-    window.addEventListener('keydown', onEsc)
-    return () => window.removeEventListener('keydown', onEsc)
-  }, [open, onClose])
+  const panelRef = useRef(null)
+  useScrollLock(open)
+  useFocusTrap(open, panelRef, { onEscape: onClose })
 
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-lg bg-surface rounded-xl shadow-xl border border-line max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4" onClick={onClose}>
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="form-preview-title"
+        tabIndex={-1}
+        className="w-full max-w-lg bg-surface rounded-xl shadow-xl border border-line max-h-[85vh] overflow-y-auto focus:outline-none"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="px-6 py-4 border-b border-line flex items-center justify-between sticky top-0 bg-surface">
           <div>
             <p className="text-xs text-fg-muted">Preview</p>
-            <h2 className="text-base font-semibold text-fg">{name || 'Untitled form'}</h2>
+            <h2 id="form-preview-title" className="text-base font-semibold text-fg">{name || 'Untitled form'}</h2>
           </div>
           <button
             onClick={onClose}
             className="w-8 h-8 rounded-md text-fg-subtle hover:bg-surface-3 hover:text-fg-muted flex items-center justify-center transition"
-            aria-label="Close"
+            aria-label="Close preview"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -762,7 +990,7 @@ function PreviewField({ field }) {
   const label = (
     <label className="block text-sm font-medium text-fg mb-1">
       {field.label}
-      {field.required && <span className="text-red-500 ml-0.5">*</span>}
+      {field.required && <span className="text-danger-fg ml-0.5">*</span>}
     </label>
   )
 
@@ -828,7 +1056,7 @@ function PreviewField({ field }) {
         <label className="flex items-center gap-2 text-sm text-fg">
           <input type="checkbox" className="w-4 h-4 rounded border-line text-indigo-600 focus:ring-indigo-400" />
           {field.label}
-          {field.required && <span className="text-red-500 ml-0.5">*</span>}
+          {field.required && <span className="text-danger-fg ml-0.5">*</span>}
         </label>
       )
     case 'signature':
@@ -863,7 +1091,7 @@ function PreviewField({ field }) {
               <thead>
                 <tr className="bg-surface-2">
                   {(field.columns || []).map((c) => (
-                    <th key={c.id} className="px-2 py-1.5 text-left font-medium text-fg-muted border-b border-line whitespace-nowrap">
+                    <th scope="col" key={c.id} className="px-2 py-1.5 text-left font-medium text-fg-muted border-b border-line whitespace-nowrap">
                       {c.label}
                     </th>
                   ))}
@@ -904,13 +1132,33 @@ function NewForm() {
     ? FORM_TEMPLATES.find((t) => t.id === templateId) || null
     : null
 
+  // Entry chrome mode for create flow (edit mode has no chooser badge).
+  const entryMode = isEditMode
+    ? null
+    : aiMode
+      ? 'ai'
+      : template
+        ? 'template'
+        : blankMode
+          ? 'blank'
+          : null
+
+  // A blank/template start can be restored from localStorage after a refresh;
+  // edit mode always comes from the server. Only honour a draft when the user
+  // arrived the same way (no template/ai/blank query juggling).
+  const restoredDraft = useRef(
+    !isEditMode && !templateId && !aiMode ? draftStore.read() : null
+  ).current
+
   const [name, setName] = useState(() => {
+    if (restoredDraft) return restoredDraft.name || ''
     if (isEditMode) return ''
     if (template) return template.name
     if (aiMode || blankMode) return ''
     return 'Leave Request Form'
   })
   const [fields, setFields] = useState(() => {
+    if (restoredDraft) return restoredDraft.fields || []
     if (isEditMode || aiMode || blankMode) return []
     if (template) {
       return template.fields.map((f) => ({
@@ -922,6 +1170,11 @@ function NewForm() {
     }
     return seededFields()
   })
+  const [description, setDescription] = useState(() => {
+    if (restoredDraft) return restoredDraft.description || ''
+    return !isEditMode && template ? template.description || '' : ''
+  })
+  const [draftNotice, setDraftNotice] = useState(!!restoredDraft)
   const [loadError, setLoadError] = useState('')
   const [selectedId, setSelectedId] = useState(null)
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -929,6 +1182,7 @@ function NewForm() {
 
   // AI Form Builder
   const [aiAvailable, setAiAvailable] = useState(false)
+  const [aiStatusReady, setAiStatusReady] = useState(false)
   const [aiPrompt, setAiPrompt] = useState(() => searchParams.get('prompt') || '')
   const [aiBusy, setAiBusy] = useState(false)
   const [aiError, setAiError] = useState('')
@@ -937,6 +1191,15 @@ function NewForm() {
   const [aiSuggestion, setAiSuggestion] = useState('')
   const suggestTimer = useRef(null)
   const latestSuggestBase = useRef('')
+  // Blank/template hide AI by default; AI mode shows it. User can expand later.
+  const [showAiPanel, setShowAiPanel] = useState(() => aiMode)
+  const [templateBannerDismissed, setTemplateBannerDismissed] = useState(false)
+
+  const aiFirstEmpty = aiMode && fields.length === 0
+  const showCompactAi =
+    aiAvailable && !aiFirstEmpty && (aiMode || showAiPanel)
+  const showOptionalAiToggle =
+    aiAvailable && !aiMode && !showAiPanel && !isEditMode
 
   // In edit mode, fetch the existing form and populate state.
   useEffect(() => {
@@ -944,7 +1207,10 @@ function NewForm() {
     ;(async () => {
       try {
         const { form } = await api.get(`/api/forms/${editId}`)
+        // What the server returned is the new "unchanged" baseline.
+        pristineRef.current = null
         setName(form.title || '')
+        setDescription(form.description || '')
         setFields(Array.isArray(form.fields) ? form.fields : [])
       } catch (err) {
         setLoadError(err.message || 'Could not load form')
@@ -956,18 +1222,38 @@ function NewForm() {
   useEffect(() => {
     let cancelled = false
     api.get('/api/forms/ai-status')
-      .then((d) => { if (!cancelled) setAiAvailable(!!d.aiConfigured) })
-      .catch(() => {})
+      .then((d) => {
+        if (cancelled) return
+        setAiAvailable(!!d.aiConfigured)
+        setAiStatusReady(true)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setAiAvailable(false)
+        setAiStatusReady(true)
+      })
     return () => { cancelled = true }
   }, [])
 
+  // Keep AI panel visibility in sync when the chooser query changes without remount.
+  useEffect(() => {
+    if (aiMode) setShowAiPanel(true)
+    else if (blankMode || templateId) setShowAiPanel(false)
+  }, [aiMode, blankMode, templateId])
+
+  // AI entry with no LLM key → blank builder (avoid a flashy "not configured" card).
+  useEffect(() => {
+    if (!aiFirstEmpty || !aiStatusReady || aiAvailable) return
+    navigate('/forms/new?blank=1', { replace: true })
+  }, [aiFirstEmpty, aiStatusReady, aiAvailable, navigate])
+
   // Opened via the chooser's AI option → bring the prompt box into focus.
   useEffect(() => {
-    if (aiMode && aiAvailable && aiInputRef.current) {
+    if (aiMode && aiStatusReady && aiAvailable && aiInputRef.current) {
       aiInputRef.current.focus()
       try { aiInputRef.current.scrollIntoView({ block: 'center' }) } catch { /* noop */ }
     }
-  }, [aiMode, aiAvailable])
+  }, [aiMode, aiStatusReady, aiAvailable, aiFirstEmpty])
 
   // Reorder drag state. `draggingId` is the field being moved, `dropTarget`
   // is `{ id, position: 'before' | 'after' }` for the indicator line.
@@ -1091,7 +1377,15 @@ function NewForm() {
     setSelectedId(newField.id)
   }
 
-  const deleteField = (id) => {
+  const deleteField = async (id) => {
+    const target = fields.find((f) => f.id === id)
+    const ok = await confirm({
+      title: 'Delete field?',
+      message: `"${target?.label || 'This field'}" will be removed from the form. There's no undo.`,
+      confirmLabel: 'Delete field',
+      danger: true,
+    })
+    if (!ok) return
     setFields((prev) => prev.filter((f) => f.id !== id))
     if (selectedId === id) setSelectedId(null)
   }
@@ -1169,13 +1463,36 @@ function NewForm() {
     setDropTarget(null)
   }
 
+  // Mirror the builder into localStorage so a refresh doesn't lose the fields,
+  // and warn before an unload while there's unsaved work.
+  const pristineRef = useRef(null)
+  const [dirty, setDirty] = useState(false)
+  const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    const snapshot = JSON.stringify({ name, description, fields })
+    if (pristineRef.current === null) {
+      pristineRef.current = snapshot
+      return
+    }
+    const changed = snapshot !== pristineRef.current
+    setDirty(changed)
+    if (isEditMode) return
+    if (!changed) {
+      draftStore.clear()
+      return
+    }
+    const t = setTimeout(() => draftStore.write({ name, description, fields }), 600)
+    return () => clearTimeout(t)
+  }, [name, description, fields, isEditMode])
+
+  useBeforeUnloadWarning(dirty && !saving)
+
   const handleDiscard = async () => {
     if (await confirm({ title: 'Discard form?', message: 'Unsaved changes will be lost.', confirmLabel: 'Discard', danger: false })) {
+      draftStore.clear()
       navigate('/forms')
     }
   }
-
-  const [saving, setSaving] = useState(false)
 
   const persist = async (status) => {
     if (!name.trim()) {
@@ -1190,7 +1507,9 @@ function NewForm() {
     try {
       const payload = {
         name: name.trim(),
-        description: `${fields.length} field form`,
+        // Only fall back to the generated blurb when there's nothing to keep —
+        // this used to clobber the real description on every save.
+        description: description.trim() || `${fields.length} field form`,
         fields,
       }
       let saved
@@ -1204,10 +1523,14 @@ function NewForm() {
       if (status === 'Published' && saved.status !== 'Published') {
         await formsStore.publish(saved.id)
       }
+      draftStore.clear()
+      setDirty(false)
       toast.success(status === 'Published' ? 'Form published' : 'Form saved')
       navigate('/forms')
     } catch (err) {
-      toast.error(err.message || 'Failed to save the form')
+      // The work stays on screen either way — a form limit must not cost the
+      // builder the layout they just built.
+      if (!reportLimit(err)) toast.error(err.message || 'Failed to save the form')
     } finally {
       setSaving(false)
     }
@@ -1216,58 +1539,237 @@ function NewForm() {
   if (loadError) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface-2">
-        <div className="p-6 rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm max-w-md text-center">
+        <div className="p-6 rounded-lg bg-danger-subtle border border-danger-line text-danger-fg text-sm max-w-md text-center">
           <p className="font-semibold mb-1">Could not load form</p>
           <p>{loadError}</p>
-          <button onClick={() => navigate('/forms')} className="mt-4 px-4 py-2 rounded-md bg-red-600 text-white text-sm hover:bg-red-700 transition">Back to forms</button>
+          <button onClick={() => navigate('/forms')} className="mt-4 px-4 py-2 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700 transition">Back to forms</button>
         </div>
       </div>
     )
   }
 
-  return (
-    <div className="min-h-screen flex flex-col bg-surface-2 text-fg">
-      <header className="h-16 bg-surface border-b border-line px-6 flex items-center justify-between">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-8 h-8 rounded-md bg-indigo-600 flex items-center justify-center shrink-0">
-          <img src="/netflow-icon.png" alt="NetFlow" className="w-8 h-8" />
+  // Dedicated AI entry experience — distinct from the blank/template builder chrome.
+  if (aiFirstEmpty) {
+    return (
+      <div className="h-dvh flex flex-col bg-surface text-fg overflow-hidden">
+        <header className="h-14 shrink-0 border-b border-line px-4 sm:px-6 flex items-center justify-between gap-4 bg-surface/90 backdrop-blur-sm">
+          <button
+            type="button"
+            onClick={() => navigate('/forms')}
+            className="flex items-center gap-2.5 shrink-0 rounded-lg hover:bg-surface-2 px-1.5 py-1 transition"
+            title="Back to forms"
+          >
+            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shadow-sm overflow-hidden">
+              <img src="/netflow-icon.png" alt="" className="w-full h-full object-contain" />
+            </div>
+            <span className="font-semibold text-fg tracking-tight">NetFlow</span>
+          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate('/forms/new?blank=1', { replace: true })}
+              className="px-3 py-2 rounded-lg text-sm font-medium text-fg-muted hover:text-fg hover:bg-surface-2 transition"
+            >
+              Blank form
+            </button>
+            <button
+              onClick={handleDiscard}
+              disabled={saving}
+              className="px-3 py-2 rounded-lg border border-line hover:bg-surface-2 disabled:opacity-50 text-sm font-medium text-fg transition"
+            >
+              Discard
+            </button>
           </div>
-          <span className="font-semibold text-fg shrink-0">NetFlow</span>
-          <span className="text-fg-subtle shrink-0">|</span>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Form name"
-            className="text-sm font-medium text-fg bg-transparent border border-transparent hover:border-line focus:border-indigo-300 focus:bg-surface px-2 py-1 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-200 transition min-w-0 max-w-xs"
+        </header>
+
+        <main className="relative flex-1 min-h-0 overflow-y-auto">
+          <div
+            className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-50/80 via-surface to-surface-2 dark:from-indigo-500/10 dark:via-surface dark:to-surface-2"
+            aria-hidden="true"
           />
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.35] dark:opacity-20"
+            style={{
+              backgroundImage:
+                'linear-gradient(to right, var(--color-line, #e5e7eb) 1px, transparent 1px), linear-gradient(to bottom, var(--color-line, #e5e7eb) 1px, transparent 1px)',
+              backgroundSize: '48px 48px',
+              maskImage: 'radial-gradient(ellipse at center, black 20%, transparent 75%)',
+              WebkitMaskImage: 'radial-gradient(ellipse at center, black 20%, transparent 75%)',
+            }}
+            aria-hidden="true"
+          />
+
+          <div className="relative min-h-full flex items-center justify-center px-5 sm:px-8 py-10 sm:py-16">
+            {!aiStatusReady || !aiAvailable ? (
+              <div className="w-full max-w-2xl" aria-busy="true" aria-label="Loading AI form builder">
+                <Skeleton className="mb-6 h-9 w-56 sm:w-72" />
+                <div className="rounded-2xl border border-line bg-surface/90 backdrop-blur-sm shadow-lg shadow-slate-900/5 dark:shadow-black/20 p-5 sm:p-6">
+                  <Skeleton className="h-28 w-full rounded-xl" />
+                  <div className="mt-4 flex items-center justify-between gap-3">
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-10 w-28 rounded-lg" />
+                  </div>
+                </div>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  <Skeleton className="h-8 w-44 rounded-full" />
+                  <Skeleton className="h-8 w-52 rounded-full" />
+                  <Skeleton className="h-8 w-40 rounded-full" />
+                </div>
+              </div>
+            ) : (
+              <div className="w-full max-w-2xl">
+                <h1 className="mb-6 text-2xl sm:text-3xl font-bold tracking-tight text-fg">
+                  Describe your form
+                </h1>
+
+                <div className="rounded-2xl border border-line bg-surface/90 backdrop-blur-sm shadow-lg shadow-slate-900/5 dark:shadow-black/20 p-5 sm:p-6">
+                  <div className="relative">
+                    {aiSuggestion && (
+                      <div
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-0 z-10 px-4 py-3.5 text-base whitespace-pre-wrap overflow-hidden rounded-xl border border-transparent"
+                      >
+                        <span className="invisible">{aiPrompt}</span>
+                        <span className="text-fg-subtle">{aiSuggestion}</span>
+                      </div>
+                    )}
+                    <textarea
+                      id="ai-form-prompt"
+                      ref={aiInputRef}
+                      rows={4}
+                      value={aiPrompt}
+                      onChange={onAiPromptChange}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault()
+                          if (aiPrompt.trim() && !aiBusy) generateWithAI()
+                        } else {
+                          onAiKeyDown(e)
+                        }
+                      }}
+                      onBlur={() => setAiSuggestion('')}
+                      placeholder="Leave request with type, dates, and reason…"
+                      disabled={aiBusy}
+                      aria-label="Form description for AI"
+                      className="w-full px-4 py-3.5 text-base rounded-xl border border-line bg-surface-2/50 text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 focus:bg-surface transition resize-none disabled:opacity-60 min-h-[7.5rem]"
+                    />
+                  </div>
+
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={generateWithAI}
+                      disabled={aiBusy || !aiPrompt.trim()}
+                      className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold shadow-sm transition"
+                    >
+                      {aiBusy ? 'Generating…' : 'Generate'}
+                    </button>
+                  </div>
+                  {aiError && <p className="mt-3 text-xs text-danger-fg">{aiError}</p>}
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {AI_EXAMPLE_PROMPTS.map((example) => (
+                    <button
+                      key={example}
+                      type="button"
+                      onClick={() => {
+                        setAiPrompt(example)
+                        setAiSuggestion('')
+                        setAiError('')
+                        requestAnimationFrame(() => aiInputRef.current?.focus())
+                      }}
+                      className="px-3 py-1.5 rounded-lg border border-line bg-surface/80 text-xs font-medium text-fg hover:border-indigo-300 hover:bg-indigo-50/50 dark:hover:bg-indigo-500/10 transition text-left"
+                    >
+                      {example}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </main>
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-dvh flex flex-col bg-surface-2 text-fg overflow-hidden">
+      <header className="h-16 shrink-0 bg-surface border-b border-line px-4 sm:px-6 flex items-center gap-4">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <button
+            type="button"
+            onClick={() => navigate('/forms')}
+            className="flex items-center gap-2.5 shrink-0 rounded-lg hover:bg-surface-2 px-1.5 py-1.5 transition"
+            title="Back to forms"
+          >
+            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shadow-sm overflow-hidden">
+              <img src="/netflow-icon.png" alt="" className="w-full h-full object-contain" />
+            </div>
+            <span className="font-semibold text-fg tracking-tight hidden sm:inline leading-none">NetFlow</span>
+          </button>
+          <div className="w-px h-8 bg-line shrink-0 hidden sm:block self-center" />
+          <div className="min-w-0 flex-1 max-w-xl flex flex-col justify-center gap-0.5">
+            <div className="flex items-center gap-2 min-w-0">
+              {entryMode && (
+                <span
+                  className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold tracking-wide uppercase leading-none ${
+                    entryMode === 'ai'
+                      ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300'
+                      : entryMode === 'template'
+                        ? 'bg-teal-50 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300'
+                        : 'bg-surface-2 text-fg-muted border border-line'
+                  }`}
+                >
+                  {entryMode === 'ai' ? 'Build with AI' : entryMode === 'template' ? 'From template' : 'Blank form'}
+                </span>
+              )}
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Form name"
+                aria-label="Form name"
+                className="min-w-0 flex-1 text-sm font-semibold text-fg bg-transparent border-0 px-0 py-0 leading-5 focus:outline-none focus:ring-0 placeholder:text-fg-subtle"
+              />
+            </div>
+            <input
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Short description"
+              aria-label="Form description"
+              className="w-full text-xs text-fg-muted bg-transparent border-0 px-0 py-0 leading-4 focus:outline-none focus:ring-0 placeholder:text-fg-subtle hidden sm:block"
+            />
+          </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 self-center">
           <button
             onClick={handleDiscard}
             disabled={saving}
-            className="px-3 py-1.5 rounded-md border border-line hover:bg-surface-2 disabled:opacity-50 text-sm font-medium text-fg transition"
+            className="px-3 py-2 rounded-lg border border-line hover:bg-surface-2 disabled:opacity-50 text-sm font-medium text-fg transition"
           >
             Discard
           </button>
           <button
             onClick={() => persist('Draft')}
             disabled={saving}
-            className="px-3 py-1.5 rounded-md border border-line hover:bg-surface-2 disabled:opacity-50 text-sm font-medium text-fg transition"
+            className="px-3 py-2 rounded-lg border border-line hover:bg-surface-2 disabled:opacity-50 text-sm font-medium text-fg transition hidden sm:inline-flex"
           >
             {saving ? 'Saving…' : 'Save draft'}
           </button>
           <button
             onClick={() => setPreviewOpen(true)}
             disabled={saving}
-            className="px-3 py-1.5 rounded-md border border-line hover:bg-surface-2 disabled:opacity-50 text-sm font-medium text-fg transition"
+            className="px-3 py-2 rounded-lg border border-line hover:bg-surface-2 disabled:opacity-50 text-sm font-medium text-fg transition"
           >
             Preview
           </button>
           <button
+            data-tour="form-builder-publish"
             onClick={() => persist('Published')}
             disabled={saving}
-            className="px-4 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium shadow-sm transition"
+            className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium shadow-sm transition"
           >
             {saving ? 'Publishing…' : 'Publish'}
           </button>
@@ -1277,22 +1779,84 @@ function NewForm() {
       <div className="flex-1 flex min-h-0">
         <FieldPalette onAdd={(type) => addField(type, true)} />
 
-        <main className="flex-1 min-w-0 overflow-y-auto px-8 py-6">
-          {aiAvailable && (
-            <div className="mb-3 rounded-lg border border-indigo-200 bg-indigo-50/40 p-3">
-              <div className="flex items-center gap-1.5 mb-2">
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-indigo-600" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M11 2.5a.6.6 0 0 1 1.13 0l1.32 3.43a3 3 0 0 0 1.72 1.72l3.43 1.32a.6.6 0 0 1 0 1.13l-3.43 1.32a3 3 0 0 0-1.72 1.72l-1.32 3.43a.6.6 0 0 1-1.13 0l-1.32-3.43a3 3 0 0 0-1.72-1.72L4.26 11.2a.6.6 0 0 1 0-1.13l3.43-1.32a3 3 0 0 0 1.72-1.72L11 2.5Z" />
-                </svg>
-                <span className="text-sm font-semibold text-indigo-800">Generate with AI</span>
+        <main className="flex-1 min-w-0 overflow-y-auto px-5 sm:px-8 py-5 sm:py-6">
+          <div className="max-w-3xl mx-auto">
+          {draftNotice && (
+            <div className="mb-4">
+              <AlertBanner
+                tone="info"
+                onRetry={async () => {
+                  const ok = await confirm({
+                    title: 'Start over?',
+                    message: 'Your restored draft will be thrown away and the builder resets to a blank form.',
+                    confirmLabel: 'Start fresh',
+                    danger: true,
+                  })
+                  if (!ok) return
+                  draftStore.clear()
+                  setDraftNotice(false)
+                  navigate(0)
+                }}
+                retryLabel="Start fresh"
+              >
+                Unsaved draft restored from your last visit.
+              </AlertBanner>
+            </div>
+          )}
+
+          {template && !templateBannerDismissed && (
+            <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-teal-200 bg-teal-50/80 dark:border-teal-500/30 dark:bg-teal-500/10 px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-teal-800 dark:text-teal-200 truncate">
+                  From template: {template.name}
+                </p>
+                <p className="text-xs text-teal-700/80 dark:text-teal-300/80 mt-0.5">
+                  {template.fields.length} fields · customize anything below
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTemplateBannerDismissed(true)}
+                className="shrink-0 text-xs font-medium text-teal-700 dark:text-teal-300 hover:underline"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {showOptionalAiToggle && (
+            <div className="mb-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowAiPanel(true)}
+                className="text-xs font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+              >
+                Use AI
+              </button>
+            </div>
+          )}
+
+          {/* Compact AI strip (after generate, or when blank/template opts in) */}
+          {showCompactAi && (
+            <div className="mb-5 rounded-xl border border-line bg-surface shadow-sm p-4">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-sm font-semibold text-fg">AI</span>
+                {!aiMode && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAiPanel(false)}
+                    className="text-xs text-fg-muted hover:text-fg"
+                  >
+                    Hide
+                  </button>
+                )}
               </div>
               <div className="flex flex-col sm:flex-row gap-2">
                 <div className="relative flex-1">
-                  {/* Ghost text: an invisible copy of the typed text positions the grey suggestion right after the caret. */}
                   {aiSuggestion && (
                     <div
                       aria-hidden="true"
-                      className="pointer-events-none absolute inset-0 z-10 px-3 py-2 text-sm whitespace-pre overflow-hidden rounded-md border border-transparent"
+                      className="pointer-events-none absolute inset-0 z-10 px-3.5 py-2.5 text-sm whitespace-pre overflow-hidden rounded-lg border border-transparent"
                     >
                       <span className="invisible">{aiPrompt}</span>
                       <span className="text-fg-subtle">{aiSuggestion}</span>
@@ -1305,26 +1869,24 @@ function NewForm() {
                     onChange={onAiPromptChange}
                     onKeyDown={onAiKeyDown}
                     onBlur={() => setAiSuggestion('')}
-                    placeholder='e.g. "Leave request form with dates, reason, and manager"'
+                    placeholder="Describe the form…"
                     disabled={aiBusy}
-                    className="w-full px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition disabled:opacity-60"
+                    className={`${inputCls} disabled:opacity-60`}
                   />
                 </div>
                 <button
                   type="button"
                   onClick={generateWithAI}
                   disabled={aiBusy || !aiPrompt.trim()}
-                  className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium shadow-sm transition whitespace-nowrap"
+                  className="px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium shadow-sm transition whitespace-nowrap"
                 >
                   {aiBusy ? 'Generating…' : 'Generate'}
                 </button>
               </div>
-              {aiError && <p className="mt-2 text-xs text-red-600">{aiError}</p>}
-              <p className="mt-1.5 text-[11px] text-indigo-700/70">
-               AI generates the form fields based on the description.{aiSuggestion ? ' Press Tab to accept the suggestion.' : ''}
-              </p>
+              {aiError && <p className="mt-2 text-xs text-danger-fg">{aiError}</p>}
             </div>
           )}
+
           <div
             onDragOver={(e) => {
               e.preventDefault()
@@ -1338,37 +1900,46 @@ function NewForm() {
               const type = e.dataTransfer.getData('application/x-field-type')
               if (type) addField(type, false)
             }}
-            className={`mb-3 px-5 py-4 rounded-lg border-2 border-dashed text-center text-sm transition ${
-              dragOver ? 'border-indigo-400 bg-indigo-50/40 text-indigo-700' : 'border-line text-fg-subtle'
+            className={`rounded-xl border transition ${
+              dragOver
+                ? 'border-indigo-400 bg-indigo-50/50 dark:bg-indigo-500/10 ring-2 ring-indigo-500/20'
+                : 'border-line bg-surface shadow-sm'
             }`}
           >
-            Drag fields here from the left panel
-          </div>
-
-          <div className="space-y-2">
-            {fields.map((f, idx) => (
-              <FieldCard
-                key={f.id}
-                field={f}
-                index={idx}
-                total={fields.length}
-                selected={selectedId === f.id}
-                dropPosition={dropTarget?.id === f.id ? dropTarget.position : null}
-                onSelect={setSelectedId}
-                onDuplicate={duplicateField}
-                onDelete={deleteField}
-                onDragStart={handleReorderStart}
-                onDragOver={handleReorderOver}
-                onDragLeave={handleReorderLeave}
-                onDrop={handleReorderDrop}
-                onDragEnd={handleReorderEnd}
-                onMoveUp={moveUp}
-                onMoveDown={moveDown}
-              />
-            ))}
-            {fields.length === 0 && (
-              <p className="text-sm text-fg-subtle text-center py-12">No fields yet — add some from the palette.</p>
+            {fields.length === 0 ? (
+              <div className="px-6 py-16 text-center">
+                <div className="mx-auto w-12 h-12 rounded-xl bg-surface-2 border border-line flex items-center justify-center text-fg-muted mb-3">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                </div>
+                <p className="text-sm font-semibold text-fg">Add fields</p>
+              </div>
+            ) : (
+              <div className="p-3 sm:p-4 space-y-2">
+                {fields.map((f, idx) => (
+                  <FieldCard
+                    key={f.id}
+                    field={f}
+                    index={idx}
+                    total={fields.length}
+                    selected={selectedId === f.id}
+                    dropPosition={dropTarget?.id === f.id ? dropTarget.position : null}
+                    onSelect={setSelectedId}
+                    onDuplicate={duplicateField}
+                    onDelete={deleteField}
+                    onDragStart={handleReorderStart}
+                    onDragOver={handleReorderOver}
+                    onDragLeave={handleReorderLeave}
+                    onDrop={handleReorderDrop}
+                    onDragEnd={handleReorderEnd}
+                    onMoveUp={moveUp}
+                    onMoveDown={moveDown}
+                  />
+                ))}
+              </div>
             )}
+          </div>
           </div>
         </main>
 

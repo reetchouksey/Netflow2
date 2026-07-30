@@ -50,7 +50,7 @@ function Bubble({ role, error, children }) {
           isUser
             ? 'rounded-br-sm bg-indigo-600 text-white'
             : error
-              ? 'rounded-bl-sm bg-red-50 text-red-700 border border-red-100'
+              ? 'rounded-bl-sm bg-danger-subtle text-danger-fg border border-danger-line'
               : 'rounded-bl-sm bg-surface text-fg border border-line'
         }`}
       >
@@ -133,7 +133,11 @@ export default function AssistantWidget() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label={open ? 'Close assistant' : 'Open assistant'}
-        className="fixed bottom-20 right-5 md:bottom-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 transition hover:scale-105 hover:bg-indigo-700"
+        aria-expanded={open}
+        aria-controls="assistant-panel"
+        // z-30 keeps the launcher under dialogs — at z-40 it floated on top of
+        // every modal in the app.
+        className="fixed bottom-20 right-5 md:bottom-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 transition hover:scale-105 hover:bg-indigo-700"
       >
         {open ? (
           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -145,7 +149,12 @@ export default function AssistantWidget() {
       </button>
 
       {open && (
-        <div className="fixed bottom-24 right-5 z-40 flex h-[32rem] max-h-[calc(100vh-7rem)] w-[22rem] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
+        <div
+          id="assistant-panel"
+          role="dialog"
+          aria-label="NetFlow Assistant"
+          className="fixed bottom-24 right-5 z-30 flex h-[32rem] max-h-[calc(100vh-7rem)] w-[22rem] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl"
+        >
           <div className="flex items-center gap-2 bg-indigo-600 px-4 py-3 text-white">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface/20">
               <Robot className="h-4 w-4" />
@@ -178,7 +187,7 @@ export default function AssistantWidget() {
                     key={s}
                     type="button"
                     onClick={() => ask(s)}
-                    className="rounded-full border border-indigo-200 bg-surface px-2.5 py-1 text-[11px] font-medium text-indigo-600 transition hover:bg-indigo-50"
+                    className="rounded-full border border-info-line bg-surface px-2.5 py-1 text-[11px] font-medium text-info-fg transition hover:bg-info-subtle"
                   >
                     {s}
                   </button>

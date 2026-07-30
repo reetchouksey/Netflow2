@@ -1,15 +1,22 @@
 // M3 - Phase 2 - TaskInbox.jsx - Live tasks from GET /api/tasks/my-tasks
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import { useTasks, tasksStore, TASK_FILTERS } from '../lib/tasksStore'
 import { useUser } from '../utils/auth'
+import { canViewTeam, isApprover as isApproverRole } from '../utils/permissions'
+import { api } from '../utils/api'
+import { adaptTask } from '../utils/adapters'
 import { confirm } from '../lib/confirmStore'
 import { ListRowSkeleton } from '../components/Skeleton'
 import EmptyState from '../components/EmptyState'
+import { AlertBanner } from '../components/Alert'
+import { statusBadge } from '../utils/badges'
 
-const APPROVER_ROLES = new Set(['Admin', 'CEO', 'Manager', 'HR', 'VP'])
+// The list is grouped by department, so a page-number pager would split groups
+// oddly. Progressive "show more" keeps the grouping intact.
+const PAGE_SIZE = 40
 
 const SORTS = [
   { value: 'date_desc', label: 'Newest first' },
@@ -34,32 +41,43 @@ const formatTimeLeft = (minutes) => {
   return `${Math.round(hours / 24)}d left`
 }
 
+// Urgency was signalled by colour alone, which colour-blind users can't read.
+// Each level now carries its own glyph and wording too.
 const slaBadge = (task) => {
   if (task.slaBreached || task.dueInMinutes < 0) {
-    return { label: 'SLA breached', cls: 'bg-red-50 text-red-600 border-red-200' }
+    return {
+      label: 'SLA breached',
+      icon: '▲',
+      srLabel: 'Overdue: ',
+      cls: 'bg-danger-subtle text-danger-fg border-danger-line',
+    }
   }
   if (task.dueInMinutes < 6 * 60) {
-    return { label: formatTimeLeft(task.dueInMinutes), cls: 'bg-orange-50 text-orange-600 border-orange-200' }
+    return {
+      label: `Due soon · ${formatTimeLeft(task.dueInMinutes)}`,
+      icon: '●',
+      srLabel: 'Due soon: ',
+      cls: 'bg-warning-subtle text-warning-fg border-warning-line',
+    }
   }
-  return { label: formatTimeLeft(task.dueInMinutes), cls: 'bg-green-50 text-green-700 border-green-200' }
-}
-
-const statusBadge = (status) => {
-  switch (status) {
-    case 'Approved':
-      return { label: 'Approved', cls: 'bg-green-50 text-green-700 border-green-200' }
-    case 'Rejected':
-      return { label: 'Rejected', cls: 'bg-red-50 text-red-600 border-red-200' }
-    case 'Escalated':
-      return { label: 'Escalated', cls: 'bg-orange-50 text-orange-700 border-orange-200' }
-    default:
-      return { label: 'Pending your approval', cls: 'bg-surface-2 text-fg-muted border-line' }
+  return {
+    label: formatTimeLeft(task.dueInMinutes),
+    icon: '○',
+    srLabel: 'On track: ',
+    cls: 'bg-success-subtle text-success-fg border-success-line',
   }
 }
 
-function TaskCard({ task, onOpen, onApprove, onReject, busy, canAct, showApprover, canDelete, onDelete }) {
+const taskStatusBadge = (status) => {
+  if (status === 'Approved' || status === 'Rejected' || status === 'Escalated') {
+    return { label: status, cls: statusBadge(status).badge }
+  }
+  return { label: 'Pending your approval', cls: 'bg-surface-2 text-fg-muted border-line' }
+}
+
+function TaskCard({ task, onOpen, onApprove, onReject, busy, canAct, showApprover, canDelete, onDelete, selectable, selected, onToggleSelect }) {
   const sla = slaBadge(task)
-  const status = statusBadge(task.status)
+  const status = taskStatusBadge(task.status)
   const isResolved = task.status !== 'Pending'
 
   return (
@@ -67,6 +85,16 @@ function TaskCard({ task, onOpen, onApprove, onReject, busy, canAct, showApprove
       onClick={() => onOpen(task.id)}
       className="flex items-start gap-4 px-5 py-4 bg-surface rounded-lg border border-line hover:border-indigo-300 hover:shadow-sm transition cursor-pointer"
     >
+      {selectable && (
+        <input
+          type="checkbox"
+          checked={selected}
+          onClick={(e) => e.stopPropagation()}
+          onChange={() => onToggleSelect(task.id)}
+          aria-label={`Select ${task.title} for bulk approval`}
+          className="mt-2.5 w-4 h-4 rounded border-line text-indigo-600 focus:ring-indigo-400 shrink-0"
+        />
+      )}
       <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${task.avatarColor}`}>
         {task.initials}
       </div>
@@ -84,7 +112,9 @@ function TaskCard({ task, onOpen, onApprove, onReject, busy, canAct, showApprove
 
         <div className="flex flex-wrap items-center gap-1.5 mt-2">
           {sla.label && (
-            <span className={`text-[11px] px-2 py-0.5 rounded-md border font-medium ${sla.cls}`}>
+            <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md border font-medium ${sla.cls}`}>
+              <span aria-hidden="true">{sla.icon}</span>
+              <span className="sr-only">{sla.srLabel}</span>
               {sla.label}
             </span>
           )}
@@ -106,10 +136,10 @@ function TaskCard({ task, onOpen, onApprove, onReject, busy, canAct, showApprove
             className={`px-4 py-1 text-xs font-medium rounded-md border transition ${
               isResolved || busy
                 ? 'border-line text-fg-subtle cursor-not-allowed'
-                : 'border-green-200 text-green-700 hover:bg-green-50'
+                : 'border-success-line text-success-fg hover:bg-success-subtle'
             }`}
           >
-            {busy === 'approve' ? '...' : 'Approve'}
+            {busy === 'approve' ? 'Approving…' : 'Approve'}
           </button>
           <button
             type="button"
@@ -121,10 +151,10 @@ function TaskCard({ task, onOpen, onApprove, onReject, busy, canAct, showApprove
             className={`px-4 py-1 text-xs font-medium rounded-md border transition ${
               isResolved || busy
                 ? 'border-line text-fg-subtle cursor-not-allowed'
-                : 'border-red-200 text-red-600 hover:bg-red-50'
+                : 'border-danger-line text-danger-fg hover:bg-danger-subtle'
             }`}
           >
-            {busy === 'reject' ? '...' : 'Reject'}
+            {busy === 'reject' ? 'Rejecting…' : 'Reject'}
           </button>
         </div>
       ) : (
@@ -136,7 +166,7 @@ function TaskCard({ task, onOpen, onApprove, onReject, busy, canAct, showApprove
               disabled={busy === 'delete'}
               aria-label="Delete request"
               title="Delete request"
-              className="p-1 rounded-md text-fg-subtle hover:text-red-500 hover:bg-red-50 disabled:opacity-50 transition"
+              className="p-1 rounded-md text-fg-subtle hover:text-danger-fg hover:bg-danger-subtle disabled:opacity-50 transition"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-1 0v12a1 1 0 01-1 1H8a1 1 0 01-1-1V7m3 4v6m4-6v6" />
@@ -154,28 +184,73 @@ function TaskInbox() {
   const navigate = useNavigate()
   const tasks = useTasks()
   const me = useUser()
-  const isApprover = APPROVER_ROLES.has(me?.role?.name)
+  const isApprover = isApproverRole(me)
+  const leadsTeam = canViewTeam(me)
   const meId = me?._id ? String(me._id) : null
+  const [searchParams, setSearchParams] = useSearchParams()
 
   // Approvers default to their approval queue; everyone else to their requests.
-  const [scope, setScope] = useState(isApprover ? 'assigned' : 'submitted')
+  // ?scope=team lets the ops dashboard and Team page deep-link into the tab.
+  const [scope, setScope] = useState(() => {
+    const wanted = searchParams.get('scope')
+    if (wanted === 'team' && leadsTeam) return 'team'
+    if (wanted === 'assigned' || wanted === 'submitted') return wanted
+    return isApprover ? 'assigned' : 'submitted'
+  })
   const [filter, setFilter] = useState('All tasks')
   const [sort, setSort] = useState('date_desc')
+  const [query, setQuery] = useState('')
   const [busyMap, setBusyMap] = useState({})
+  const [selectedIds, setSelectedIds] = useState([])
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    setScope(isApprover ? 'assigned' : 'submitted')
-  }, [isApprover])
+  const [teamTasks, setTeamTasks] = useState([])
+  const [teamLoading, setTeamLoading] = useState(false)
 
   useEffect(() => {
     tasksStore.refresh().catch((e) => setError(e.message)).finally(() => setLoading(false))
   }, [])
 
+  // The team's work is not in the personal store — it is a different query — so
+  // it is fetched on demand the first time the tab is opened.
+  const loadTeamTasks = () => {
+    setTeamLoading(true)
+    return api.get('/api/tasks/my-tasks?scope=team')
+      .then((res) => setTeamTasks((res.tasks || []).map(adaptTask).filter(Boolean)))
+      .catch((err) => setError(err.message || "Could not load your team's requests"))
+      .finally(() => setTeamLoading(false))
+  }
+
+  useEffect(() => {
+    if (scope !== 'team' || !leadsTeam) return
+    loadTeamTasks()
+  }, [scope, leadsTeam])
+
+  const refresh = () => (scope === 'team' ? loadTeamTasks() : tasksStore.refresh())
+
+  // Keep the URL honest so the tab survives a refresh or a shared link.
+  useEffect(() => {
+    const current = searchParams.get('scope')
+    if (current === scope) return
+    const next = new URLSearchParams(searchParams)
+    next.set('scope', scope)
+    setSearchParams(next, { replace: true })
+  }, [scope])
+
   const openTask = (id) => navigate(`/tasks/${id}`)
 
   const handleAction = async (id, action) => {
+    if (action === 'reject') {
+      const ok = await confirm({
+        title: 'Reject this request?',
+        message: 'The requester is notified straight away. Open the request instead if you want to add a reason.',
+        confirmLabel: 'Reject',
+        danger: true,
+      })
+      if (!ok) return
+    }
     setBusyMap((m) => ({ ...m, [id]: action }))
     setError('')
     try {
@@ -216,8 +291,11 @@ function TaskInbox() {
     }
   }
 
-  // Scope first (assigned to me vs submitted by me), then the status filter.
+  // Scope first (assigned to me / submitted by me / my team's), then the status
+  // filter. The team scope comes from its own request, the other two are slices
+  // of the personal store.
   const scoped = useMemo(() => {
+    if (scope === 'team') return teamTasks
     if (!meId) return tasks
     const list = tasks.filter((t) =>
       scope === 'assigned'
@@ -231,9 +309,9 @@ function TaskInbox() {
       )
     }
     return list
-  }, [tasks, scope, meId])
+  }, [tasks, teamTasks, scope, meId])
 
-  const filtered = useMemo(() => {
+  const byFilter = useMemo(() => {
     switch (filter) {
       case 'Pending':      return scoped.filter((t) => t.status === 'Pending')
       case 'SLA breached': return scoped.filter((t) => t.slaBreached || t.status === 'Escalated' || t.dueInMinutes < 0)
@@ -242,6 +320,20 @@ function TaskInbox() {
       default:             return scoped
     }
   }, [scoped, filter])
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return byFilter
+    return byFilter.filter((t) =>
+      [t.title, t.detail, t.requester, t.approver, t.workflow, t.department]
+        .some((v) => String(v || '').toLowerCase().includes(q))
+    )
+  }, [byFilter, query])
+
+  useEffect(() => { setVisibleCount(PAGE_SIZE) }, [query, filter, scope, sort])
+
+  const visibleTasks = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount])
+  const hiddenCount = filtered.length - visibleTasks.length
 
   // Group the visible tasks by department, departments sorted alphabetically,
   // and within each department by submission date/time (newest first).
@@ -260,7 +352,7 @@ function TaskInbox() {
     }
 
     const byDept = new Map()
-    for (const t of filtered) {
+    for (const t of visibleTasks) {
       const dept = t.department || 'General'
       if (!byDept.has(dept)) byDept.set(dept, [])
       byDept.get(dept).push(t)
@@ -268,20 +360,76 @@ function TaskInbox() {
     return [...byDept.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([department, items]) => ({ department, items: sortItems(items) }))
-  }, [filtered, sort])
+  }, [visibleTasks, sort])
+
+  // Bulk approve only ever touches rows the user can actually act on.
+  const bulkEligible = useMemo(
+    () =>
+      scope === 'assigned'
+        ? filtered.filter((t) => t.status === 'Pending' && String(t.assignedToId) === meId)
+        : [],
+    [filtered, scope, meId]
+  )
+  const eligibleIds = useMemo(() => new Set(bulkEligible.map((t) => t.id)), [bulkEligible])
+  const selected = useMemo(() => selectedIds.filter((id) => eligibleIds.has(id)), [selectedIds, eligibleIds])
+
+  useEffect(() => { setSelectedIds([]) }, [scope, filter, query])
+
+  const toggleSelect = (id) =>
+    setSelectedIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]))
+
+  const handleBulkApprove = async () => {
+    if (selected.length === 0) return
+    const ok = await confirm({
+      title: `Approve ${selected.length} ${selected.length === 1 ? 'task' : 'tasks'}?`,
+      message: 'Each one is approved without a comment. Open a task individually if you need to add one.',
+      confirmLabel: `Approve ${selected.length}`,
+    })
+    if (!ok) return
+    setBulkBusy(true)
+    setError('')
+    const failures = []
+    for (const id of selected) {
+      try {
+        await tasksStore.approve(id)
+      } catch (err) {
+        failures.push(err.message || 'Unknown error')
+      }
+    }
+    await tasksStore.refresh().catch(() => {})
+    setSelectedIds([])
+    setBulkBusy(false)
+    if (failures.length) {
+      setError(
+        `${selected.length - failures.length} of ${selected.length} approved. ${failures.length} failed: ${failures[0]}`
+      )
+    }
+  }
 
   const tabs = [
     { key: 'submitted', label: 'My requests' },
-    { key: 'assigned', label: 'Assigned to me' }
+    { key: 'assigned', label: 'Assigned to me' },
+    ...(leadsTeam ? [{ key: 'team', label: 'My team' }] : [])
   ]
 
   // "My requests" tab shows things you submitted (requests); "Assigned to me"
-  // shows approvals routed to you (tasks). Title + counts follow the active tab.
+  // shows approvals routed to you (tasks); "My team" shows what the people you
+  // lead have in flight. Title + counts follow the active tab.
   const onRequests = scope === 'submitted'
-  const itemNoun = onRequests ? 'request' : 'task'
+  const onTeam = scope === 'team'
+  const itemNoun = onRequests || onTeam ? 'request' : 'task'
 
   const actions = (
     <>
+      <label className="sr-only" htmlFor="task-search">Search {itemNoun}s</label>
+      <input
+        id="task-search"
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder={`Search ${itemNoun}s…`}
+        className="text-sm px-3 py-1.5 w-44 lg:w-56 rounded-md border border-line bg-surface text-fg focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition"
+      />
       <div className="inline-flex rounded-md border border-line bg-surface p-0.5">
         {tabs.map((t) => (
           <button
@@ -315,7 +463,7 @@ function TaskInbox() {
       </select>
       <button
         type="button"
-        onClick={() => tasksStore.refresh()}
+        onClick={refresh}
         className="text-sm px-3 py-1.5 rounded-md border border-line bg-surface text-fg hover:bg-surface-2 transition"
         title="Refresh"
       >
@@ -326,23 +474,72 @@ function TaskInbox() {
 
   return (
     <AppShell
-      title={onRequests ? 'My requests' : 'Task inbox'}
-      subtitle={`${filtered.length} ${filtered.length === 1 ? itemNoun : itemNoun + 's'} shown`}
+      title={onTeam ? "My team's requests" : onRequests ? 'My requests' : 'Task inbox'}
+      subtitle={
+        query.trim()
+          ? `${filtered.length} of ${byFilter.length} ${itemNoun}s match`
+          : `${filtered.length} ${filtered.length === 1 ? itemNoun : itemNoun + 's'} shown`
+      }
       actions={actions}
     >
-      {error && (
-            <div className="mb-4 p-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-700">
-              {error}
-            </div>
-          )}
+      {error && <AlertBanner className="mb-4">{error}</AlertBanner>}
 
-          {loading && tasks.length === 0 ? (
+      {bulkEligible.length > 1 && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 px-4 py-2.5 rounded-lg border border-line bg-surface">
+          <label className="flex items-center gap-2 text-sm text-fg">
+            <input
+              type="checkbox"
+              checked={selected.length === bulkEligible.length && bulkEligible.length > 0}
+              onChange={(e) => setSelectedIds(e.target.checked ? bulkEligible.map((t) => t.id) : [])}
+              className="w-4 h-4 rounded border-line text-indigo-600 focus:ring-indigo-400"
+            />
+            Select all {bulkEligible.length} pending
+          </label>
+          <span className="text-sm text-fg-muted">
+            {selected.length > 0 ? `${selected.length} selected` : 'Nothing selected'}
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            {selected.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSelectedIds([])}
+                className="text-sm px-3 py-1.5 rounded-md border border-line text-fg hover:bg-surface-2 transition"
+              >
+                Clear
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleBulkApprove}
+              disabled={selected.length === 0 || bulkBusy}
+              className="text-sm px-3 py-1.5 rounded-md bg-success-solid text-white font-semibold hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition"
+            >
+              {bulkBusy ? 'Approving…' : `Approve ${selected.length || ''}`.trim()}
+            </button>
+          </div>
+        </div>
+      )}
+
+          {(loading && tasks.length === 0) || (onTeam && teamLoading && teamTasks.length === 0) ? (
             <div className="bg-surface border border-line rounded-lg divide-y divide-line">
               {Array.from({ length: 6 }).map((_, i) => <ListRowSkeleton key={i} />)}
             </div>
           ) : filtered.length === 0 ? (
             <div className="bg-surface border border-dashed border-line rounded-lg py-16">
-              {filter !== 'All tasks' ? (
+              {query.trim() ? (
+                <EmptyState
+                  title={`Nothing matches “${query.trim()}”`}
+                  description="Try a shorter search term, or clear it to see everything."
+                  action={
+                    <button
+                      onClick={() => setQuery('')}
+                      className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                    >
+                      Clear search
+                    </button>
+                  }
+                />
+              ) : filter !== 'All tasks' ? (
                 <EmptyState
                   title="Nothing matches this filter"
                   description="Try a different filter to see more."
@@ -354,6 +551,11 @@ function TaskInbox() {
                       Show all
                     </button>
                   }
+                />
+              ) : onTeam ? (
+                <EmptyState
+                  title="Nothing from your team"
+                  description="Requests raised by the people who report to you show up here while they move through approvals."
                 />
               ) : scope === 'submitted' ? (
                 <EmptyState
@@ -398,14 +600,29 @@ function TaskInbox() {
                         onReject={(id) => handleAction(id, 'reject')}
                         busy={busyMap[task.id]}
                         canAct={scope === 'assigned' && String(task.assignedToId) === meId}
-                        showApprover={scope === 'submitted'}
+                        showApprover={scope !== 'assigned'}
                         canDelete={scope === 'submitted' && String(task.submittedById) === meId && isRequestFinished(task)}
                         onDelete={handleDelete}
+                        selectable={bulkEligible.length > 1 && eligibleIds.has(task.id)}
+                        selected={selected.includes(task.id)}
+                        onToggleSelect={toggleSelect}
                       />
                     ))}
                   </div>
                 </div>
               ))}
+
+              {hiddenCount > 0 && (
+                <div className="text-center pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+                    className="px-4 py-2 rounded-md border border-line bg-surface text-sm font-medium text-fg hover:bg-surface-2 transition"
+                  >
+                    Show {Math.min(PAGE_SIZE, hiddenCount)} more ({hiddenCount} remaining)
+                  </button>
+                </div>
+              )}
             </div>
           )}
     </AppShell>

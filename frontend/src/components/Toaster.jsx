@@ -6,9 +6,9 @@ import React from 'react'
 import { useToasts, toast } from '../lib/toastStore'
 
 const STYLES = {
-  success: { bar: 'bg-emerald-500', iconWrap: 'bg-emerald-50 text-emerald-600', icon: '\u2713' },
-  error:   { bar: 'bg-rose-500',    iconWrap: 'bg-rose-50 text-rose-600',       icon: '!' },
-  info:    { bar: 'bg-indigo-500',  iconWrap: 'bg-indigo-50 text-indigo-600',   icon: 'i' },
+  success: { bar: 'bg-success-solid', iconWrap: 'bg-success-subtle text-success-fg', icon: '\u2713' },
+  error:   { bar: 'bg-danger-solid',  iconWrap: 'bg-danger-subtle text-danger-fg',   icon: '!' },
+  info:    { bar: 'bg-info-solid',    iconWrap: 'bg-info-subtle text-info-fg',       icon: 'i' },
 }
 
 export default function Toaster() {
@@ -21,7 +21,7 @@ export default function Toaster() {
         return (
           <div
             key={t.id}
-            role="status"
+            role={t.type === 'error' ? 'alert' : 'status'}
             className="flex items-stretch gap-3 bg-surface border border-line rounded-xl shadow-lg overflow-hidden"
           >
             <span className={`w-1 shrink-0 ${s.bar}`} />

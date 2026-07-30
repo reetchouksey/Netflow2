@@ -57,11 +57,14 @@ function splitRecords(text) {
   return records
 }
 
-// A ready-to-download sample the admin can fill in.
-export function buildTemplate() {
+// A ready-to-download sample the admin can fill in. The sample rows name real
+// departments from this workspace, because the import rejects anything else.
+export function buildTemplate(departments = []) {
+  const first = departments[0] || 'Finance'
+  const second = departments[1] || first
   return [
     'name,email,department,role,manager,hr',
-    'Jane Doe,jane@example.com,Finance,Employee,manager@example.com,hr@example.com',
-    'John Smith,john@example.com,IT,Manager,,',
+    `Jane Doe,jane@example.com,${first},Employee,manager@example.com,hr@example.com`,
+    `John Smith,john@example.com,${second},Manager,,`,
   ].join('\n')
 }

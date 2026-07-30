@@ -1,6 +1,6 @@
 // M3 - Phase 2 - TaskDetail.jsx - Live task + approve/reject/request-changes
 
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import { tasksStore, useTask } from '../lib/tasksStore'
@@ -8,14 +8,17 @@ import { useUser } from '../utils/auth'
 import { toAbsoluteUrl } from '../utils/api'
 import { SignaturePad, SignatureMark, FieldRow, validateFields, FieldValueView, isFieldVisible, stripHiddenValues } from '../components/FormFields'
 import { confirm } from '../lib/confirmStore'
+import { ListRowSkeleton } from '../components/Skeleton'
+import { ErrorState } from '../components/Alert'
+import { formatDateTime, isoAttr } from '../utils/datetime'
 
 const APPROVER_ROLES = new Set(['Admin', 'CEO', 'Manager', 'HR', 'VP'])
 
 const statusPill = (status) => {
   switch (status) {
-    case 'Approved':  return { label: 'Approved',  cls: 'text-green-600' }
-    case 'Rejected':  return { label: 'Rejected',  cls: 'text-red-600' }
-    case 'Escalated': return { label: 'Escalated', cls: 'text-orange-600' }
+    case 'Approved':  return { label: 'Approved',  cls: 'text-success-fg' }
+    case 'Rejected':  return { label: 'Rejected',  cls: 'text-danger-fg' }
+    case 'Escalated': return { label: 'Escalated', cls: 'text-warning-fg' }
     default:          return { label: 'Awaiting approval', cls: 'text-blue-600' }
   }
 }
@@ -53,7 +56,7 @@ function GridValueTable({ grid }) {
         <thead>
           <tr className="bg-surface-2">
             {cols.map((c) => (
-              <th key={c.id} className="px-2 py-1.5 text-left font-medium text-fg-muted border-b border-line whitespace-nowrap">
+              <th scope="col" key={c.id} className="px-2 py-1.5 text-left font-medium text-fg-muted border-b border-line whitespace-nowrap">
                 {c.label}
               </th>
             ))}
@@ -130,12 +133,28 @@ function ApprovalActions({ task, onAction, commentRef, busy, error }) {
   const isResolved = task.status !== 'Pending'
   const needsSig = !!task.requireSignature
 
-  const submit = (action) => {
+  const submit = async (action) => {
     if (needsSig && !signature) {
       setLocalErr('Please add your e-signature before continuing.')
       return
     }
+    // A rejection ends the request, so it needs a reason — same rule the
+    // "Request changes" action already enforces.
+    if (action === 'reject' && !comment.trim()) {
+      setLocalErr('Please add a reason for the rejection.')
+      commentRef?.current?.focus()
+      return
+    }
     setLocalErr('')
+    if (action === 'reject') {
+      const ok = await confirm({
+        title: 'Reject this request?',
+        message: 'The requester is notified and the approval stops here.',
+        confirmLabel: 'Reject',
+        danger: true,
+      })
+      if (!ok) return
+    }
     onAction(action, comment, signature)
     setComment('')
   }
@@ -150,7 +169,7 @@ function ApprovalActions({ task, onAction, commentRef, busy, error }) {
         ref={commentRef}
         value={comment}
         onChange={(e) => setComment(e.target.value)}
-        placeholder="Optional comment..."
+        placeholder="Add a comment — required when rejecting"
         rows={2}
         disabled={isResolved || !!busy}
         className="w-full px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition resize-none disabled:bg-surface-2 disabled:text-fg-subtle"
@@ -161,39 +180,51 @@ function ApprovalActions({ task, onAction, commentRef, busy, error }) {
           <SignaturePad
             onChange={setSignature}
             disabled={isResolved || !!busy}
-            label={<>E-signature <span className="text-red-500">*</span></>}
+            label={<>E-signature <span className="text-danger-fg">*</span></>}
           />
         </div>
       )}
 
       {(error || localErr) && (
-        <p className="mt-2 text-xs text-red-600">{error || localErr}</p>
+        <p className="mt-2 text-xs text-danger-fg">{error || localErr}</p>
       )}
 
+      {/* Approve is the filled primary, Reject reads as destructive, and
+          Request changes stays a quiet third option — all three used to share
+          the same ghost styling. */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 mt-3">
         <button
           type="button"
           disabled={blocked}
           onClick={() => submit('approve')}
-          className="px-4 py-2 rounded-md border border-green-200 bg-green-50/40 text-green-700 hover:bg-green-50 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-4 py-2 rounded-md bg-success-solid text-white hover:brightness-110 text-sm font-semibold shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5"
         >
-          {busy === 'approve' ? 'Approving...' : 'Approve'}
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+          {busy === 'approve' ? 'Approving…' : 'Approve'}
         </button>
         <button
           type="button"
           disabled={blocked}
           onClick={() => submit('reject')}
-          className="px-4 py-2 rounded-md border border-red-200 bg-red-50/40 text-red-600 hover:bg-red-50 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-4 py-2 rounded-md border-2 border-danger-solid bg-surface text-danger-fg hover:bg-danger-subtle text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5"
         >
-          {busy === 'reject' ? 'Rejecting...' : 'Reject'}
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+          {busy === 'reject' ? 'Rejecting…' : 'Reject'}
         </button>
         <button
           type="button"
           disabled={blocked}
           onClick={() => submit('changes')}
-          className="px-4 py-2 rounded-md border border-line bg-surface text-fg hover:bg-surface-2 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-4 py-2 rounded-md border border-line bg-surface text-fg-muted hover:bg-surface-2 hover:text-fg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5"
         >
-          {busy === 'changes' ? 'Sending...' : 'Request changes'}
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h10a5 5 0 015 5v1M3 10l4-4m-4 4l4 4" />
+          </svg>
+          {busy === 'changes' ? 'Sending…' : 'Request changes'}
         </button>
       </div>
 
@@ -276,8 +307,9 @@ function SubmitActions({ task, onSubmitted }) {
         </div>
       )}
 
-      <label className="block text-sm font-medium text-fg mb-1">Comment</label>
+      <label htmlFor="task-decision-comment" className="block text-sm font-medium text-fg mb-1">Comment</label>
       <textarea
+        id="task-decision-comment"
         value={comment}
         onChange={(e) => setComment(e.target.value)}
         placeholder="Optional comment..."
@@ -286,13 +318,13 @@ function SubmitActions({ task, onSubmitted }) {
         className="w-full px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition resize-none disabled:bg-surface-2 disabled:text-fg-subtle"
       />
 
-      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-xs text-danger-fg">{error}</p>}
 
       <button
         type="button"
         disabled={isResolved || busy}
         onClick={doSubmit}
-        className="mt-3 w-full px-4 py-2 rounded-md border border-teal-200 bg-teal-50/60 text-teal-700 hover:bg-teal-50 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+        className="mt-3 w-full px-4 py-2 rounded-md border border-teal-200 bg-teal-50/60 text-teal-700 hover:brightness-95 dark:border-teal-500/30 dark:bg-teal-500/10 dark:text-teal-300 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {busy ? 'Submitting…' : 'Submit'}
       </button>
@@ -349,14 +381,14 @@ function ReviewActions({ task, onReviewed }) {
         className="w-full px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition resize-none disabled:bg-surface-2 disabled:text-fg-subtle"
       />
 
-      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-xs text-danger-fg">{error}</p>}
 
       <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
         <button
           type="button"
           disabled={isResolved || !!busy}
           onClick={() => submit('forward')}
-          className="px-4 py-2 rounded-md border border-emerald-200 bg-emerald-50/60 text-emerald-700 hover:bg-emerald-50 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-4 py-2 rounded-md border border-success-line bg-success-subtle/60 text-success-fg hover:bg-success-subtle text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {busy === 'forward' ? 'Forwarding…' : 'No changes — forward'}
         </button>
@@ -364,7 +396,7 @@ function ReviewActions({ task, onReviewed }) {
           type="button"
           disabled={isResolved || !!busy}
           onClick={() => submit('changes')}
-          className="px-4 py-2 rounded-md border border-amber-200 bg-amber-50/60 text-amber-700 hover:bg-amber-50 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-4 py-2 rounded-md border border-warning-line bg-warning-subtle/60 text-warning-fg hover:bg-warning-subtle text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {busy === 'changes' ? 'Sending back…' : 'Changes required'}
         </button>
@@ -491,17 +523,77 @@ function PriorForms({ task }) {
   )
 }
 
+// Raw transport errors ("ECONNREFUSED 10.0.0.4:443") mean nothing to an
+// approver, so map the common ones to plain English and keep the original
+// behind a disclosure for whoever has to fix it.
+function integrationErrorSummary(event) {
+  const raw = String(event.error || '')
+  const status = event.httpStatus
+  if (status === 401 || status === 403) return 'The external system rejected our credentials.'
+  if (status === 404) return "The external system couldn't find that endpoint."
+  if (status === 429) return 'The external system is rate-limiting us.'
+  if (status >= 500) return 'The external system returned an error.'
+  if (/timeout|ETIMEDOUT|ESOCKETTIMEDOUT/i.test(raw)) return "The external system didn't respond in time."
+  if (/ECONNREFUSED|ENOTFOUND|EAI_AGAIN|network/i.test(raw)) return "We couldn't reach the external system."
+  if (/certificate|SSL|TLS/i.test(raw)) return "The external system's security certificate was rejected."
+  return 'The call did not complete.'
+}
+
+// Outbound Integration node results (success / failed / skipped) for this run.
+function IntegrationEvents({ task }) {
+  const events = Array.isArray(task.integrationEvents) ? task.integrationEvents : []
+  if (!events.length) return null
+  return (
+    <section className="bg-surface border border-line rounded-lg px-6 py-5 mt-4">
+      <h2 className="text-sm font-semibold text-fg mb-3">External calls</h2>
+      <ul className="space-y-2">
+        {events.map((e, i) => {
+          const ok = e.ok && !e.error
+          return (
+            <li
+              key={`${e.nodeId}-${i}`}
+              className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm border-b border-line last:border-0 pb-2 last:pb-0"
+            >
+              <span className={`font-medium ${ok ? 'text-success-fg' : 'text-warning-fg'}`}>
+                {ok ? 'OK' : e.skipped ? 'Failed (continued)' : 'Failed'}
+              </span>
+              <span className="text-fg-muted font-mono text-xs">{e.nodeId}</span>
+              {e.httpStatus != null && (
+                <span className="text-fg-subtle text-xs">HTTP {e.httpStatus}</span>
+              )}
+              {e.attempts != null && (
+                <span className="text-fg-subtle text-xs">{e.attempts} attempt{e.attempts === 1 ? '' : 's'}</span>
+              )}
+              {e.error && (
+                <div className="w-full">
+                  <p className="text-xs text-fg">{integrationErrorSummary(e)}</p>
+                  <details className="mt-1">
+                    <summary className="text-[11px] text-fg-subtle cursor-pointer hover:text-fg-muted">
+                      Technical detail
+                    </summary>
+                    <p className="mt-1 font-mono text-[11px] text-fg-muted break-all">{e.error}</p>
+                  </details>
+                </div>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
+
 const STAGE_META = {
-  approved:  { dot: 'bg-green-500',  text: 'text-green-600',  label: 'Approved' },
-  rejected:  { dot: 'bg-red-500',    text: 'text-red-600',    label: 'Rejected' },
-  escalated: { dot: 'bg-orange-500', text: 'text-orange-600', label: 'Escalated' },
+  approved:  { dot: 'bg-success-solid',  text: 'text-success-fg',  label: 'Approved' },
+  rejected:  { dot: 'bg-danger-solid',    text: 'text-danger-fg',    label: 'Rejected' },
+  escalated: { dot: 'bg-orange-500', text: 'text-warning-fg', label: 'Escalated' },
   pending:   { dot: 'bg-blue-500',   text: 'text-blue-600',   label: 'Awaiting approval' },
   upcoming:  { dot: 'bg-gray-300',   text: 'text-fg-subtle',   label: 'Not started' }
 }
 
 const VOTE_META = {
-  approved: { dot: 'bg-green-500', text: 'text-green-600', label: 'Approved' },
-  rejected: { dot: 'bg-red-500', text: 'text-red-600', label: 'Rejected' },
+  approved: { dot: 'bg-success-solid', text: 'text-success-fg', label: 'Approved' },
+  rejected: { dot: 'bg-danger-solid', text: 'text-danger-fg', label: 'Rejected' },
   pending: { dot: 'bg-gray-300', text: 'text-fg-subtle', label: 'Awaiting' }
 }
 
@@ -524,7 +616,7 @@ function CommitteeApprovals({ task }) {
     <section className="bg-surface border border-line rounded-lg px-5 py-4">
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-sm font-semibold text-fg">Committee approval</h2>
-        <span className={`text-xs font-semibold ${met ? 'text-green-600' : failed ? 'text-red-600' : 'text-indigo-600'}`}>
+        <span className={`text-xs font-semibold ${met ? 'text-success-fg' : failed ? 'text-danger-fg' : 'text-indigo-600'}`}>
           {approved} of {required} approved
         </span>
       </div>
@@ -536,7 +628,7 @@ function CommitteeApprovals({ task }) {
           : `Needs ${required} of ${total} approvals to pass. ${rejected > 0 ? `${rejected} rejected so far.` : ''}`}
       </p>
       <div className="h-1.5 rounded-full bg-surface-3 overflow-hidden mb-3">
-        <div className={`h-full ${met ? 'bg-green-500' : failed ? 'bg-red-500' : 'bg-indigo-500'}`} style={{ width: `${pct}%` }} />
+        <div className={`h-full ${met ? 'bg-success-solid' : failed ? 'bg-danger-solid' : 'bg-indigo-500'}`} style={{ width: `${pct}%` }} />
       </div>
       <ul className="space-y-2">
         {voters.map((v) => {
@@ -550,7 +642,9 @@ function CommitteeApprovals({ task }) {
               </span>
               <span className={`text-[11px] font-medium shrink-0 ${meta.text}`}>
                 {meta.label}
-                {vote?.decidedAt ? ` · ${vote.decidedAt}` : ''}
+                {vote?.decidedAt ? (
+                  <time dateTime={isoAttr(vote.decidedAtIso)}> · {vote.decidedAt}</time>
+                ) : ''}
               </span>
             </li>
           )
@@ -614,7 +708,9 @@ function ApprovalChain({ task }) {
                 </div>
                 <p className="text-xs text-fg-muted mt-0.5">{stageLine(s)}</p>
                 {s.decidedAt && (
-                  <p className="text-[11px] text-fg-subtle mt-0.5">{s.decidedAt}</p>
+                  <time dateTime={isoAttr(s.decidedAtIso)} className="block text-[11px] text-fg-subtle mt-0.5">
+                    {s.decidedAt}
+                  </time>
                 )}
               </div>
             </li>
@@ -639,7 +735,9 @@ function ApprovalHistory({ task }) {
               <div className="leading-tight">
                 <p className="text-sm text-fg">{step.label}</p>
                 {step.signature && <SignatureMark signature={step.signature} className="mt-1" />}
-                <p className="text-xs text-fg-subtle mt-0.5">{step.time}</p>
+                <time dateTime={isoAttr(step.at)} className="block text-xs text-fg-subtle mt-0.5">
+                  {step.time}
+                </time>
               </div>
             </li>
           ))}
@@ -650,32 +748,57 @@ function ApprovalHistory({ task }) {
 }
 
 function SlaStatus({ task }) {
-  const { totalHours = 24, assignedHoursAgo = 0 } = task.sla || {}
+  const { totalHours = 24, assignedHoursAgo = 0, hasSla = false } = task.sla || {}
+
+  // Without a due date there is no deadline to report. This panel used to
+  // invent "24 hours remaining · 24h SLA" for every such task.
+  if (!hasSla) {
+    return (
+      <section className="bg-surface border border-line rounded-lg px-5 py-4">
+        <h2 className="text-sm font-semibold text-fg mb-1">SLA status</h2>
+        <p className="text-sm text-fg-muted">No deadline set for this step.</p>
+        <p className="text-xs text-fg-subtle mt-2">
+          Assigned {assignedHoursAgo}h ago
+          {task.createdAt ? ` · ${formatDateTime(task.createdAt)}` : ''}
+        </p>
+      </section>
+    )
+  }
+
   const remaining = totalHours - assignedHoursAgo
   const pct = Math.max(0, Math.min(100, (assignedHoursAgo / totalHours) * 100))
   const breached = remaining < 0 || task.slaBreached
 
+  const hoursLabel = (h) => `${h} ${h === 1 ? 'hour' : 'hours'}`
   const remainingLabel = breached
-    ? `${Math.abs(Math.round(remaining))} hours overdue`
-    : `${Math.round(remaining)} hours remaining`
+    ? `${hoursLabel(Math.abs(Math.round(remaining)))} overdue`
+    : `${hoursLabel(Math.round(remaining))} remaining`
 
   const barColor = breached
-    ? 'bg-red-500'
+    ? 'bg-danger-solid'
     : pct >= 75
-    ? 'bg-orange-500'
-    : 'bg-green-500'
+    ? 'bg-warning-solid'
+    : 'bg-success-solid'
 
   return (
     <section className="bg-surface border border-line rounded-lg px-5 py-4">
       <h2 className="text-sm font-semibold text-fg mb-3">SLA status</h2>
-      <p className={`text-sm font-medium ${breached ? 'text-red-600' : 'text-fg'}`}>
-        {remainingLabel}
+      <p className={`text-sm font-medium ${breached ? 'text-danger-fg' : 'text-fg'}`}>
+        {breached ? '⚠ ' : ''}{remainingLabel}
       </p>
-      <div className="mt-2 h-1.5 rounded-full bg-surface-3 overflow-hidden">
+      <div
+        className="mt-2 h-1.5 rounded-full bg-surface-3 overflow-hidden"
+        role="progressbar"
+        aria-label="SLA elapsed"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(pct)}
+      >
         <div className={`h-full ${barColor} transition-all`} style={{ width: `${Math.max(0, pct)}%` }} />
       </div>
       <p className="text-xs text-fg-subtle mt-2">
         Assigned {assignedHoursAgo}h ago · {totalHours}h SLA
+        {task.dueDate ? ` · due ${formatDateTime(task.dueDate)}` : ''}
       </p>
     </section>
   )
@@ -691,13 +814,16 @@ function TaskDetail() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    if (id) {
-      tasksStore.loadOne(id)
-        .catch((e) => setError(e.message))
-        .finally(() => setLoading(false))
-    }
+  const load = useCallback(() => {
+    if (!id) return
+    setLoading(true)
+    setError('')
+    tasksStore.loadOne(id)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false))
   }, [id])
+
+  useEffect(() => { load() }, [load])
 
   const pageTitle = useMemo(() => {
     if (!task) return ''
@@ -707,7 +833,9 @@ function TaskDetail() {
   if (loading && !task) {
     return (
       <AppShell title="Loading task…" back={{ to: '/tasks', label: 'Back to inbox' }}>
-        <p className="text-sm text-fg-muted">Please wait while we fetch this task.</p>
+        <div className="bg-surface border border-line rounded-lg divide-y divide-line">
+          {Array.from({ length: 6 }).map((_, i) => <ListRowSkeleton key={i} />)}
+        </div>
       </AppShell>
     )
   }
@@ -715,11 +843,17 @@ function TaskDetail() {
   if (!task) {
     return (
       <AppShell title="Task unavailable" back={{ to: '/tasks', label: 'Back to inbox' }}>
-        <div className="bg-surface border border-line rounded-lg p-8 text-center max-w-md mx-auto">
-          <p className="text-sm text-fg-muted">{error || 'Task not found.'}</p>
-          <Link to="/tasks" className="mt-3 inline-block text-sm text-indigo-600 hover:text-indigo-700 font-medium">
-            Back to inbox
-          </Link>
+        <div className="bg-surface border border-line rounded-lg max-w-md mx-auto">
+          <ErrorState
+            title="We couldn't open this task"
+            message={error || 'Task not found.'}
+            onRetry={load}
+          />
+          <div className="pb-6 text-center">
+            <Link to="/tasks" className="text-sm text-indigo-600 hover:text-indigo-700 font-medium">
+              Back to inbox
+            </Link>
+          </div>
         </div>
       </AppShell>
     )
@@ -804,12 +938,13 @@ function TaskDetail() {
         <div className="lg:col-span-2 space-y-0">
           <SubmissionDetails task={task} />
           <PriorForms task={task} />
+          <IntegrationEvents task={task} />
           <PriorDocuments task={task} />
           {canAct && myVote ? (
             <section className="bg-surface border border-line rounded-lg px-6 py-5 mt-4">
               <h2 className="text-sm font-semibold text-fg mb-1">Your decision</h2>
               <p className="text-sm text-fg-muted">
-                You have already <span className={myVote.status === 'approved' ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>{myVote.status}</span> this
+                You have already <span className={myVote.status === 'approved' ? 'text-success-fg font-medium' : 'text-danger-fg font-medium'}>{myVote.status}</span> this
                 committee task. It stays open until the required number of approvals is reached.
               </p>
             </section>
@@ -847,11 +982,11 @@ function TaskDetail() {
                     type="button"
                     onClick={handleCancel}
                     disabled={busy === 'cancel'}
-                    className="px-4 py-1.5 text-xs font-medium rounded-md border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50 transition"
+                    className="px-4 py-1.5 text-xs font-medium rounded-md border border-danger-line text-danger-fg hover:bg-danger-subtle disabled:opacity-50 transition"
                   >
                     {busy === 'cancel' ? 'Cancelling…' : 'Cancel request'}
                   </button>
-                  {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+                  {error && <p className="mt-2 text-xs text-danger-fg">{error}</p>}
                 </div>
               )}
             </section>

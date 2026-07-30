@@ -5,7 +5,7 @@
 // Base URL of the NetFlow API. Defaults to the deployed Render backend so the
 // production build (Vercel) works without a dashboard env var. Override with
 // VITE_API_URL (e.g. http://localhost:5000) for local development.
-const BASE = import.meta.env.VITE_API_URL || 'https://netflow-s4de.onrender.com'
+const BASE = String(import.meta.env.VITE_API_URL || 'http://localhost:5000').trim()
 
 // Exposed so components can turn a relative attachment URL ("/uploads/x.pdf")
 // returned by the API into an absolute, openable link.
@@ -98,6 +98,42 @@ const request = async (method, endpoint, body, opts = {}) => {
   return data
 }
 
+// fetch() can't report upload progress, so multipart uploads go through XHR
+// when the caller wants a percentage. `onProgress` receives 0-100, or null when
+// the browser can't compute a total (chunked / unknown length).
+export const uploadWithProgress = (endpoint, formData, { onProgress, headers = {} } = {}) =>
+  new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${BASE}${endpoint}`)
+    const token = getToken()
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v)
+
+    xhr.upload.onprogress = (e) => {
+      if (!onProgress) return
+      onProgress(e.lengthComputable ? Math.round((e.loaded / e.total) * 100) : null)
+    }
+    xhr.onerror = () => reject(new ApiError('Network error - is the API server running?', 'NETWORK', 0))
+    xhr.onabort = () => reject(new ApiError('Upload cancelled', 'ABORTED', 0))
+    xhr.onload = () => {
+      let data = {}
+      if (xhr.responseText) {
+        try { data = JSON.parse(xhr.responseText) } catch { data = { error: xhr.responseText } }
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(data)
+        return
+      }
+      reject(new ApiError(
+        data.error || `Upload failed: ${xhr.status}`,
+        data.code || `HTTP_${xhr.status}`,
+        xhr.status,
+        data
+      ))
+    }
+    xhr.send(formData)
+  })
+
 export const api = {
   get:    (e, opts)      => request('GET', e, undefined, opts),
   post:   (e, body, opts) => request('POST', e, body, opts),
@@ -107,10 +143,14 @@ export const api = {
   // Multipart upload. Returns { file: { name, url, mime, size } }.
   // `maxMb` (optional) is forwarded so the server can enforce the field's
   // per-field size limit (capped server-side at the global ceiling).
-  upload: (file, maxMb, opts) => {
+  // Pass `onProgress` to get a 0-100 percentage while the bytes go up.
+  upload: (file, maxMb, opts = {}) => {
     const fd = new FormData()
     fd.append('file', file)
     const q = maxMb ? `?maxMb=${encodeURIComponent(maxMb)}` : ''
+    if (opts.onProgress) {
+      return uploadWithProgress(`/api/uploads${q}`, fd, opts)
+    }
     return request('POST', `/api/uploads${q}`, fd, opts)
   }
 }

@@ -29,10 +29,19 @@ export const authStore = {
     emit()
     return data.user
   },
+  // Patch the cached profile without re-issuing a token (e.g. tour completed).
+  updateUser(patch) {
+    if (!currentUser || !patch) return currentUser
+    const next = { ...currentUser, ...patch }
+    setStoredUser(next)
+    currentUser = next
+    emit()
+    return next
+  },
   // Returns a status object so the UI can branch:
   //   { status: 'ok', user }        → logged in
   //   { status: 'mfa', challenge }  → needs a 6-digit code (already enrolled)
-  //   { status: 'setup', challenge }→ admin must enrol MFA before entry
+  //   { status: 'setup', challenge }→ enrol MFA mid-login (legacy; unused when MFA is opt-in)
   async login(email, password, subdomain) {
     const body = { email, password }
     if (subdomain) body.subdomain = subdomain // step 9: org-scoped login by workspace
@@ -119,13 +128,10 @@ export const ROLE_LABELS = {
   HR: 'HR',
   VP: 'VP',
   CEO: 'CEO',
-  Employee: 'Employee',
-  Viewer: 'Viewer',
-  'Receiving Staff':   'Receiving Staff',
-  'Warehouse Manager': 'Warehouse Manager',
-  'Accounts Officer':  'Accounts Officer',
-  'Brand Rep':         'Brand Rep',
-  'Finance Approver':  'Finance Approver',
+  Employee: 'Employee'
 }
 
+// Fallback list for the self-registration screen only. That page runs without a
+// session, so it cannot read the tenant's real list — everywhere inside the app
+// uses lib/departmentsStore, which does. Self-registration is currently off.
 export const DEPARTMENTS = ['HR', 'Finance', 'IT', 'Operations', 'Sales', 'Legal', 'Warehouse', 'Accounts']

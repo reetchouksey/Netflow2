@@ -106,19 +106,26 @@ export const tasksStore = {
   }
 }
 
-export function useTasks() {
+// `enabled` is false in the platform shell, where tenant APIs are forbidden —
+// subscribing there would fire a request that always 403s.
+export function useTasks(enabled = true) {
   const snapshot = useSyncExternalStore(
-    tasksStore.subscribe,
-    tasksStore.getSnapshot,
-    tasksStore.getSnapshot
+    enabled ? tasksStore.subscribe : noopSubscribe,
+    enabled ? tasksStore.getSnapshot : getEmpty,
+    enabled ? tasksStore.getSnapshot : getEmpty
   )
   useEffect(() => {
+    if (!enabled) return
     if (cache.length === 0 && Date.now() - lastFetchedAt > 5000) {
       fetchMyTasks().catch(() => {})
     }
-  }, [])
+  }, [enabled])
   return snapshot
 }
+
+const EMPTY = []
+const getEmpty = () => EMPTY
+const noopSubscribe = () => () => {}
 
 export function useTask(id) {
   const tasks = useTasks()

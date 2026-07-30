@@ -9,6 +9,11 @@
   etc., and those automatically re-resolve per theme. Accent colors
   (indigo / emerald / rose / amber / sky …) are intentionally left as Tailwind
   defaults for v1 and spot-fixed with `dark:` where needed.
+
+  Dark token overrides MUST live in `@layer theme` so they win over the light
+  values `@theme` registers on `:root`. Overrides outside that layer lose the
+  cascade → surfaces stay white while `color-scheme: dark` paints input text
+  light = invisible white-on-white fields.
 */
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -25,24 +30,118 @@
 
   /* Lines */
   --color-line: #e5e7eb;         /* gray-200 — borders, dividers          */
+
+  /* Sign-in / password screens sit outside the app shell on their own wall */
+  --color-auth-bg: #f0f0ff;
+
+  /*
+    Status tones — success / danger / warning / info.
+    Each has a `-subtle` fill, a `-fg` text colour and a `-line` border so a
+    banner or badge is `bg-danger-subtle border-danger-line text-danger-fg`.
+    These re-resolve in dark mode, unlike raw `bg-red-50 text-red-700`.
+  */
+  --color-success-subtle: #ecfdf5;  /* emerald-50  */
+  --color-success-fg: #047857;      /* emerald-700 */
+  --color-success-line: #a7f3d0;    /* emerald-200 */
+  --color-success-solid: #10b981;   /* emerald-500 — dots, bars           */
+
+  --color-danger-subtle: #fef2f2;   /* red-50   */
+  --color-danger-fg: #b91c1c;       /* red-700  */
+  --color-danger-line: #fecaca;     /* red-200  */
+  --color-danger-solid: #ef4444;    /* red-500  */
+
+  --color-warning-subtle: #fffbeb;  /* amber-50  */
+  --color-warning-fg: #b45309;      /* amber-700 */
+  --color-warning-line: #fde68a;    /* amber-200 */
+  --color-warning-solid: #f59e0b;   /* amber-500 */
+
+  --color-info-subtle: #eef2ff;     /* indigo-50  */
+  --color-info-fg: #4338ca;         /* indigo-700 */
+  --color-info-line: #c7d2fe;       /* indigo-200 */
+  --color-info-solid: #6366f1;      /* indigo-500 */
 }
 
-.dark {
-  --color-surface: #0f172a;      /* slate-900 */
-  --color-surface-2: #111a2e;    /* slightly darker than cards for page   */
-  --color-surface-3: #1e293b;    /* slate-800 — fills / hover             */
+@layer theme {
+  .dark {
+    --color-surface: #0f172a;      /* slate-900 */
+    --color-surface-2: #111a2e;    /* slightly darker than cards for page   */
+    --color-surface-3: #1e293b;    /* slate-800 — fills / hover             */
 
-  --color-fg: #e2e8f0;           /* slate-200 */
-  --color-fg-muted: #94a3b8;     /* slate-400 */
-  --color-fg-subtle: #64748b;    /* slate-500 */
+    --color-fg: #e2e8f0;           /* slate-200 */
+    --color-fg-muted: #94a3b8;     /* slate-400 */
+    --color-fg-subtle: #64748b;     /* slate-500 */
 
-  --color-line: #293548;         /* subtle slate border                   */
+    --color-line: #293548;         /* subtle slate border                   */
+
+    --color-auth-bg: #0b1220;
+
+    /* Status tones: dim the fill, brighten the text so contrast holds on dark. */
+    --color-success-subtle: #06281d;
+    --color-success-fg: #6ee7b7;
+    --color-success-line: #0f5132;
+    --color-success-solid: #34d399;
+
+    --color-danger-subtle: #2c1214;
+    --color-danger-fg: #fca5a5;
+    --color-danger-line: #601b1b;
+    --color-danger-solid: #f87171;
+
+    --color-warning-subtle: #2b1d05;
+    --color-warning-fg: #fcd34d;
+    --color-warning-line: #5c3d0a;
+    --color-warning-solid: #fbbf24;
+
+    --color-info-subtle: #1a1f3d;
+    --color-info-fg: #a5b4fc;
+    --color-info-line: #333c73;
+    --color-info-solid: #818cf8;
+  }
 }
 
-html { color-scheme: light; }
-html.dark { color-scheme: dark; }
+/*
+  Stacking order
+  --------------
+  Overlay layers were picked ad hoc, which put the assistant button on top of
+  modals and the Admin panel's dialogs underneath the mobile nav. Keep new
+  overlays on this scale:
 
-body {
-  background-color: var(--color-surface-2);
-  color: var(--color-fg);
+    z-10      in-card popovers and chart tooltips
+    z-20      sticky page chrome (the top bar)
+    z-30      menus anchored to page chrome, bottom tab bar, assistant launcher
+    z-40      backdrop behind a drawer or dialog
+    z-50      slide-in drawers (mobile nav, response detail)
+    z-[60]    centred modals and dialogs
+    z-[70]    a dialog opened from another dialog
+    z-[100]   toasts
+    z-[110]   confirm dialog (must beat everything it guards)
+    z-[120]   skip link
+*/
+
+@layer base {
+  html { color-scheme: light; }
+  html.dark { color-scheme: dark; }
+
+  body {
+    background-color: var(--color-surface-2);
+    color: var(--color-fg);
+  }
+
+  /* Native controls inherit color-scheme paint; pin them to our tokens so
+     dark mode never leaves light text on a white field. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+  select,
+  textarea {
+    color: var(--color-fg);
+    background-color: var(--color-surface);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-fg-subtle);
+  }
+
+  option {
+    color: var(--color-fg);
+    background-color: var(--color-surface);
+  }
 }

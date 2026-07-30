@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { workflowsStore, WORKFLOW_CATEGORIES } from '../lib/workflowsStore'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { workflowsStore } from '../lib/workflowsStore'
+import { useDepartmentNames } from '../lib/departmentsStore'
 import { useForms } from '../lib/formsStore'
 import { api } from '../utils/api'
 import NodeTypesSidebar from './WorkflowCanvas/NodeTypesSidebar'
@@ -8,20 +9,138 @@ import WorkflowEditor from './WorkflowCanvas/WorkflowEditor'
 import NodeConfig from './WorkflowCanvas/NodeConfig'
 import { NODE_DEFAULTS, NODE_STYLES, createNodeId } from './WorkflowCanvas/nodeStyles'
 import { confirm } from '../lib/confirmStore'
+import { toast } from '../lib/toastStore'
+import { limitBanner } from '../lib/limitFeedback'
+import { AlertBanner } from '../components/Alert'
+import { createDraftStore, useBeforeUnloadWarning } from '../utils/localDraft'
+import { fetchAllUsers } from '../utils/users'
+import { useFocusTrap, useScrollLock } from '../utils/a11y'
 
-const STEPS = [
-  { id: 1, label: 'Choose template' },
-  { id: 2, label: 'Build workflow' },
-  { id: 3, label: 'Settings & triggers' },
-  { id: 4, label: 'Review & publish' },
-]
+const apiBase = () => String(import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/$/, '')
+
+const draftStore = createDraftStore('netflow.workflow.draft.v1')
+const readDraft = () => {
+  const d = draftStore.read()
+  return d?.data?.settings ? d : null
+}
+
+function webhookUrlFor(token) {
+  if (!token) return ''
+  return `${apiBase()}/api/hooks/${token}`
+}
+
+function PublishSuccessModal({ open, name, webhookUrl, secret, onClose, onGoToList }) {
+  const panelRef = useRef(null)
+  useScrollLock(open)
+  useFocusTrap(open, panelRef, { onEscape: onClose })
+
+  if (!open) return null
+  const copy = async (text, label) => {
+    try {
+      await navigator.clipboard?.writeText(text)
+      toast.success(`${label} copied`)
+    } catch {
+      toast.error(`Could not copy ${label.toLowerCase()}`)
+    }
+  }
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="publish-success-title"
+        tabIndex={-1}
+        className="w-full max-w-lg rounded-xl bg-surface border border-line shadow-xl overflow-hidden focus:outline-none"
+      >
+        <div className="px-5 py-4 border-b border-line flex items-start gap-3">
+          <span className="mt-0.5 w-8 h-8 rounded-full bg-success-subtle text-success-fg flex items-center justify-center text-sm font-bold shrink-0">
+            ✓
+          </span>
+          <div className="min-w-0">
+            <h2 id="publish-success-title" className="text-base font-semibold text-fg">Workflow published</h2>
+            <p className="text-sm text-fg-muted mt-0.5 truncate">
+              {name || 'Untitled workflow'} is live.
+              {webhookUrl ? ' Copy the webhook credentials below for your external form.' : ''}
+            </p>
+          </div>
+        </div>
+        {webhookUrl ? (
+          <div className="px-5 py-4 space-y-3">
+            <div>
+              <label htmlFor="publish-webhook-url" className="block text-xs font-medium text-fg-muted mb-1">Webhook URL</label>
+              <div className="flex gap-2">
+                <input
+                  id="publish-webhook-url"
+                  type="text"
+                  readOnly
+                  value={webhookUrl}
+                  className="flex-1 px-3 py-2 text-xs font-mono rounded-md border border-line bg-surface-2 text-fg"
+                />
+                <button
+                  type="button"
+                  onClick={() => copy(webhookUrl, 'Webhook URL')}
+                  className="shrink-0 px-3 py-2 text-xs font-medium rounded-md border border-line bg-surface hover:bg-surface-2 text-fg"
+                >
+                  Copy
+                </button>
+              </div>
+            </div>
+            {secret ? (
+              <div>
+                <label htmlFor="publish-signing-secret" className="block text-xs font-medium text-fg-muted mb-1">Signing secret</label>
+                <div className="flex gap-2">
+                  <input
+                    id="publish-signing-secret"
+                    type="text"
+                    readOnly
+                    value={secret}
+                    className="flex-1 px-3 py-2 text-xs font-mono rounded-md border border-line bg-surface-2 text-fg"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => copy(secret, 'Signing secret')}
+                    className="shrink-0 px-3 py-2 text-xs font-medium rounded-md border border-line bg-surface hover:bg-surface-2 text-fg"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <p className="mt-1.5 text-[11px] text-fg-muted">
+                  Send header <code className="text-[10px]">X-NetFlow-Signature: sha256=&lt;hmac&gt;</code> with
+                  each POST. You can also find these anytime under Settings.
+                </p>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        <div className="px-5 py-3 border-t border-line flex items-center justify-end gap-2 bg-surface-2/50">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-2 text-sm font-medium rounded-md border border-line bg-surface hover:bg-surface-2 text-fg"
+          >
+            {webhookUrl ? 'Stay in editor' : 'Close'}
+          </button>
+          <button
+            type="button"
+            onClick={onGoToList}
+            className="px-3 py-2 text-sm font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 text-white"
+          >
+            Go to workflows
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const TEMPLATES = [
   {
     id: 'leave',
     title: 'Leave approval',
     subtitle: 'Employee → Manager → HR two-step leave flow',
-    iconClass: 'bg-blue-50 text-blue-600',
+    icon: 'calendar',
+    iconClass: 'bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300',
     defaults: {
       name: 'Leave Approval Workflow',
       category: 'HR',
@@ -48,7 +167,8 @@ const TEMPLATES = [
     id: 'expense',
     title: 'Expense reimbursement',
     subtitle: 'Submit receipts, manager sign-off, finance payout',
-    iconClass: 'bg-emerald-50 text-emerald-600',
+    icon: 'receipt',
+    iconClass: 'bg-success-subtle text-success-fg',
     defaults: {
       name: 'Expense Reimbursement',
       category: 'Finance',
@@ -71,7 +191,8 @@ const TEMPLATES = [
     id: 'it',
     title: 'IT access request',
     subtitle: 'Software / hardware provisioning approval',
-    iconClass: 'bg-purple-50 text-purple-600',
+    icon: 'key',
+    iconClass: 'bg-purple-50 text-purple-600 dark:bg-purple-500/15 dark:text-purple-300',
     defaults: {
       name: 'IT Access Request',
       category: 'IT',
@@ -96,7 +217,8 @@ const TEMPLATES = [
     id: 'po',
     title: 'Purchase order',
     subtitle: 'Multi-tier PO approval with CFO escalation',
-    iconClass: 'bg-amber-50 text-amber-600',
+    icon: 'cart',
+    iconClass: 'bg-warning-subtle text-warning-fg',
     defaults: {
       name: 'Purchase Order',
       category: 'Finance',
@@ -122,7 +244,8 @@ const TEMPLATES = [
     id: 'onboarding',
     title: 'Onboarding checklist',
     subtitle: 'New hire document collection and sign-offs',
-    iconClass: 'bg-pink-50 text-pink-600',
+    icon: 'userPlus',
+    iconClass: 'bg-pink-50 text-pink-600 dark:bg-pink-500/15 dark:text-pink-300',
     defaults: {
       name: 'Onboarding Checklist',
       category: 'HR',
@@ -147,6 +270,7 @@ const TEMPLATES = [
     id: 'scratch',
     title: 'Start from scratch',
     subtitle: 'Build a custom workflow from an empty canvas',
+    icon: 'plus',
     iconClass: 'bg-surface-3 text-fg-muted',
     defaults: {
       name: '',
@@ -154,19 +278,86 @@ const TEMPLATES = [
       description: '',
       formHint: '',
       nodes: [
-        { id: 'n1', type: 'start', title: 'Form submitted', subtitle: 'Start trigger', x: 300, y: 40 },
-        { id: 'n2', type: 'end', title: 'Completed', subtitle: 'Finish', x: 300, y: 440 },
+        { id: 'n1', type: 'start', title: 'Form submitted', subtitle: 'Start trigger', x: 320, y: 80 },
+        { id: 'n2', type: 'end', title: 'Completed', subtitle: 'Finish', x: 320, y: 220 },
       ],
       connections: [{ from: 'n1', to: 'n2' }],
     },
   },
 ]
 
-// Category + department lists mirror the backend enums exactly
-// (User.department / Workflow.department). Using anything else here
-// silently fails Mongoose validation on POST /api/workflows.
-const CATEGORIES = WORKFLOW_CATEGORIES
-const DEPARTMENTS = WORKFLOW_CATEGORIES
+function templateMeta(nodes = []) {
+  const steps = nodes.length
+  const approvals = nodes.filter((n) => n.type === 'approval' || n.type === 'multiApproval').length
+  const branching = nodes.some((n) => n.type === 'condition')
+  const parts = [
+    `${steps} step${steps === 1 ? '' : 's'}`,
+    `${approvals} approval${approvals === 1 ? '' : 's'}`,
+  ]
+  if (branching) parts.push('branching')
+  return parts.join(' · ')
+}
+
+function TemplateIcon({ name, className = 'w-5 h-5' }) {
+  const props = {
+    xmlns: 'http://www.w3.org/2000/svg',
+    className,
+    fill: 'none',
+    viewBox: '0 0 24 24',
+    stroke: 'currentColor',
+    strokeWidth: '2',
+    'aria-hidden': 'true',
+  }
+  switch (name) {
+    case 'calendar':
+      return (
+        <svg {...props}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+      )
+    case 'receipt':
+      return (
+        <svg {...props}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2zM10 8.5a.5.5 0 11-1 0 .5.5 0 011 0zm5 5a.5.5 0 11-1 0 .5.5 0 011 0z" />
+        </svg>
+      )
+    case 'key':
+      return (
+        <svg {...props}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+        </svg>
+      )
+    case 'cart':
+      return (
+        <svg {...props}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+        </svg>
+      )
+    case 'userPlus':
+      return (
+        <svg {...props}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+        </svg>
+      )
+    case 'plus':
+      return (
+        <svg {...props}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+        </svg>
+      )
+    default:
+      return (
+        <svg {...props}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+        </svg>
+      )
+  }
+}
+
+// The category *is* the owning department (it saves to Workflow.department), so
+// both pickers read the tenant's own list from useDepartmentNames() rather than
+// a constant — an org that renamed "Finance" to "Commercial" must not be shown
+// a category it no longer uses.
 
 // 'Manual trigger only' saves the linked form submission but does NOT auto-fire
 // the workflow — it can be started later via the execute endpoint instead.
@@ -179,96 +370,94 @@ const SUBMITTER_OPTIONS = ['All employees', 'Managers only', 'Specific people']
 
 const SLA_OPTIONS = ['Always', 'After first breach', 'Never']
 
-function StepIndicator({ current }) {
-  return (
-    <div className="border-b border-line bg-surface">
-      
-      <div className="px-6 py-4 flex items-center gap-3">
-        {STEPS.map((s, i) => {
-          const isCurrent = current === s.id
-          const isDone = current > s.id
-          return (
-            <React.Fragment key={s.id}>
-              <div className="flex items-center gap-2">
-                <div
-                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold ${
-                    isDone
-                      ? 'bg-green-500 text-white'
-                      : isCurrent
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-surface border border-line text-fg-subtle'
-                  }`}
-                >
-                  {isDone ? '✓' : s.id}
-                </div>
-                <span
-                  className={`text-sm ${
-                    isCurrent
-                      ? 'font-semibold text-fg'
-                      : isDone
-                      ? 'text-fg'
-                      : 'text-fg-muted'
-                  }`}
-                >
-                  {s.label}
-                </span>
-              </div>
-              {i < STEPS.length - 1 && (
-                <div className={`flex-1 h-px ${isDone ? 'bg-green-400' : 'bg-line'}`} />
-              )}
-            </React.Fragment>
-          )
-        })}
-        
-      </div>
-      
-    </div>
-    
-  )
-}
-
 function Step1Template({ selected, onSelect }) {
-  return (
-    <div className="max-w-4xl mx-auto">
-      <h2 className="text-xl font-bold text-fg">Choose a template to start with</h2>
-      <p className="text-sm text-fg-muted mt-1 mb-6">
-        Pick a pre-built workflow or start from scratch. You can customise everything in the next step.
-      </p>
+  const prebuilt = TEMPLATES.filter((t) => t.id !== 'scratch')
+  const scratch = TEMPLATES.find((t) => t.id === 'scratch')
+  const scratchSelected = selected === 'scratch'
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {TEMPLATES.map((t) => {
+  return (
+    <div className="max-w-5xl mx-auto">
+      <h2 className="text-2xl font-bold tracking-tight text-fg mb-6">Choose a template</h2>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {prebuilt.map((t) => {
           const isSelected = selected === t.id
           return (
             <button
               key={t.id}
+              type="button"
               onClick={() => onSelect(t.id)}
-              className={`text-left p-5 rounded-lg border transition ${
+              aria-pressed={isSelected}
+              className={`group relative text-left p-5 rounded-xl border bg-surface shadow-sm transition ${
                 isSelected
-                  ? 'border-indigo-400 bg-indigo-50/40 ring-2 ring-indigo-200'
-                  : 'border-line bg-surface hover:border-line'
+                  ? 'border-indigo-500 ring-2 ring-indigo-500/20 bg-indigo-50/50 dark:bg-indigo-500/10'
+                  : 'border-line hover:border-indigo-300 hover:shadow-md dark:hover:border-indigo-500/40'
               }`}
             >
-              <div
-                className={`w-9 h-9 rounded-md flex items-center justify-center mb-3 ${t.iconClass}`}
+              <span
+                className={`absolute top-4 right-4 w-5 h-5 rounded-full border-2 flex items-center justify-center transition ${
+                  isSelected
+                    ? 'border-indigo-600 bg-indigo-600'
+                    : 'border-line bg-surface group-hover:border-indigo-300'
+                }`}
+                aria-hidden="true"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-              </div>
-              <p className="font-semibold text-fg">{t.title}</p>
-              <p className="text-sm text-fg-muted mt-1">{t.subtitle}</p>
-              {isSelected && (
-                <p className="mt-3 text-sm font-medium text-indigo-600 flex items-center gap-1">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                {isSelected && (
+                  <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
-                  Selected
-                </p>
-              )}
+                )}
+              </span>
+
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-4 ${t.iconClass}`}>
+                <TemplateIcon name={t.icon} />
+              </div>
+              <p className="font-semibold text-fg pr-6">{t.title}</p>
+              <p className="mt-3 pt-3 border-t border-line text-xs text-fg-subtle">
+                {templateMeta(t.defaults.nodes)}
+              </p>
             </button>
           )
         })}
       </div>
+
+      <div className="flex items-center gap-3 my-7">
+        <hr className="flex-1 border-line" />
+        <span className="text-xs font-medium uppercase tracking-wider text-fg-subtle">or</span>
+        <hr className="flex-1 border-line" />
+      </div>
+
+      {scratch && (
+        <button
+          type="button"
+          onClick={() => onSelect(scratch.id)}
+          aria-pressed={scratchSelected}
+          className={`w-full flex items-center gap-4 text-left px-5 py-4 rounded-xl border-2 border-dashed transition ${
+            scratchSelected
+              ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-500/10'
+              : 'border-line bg-surface hover:border-indigo-300 dark:hover:border-indigo-500/40'
+          }`}
+        >
+          <span className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${scratch.iconClass}`}>
+            <TemplateIcon name={scratch.icon} />
+          </span>
+          <span className="min-w-0 flex-1 font-semibold text-fg">{scratch.title}</span>
+          <span
+            className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition ${
+              scratchSelected
+                ? 'bg-indigo-600 text-white'
+                : 'border-2 border-line text-transparent'
+            }`}
+            aria-hidden="true"
+          >
+            {scratchSelected && (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+          </span>
+        </button>
+      )}
     </div>
   )
 }
@@ -289,17 +478,51 @@ const pickTailNode = (nodes, selectedNodeId) => {
   return nodes[nodes.length - 1]
 }
 
-function Step2Builder({ data, setData }) {
+const GRID = 10
+const snap = (v) => Math.round(v / GRID) * GRID
+
+// Decision / Review need tagged approve|reject edges. A plain drag from those
+// nodes gets the next free branch so a dashed “looks connected” line isn’t left
+// untagged (which would fail at publish / runtime).
+function withBranchIfNeeded(fromNode, conn, existing) {
+  if (!fromNode || (fromNode.type !== 'condition' && fromNode.type !== 'review')) {
+    return conn
+  }
+  if (conn.branch === 'approve' || conn.branch === 'reject') return conn
+  const outs = existing.filter((c) => c.from === conn.from)
+  const hasApprove = outs.some((c) => c.branch === 'approve' || (!c.branch && !c.dashed))
+  const hasReject = outs.some((c) => c.branch === 'reject' || c.dashed)
+  if (!hasApprove) return { ...conn, branch: 'approve', dashed: false }
+  if (!hasReject) return { ...conn, branch: 'reject', dashed: true }
+  return conn
+}
+
+function Step2Builder({ data, setData, fitKey = 0 }) {
   const { nodes, connections, selectedNodeId } = data
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) || null
+  const flowProblems = useMemo(
+    () => graphIssues(nodes, connections),
+    [nodes, connections]
+  )
+  const problemNodeIds = useMemo(() => {
+    const ids = new Set()
+    for (const issue of flowProblems) {
+      for (const id of issue.nodeIds || []) ids.add(id)
+    }
+    return ids
+  }, [flowProblems])
 
   const selectNode = (id) => setData((d) => ({ ...d, selectedNodeId: id }))
 
   const updateNode = (updated) =>
     setData((d) => ({ ...d, nodes: d.nodes.map((n) => (n.id === updated.id ? updated : n)) }))
 
+  // Snap to a 10px grid so hand-placed nodes still line up with each other.
   const moveNode = (id, x, y) =>
-    setData((d) => ({ ...d, nodes: d.nodes.map((n) => (n.id === id ? { ...n, x, y } : n)) }))
+    setData((d) => ({
+      ...d,
+      nodes: d.nodes.map((n) => (n.id === id ? { ...n, x: snap(x), y: snap(y) } : n)),
+    }))
 
   const deleteNode = (id) =>
     setData((d) => ({
@@ -314,7 +537,7 @@ function Step2Builder({ data, setData }) {
   const addNodeAt = (type, x, y) => {
     const def = NODE_DEFAULTS[type] || {}
     const id = createNodeId()
-    const node = { id, type, x, y, ...def }
+    const node = { id, type, x: snap(x), y: snap(y), ...def }
     setData((d) => ({ ...d, nodes: [...d.nodes, node], selectedNodeId: id }))
   }
 
@@ -329,7 +552,7 @@ function Step2Builder({ data, setData }) {
       const x = tail ? tail.x : 300
       // Flow new nodes straight down. The canvas is a large pannable world now,
       // so we only cap near the world's bottom (use Fit/zoom to see them all).
-      const y = tail ? Math.min(tail.y + 110, 3900) : 40
+      const y = tail ? Math.min(tail.y + 120, 3900) : 40
       const node = { id, type, x, y, ...def }
 
       // Skip auto-connect if the tail already has an outgoing edge to avoid
@@ -337,10 +560,11 @@ function Step2Builder({ data, setData }) {
       const tailHasOutgoing =
         tail && d.connections.some((c) => c.from === tail.id)
 
-      const nextConnections =
-        tail && !tailHasOutgoing
-          ? [...d.connections, { from: tail.id, to: id }]
-          : d.connections
+      let nextConnections = d.connections
+      if (tail && !tailHasOutgoing) {
+        const conn = withBranchIfNeeded(tail, { from: tail.id, to: id }, d.connections)
+        nextConnections = [...d.connections, conn]
+      }
 
       return {
         ...d,
@@ -352,7 +576,11 @@ function Step2Builder({ data, setData }) {
   }
 
   const addConnection = (conn) =>
-    setData((d) => ({ ...d, connections: [...d.connections, conn] }))
+    setData((d) => {
+      const fromNode = d.nodes.find((n) => n.id === conn.from)
+      const next = withBranchIfNeeded(fromNode, conn, d.connections)
+      return { ...d, connections: [...d.connections, next] }
+    })
 
   const deleteConnection = (idx) =>
     setData((d) => ({ ...d, connections: d.connections.filter((_, i) => i !== idx) }))
@@ -360,14 +588,23 @@ function Step2Builder({ data, setData }) {
   const setConnections = (next) =>
     setData((d) => ({ ...d, connections: typeof next === 'function' ? next(d.connections) : next }))
 
+  const jumpToProblem = (issue) => {
+    const id = issue?.nodeIds?.[0]
+    if (id) selectNode(id)
+  }
+
   return (
-    <div className="bg-surface border border-line rounded-lg overflow-hidden">
-      <div className="flex h-[640px] min-h-0">
+    <div className="flex-1 min-h-0 flex flex-col bg-surface overflow-hidden">
+      <div className="flex flex-1 min-h-0">
         <NodeTypesSidebar onAddNode={addNodeAfterTail} />
         <WorkflowEditor
+          fitKey={fitKey}
           nodes={nodes}
           connections={connections}
           selectedNodeId={selectedNodeId}
+          problemNodeIds={problemNodeIds}
+          flowProblems={flowProblems}
+          onSelectProblem={jumpToProblem}
           onSelectNode={selectNode}
           onMoveNode={moveNode}
           onDropNewNode={addNodeAt}
@@ -387,36 +624,110 @@ function Step2Builder({ data, setData }) {
   )
 }
 
-function Section({ title, children }) {
+function Section({ title, description, icon, children }) {
   return (
-    <section className="bg-surface border border-line rounded-lg">
-      <div className="px-5 py-3 border-b border-line bg-surface-2/60 rounded-t-lg">
-        <h3 className="text-sm font-semibold text-fg">{title}</h3>
+    <section className="bg-surface border border-line rounded-xl shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-line bg-surface-2/40 flex items-start gap-3">
+        {icon && (
+          <span className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300 flex items-center justify-center shrink-0 ring-1 ring-indigo-100 dark:ring-indigo-500/30">
+            {icon}
+          </span>
+        )}
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-fg tracking-tight">{title}</h3>
+          {description && (
+            <p className="mt-0.5 text-xs text-fg-muted leading-relaxed">{description}</p>
+          )}
+        </div>
       </div>
-      <div className="p-5 space-y-4">{children}</div>
+      <div className="p-5 sm:p-6 space-y-5">{children}</div>
     </section>
   )
 }
 
-function Step3Settings({ data, setData, forms }) {
+function FieldLabel({ htmlFor, children, hint }) {
+  return (
+    <div className="mb-1.5">
+      <label htmlFor={htmlFor} className="block text-sm font-medium text-fg">
+        {children}
+      </label>
+      {hint && <p className="mt-0.5 text-xs text-fg-muted">{hint}</p>}
+    </div>
+  )
+}
+
+function ToggleRow({ checked, onChange, label, hint }) {
+  return (
+    <label className="flex items-start justify-between gap-4 rounded-lg border border-line bg-surface-2/40 px-4 py-3 cursor-pointer hover:bg-surface-2 transition">
+      <span className="min-w-0">
+        <span className="block text-sm font-medium text-fg">{label}</span>
+        {hint && <span className="block mt-0.5 text-xs text-fg-muted leading-relaxed">{hint}</span>}
+      </span>
+      <span className="relative inline-flex shrink-0 mt-0.5">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={onChange}
+          className="peer sr-only"
+        />
+        <span className="w-10 h-6 rounded-full bg-line peer-checked:bg-indigo-600 transition" />
+        <span className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition peer-checked:translate-x-4" />
+      </span>
+    </label>
+  )
+}
+
+function Step3Settings({ data, setData, forms, editId }) {
   const { settings } = data
+  const orgDepartments = useDepartmentNames()
+  // A workflow written before a department was renamed still names the old one;
+  // keep it in the list so opening the page does not quietly re-file the flow.
+  const categories = useMemo(
+    () => (settings.category && !orgDepartments.includes(settings.category)
+      ? [...orgDepartments, settings.category]
+      : orgDepartments),
+    [orgDepartments, settings.category]
+  )
   const update = (patch) => setData((d) => ({ ...d, settings: { ...d.settings, ...patch } }))
+  // A brand-new workflow starts with no category; once the tenant's list
+  // arrives, file it under the first team rather than showing an empty select.
+  useEffect(() => {
+    if (!settings.category && orgDepartments.length) update({ category: orgDepartments[0] })
+  }, [settings.category, orgDepartments])
   const updateAdvanced = (patch) =>
     setData((d) => ({
       ...d,
       settings: { ...d.settings, advanced: { ...d.settings.advanced, ...patch } },
     }))
+  const updateWebhook = (patch) =>
+    update({ inboundWebhook: { ...(settings.inboundWebhook || {}), ...patch } })
 
   // Active users for the "Specific people" initiator picker.
   const [users, setUsers] = useState([])
+  const [deliveries, setDeliveries] = useState([])
+  const [dlq, setDlq] = useState([])
+  const [showSecret, setShowSecret] = useState(false)
   useEffect(() => {
     let cancelled = false
-    api
-      .get('/api/users?isActive=true&limit=100')
+    fetchAllUsers({ isActive: true })
       .then((d) => { if (!cancelled) setUsers(d.users || []) })
       .catch(() => {})
     return () => { cancelled = true }
   }, [])
+
+  useEffect(() => {
+    if (!editId || !settings.inboundWebhook?.enabled) return
+    let cancelled = false
+    Promise.all([
+      api.get(`/api/workflows/${editId}/webhook-deliveries?limit=20`).catch(() => ({ deliveries: [] })),
+      api.get(`/api/workflows/${editId}/integration-dlq?limit=20`).catch(() => ({ items: [] })),
+    ]).then(([d, q]) => {
+      if (cancelled) return
+      setDeliveries(d.deliveries || [])
+      setDlq(q.items || [])
+    })
+    return () => { cancelled = true }
+  }, [editId, settings.inboundWebhook?.enabled])
 
   const allowedInitiators = settings.allowedInitiators || []
   const addInitiator = (id) => {
@@ -446,97 +757,382 @@ function Step3Settings({ data, setData, forms }) {
   }
 
   const inputCls =
-    'w-full px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400'
+    'w-full px-3.5 py-2.5 text-sm rounded-lg border border-line bg-surface text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition'
+  const btnGhost =
+    'shrink-0 px-3 py-2.5 text-xs font-semibold rounded-lg border border-line bg-surface hover:bg-surface-2 text-fg transition'
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4">
-      <div>
-        <h2 className="text-xl font-bold text-fg">Settings &amp; triggers</h2>
-        <p className="text-sm text-fg-muted mt-1">
-          Configure global settings, form linkage, and access for this workflow.
-        </p>
-      </div>
+    <div className="max-w-3xl mx-auto space-y-5 pb-2">
+      <h2 className="text-2xl font-bold tracking-tight text-fg">Settings</h2>
 
-      <Section title="Basic info">
-        <div>
-          <label className="block text-sm font-medium text-fg mb-1">Workflow name</label>
-          <input
-            type="text"
-            value={settings.name}
-            onChange={(e) => update({ name: e.target.value })}
-            placeholder="e.g. Leave Approval Workflow"
-            className={inputCls}
-          />
-        </div>
-        <div> 
-          <label className="block text-sm font-medium text-fg mb-1">Description</label>
-          <textarea
-            rows={3}
-            value={settings.description}
-            onChange={(e) => update({ description: e.target.value })}
-            className={`${inputCls} resize-none`}
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-fg mb-1">Category</label>
-          <select
-            value={settings.category}
-            onChange={(e) => update({ category: e.target.value })}
-            className={inputCls}
-          >
-            {CATEGORIES.map((c) => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
+      <Section
+        title="Basic info"
+        icon={(
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        )}
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div className="sm:col-span-2">
+            <FieldLabel htmlFor="wf-name">Workflow name</FieldLabel>
+            <input
+              id="wf-name"
+              type="text"
+              value={settings.name}
+              onChange={(e) => update({ name: e.target.value })}
+              placeholder="e.g. Leave Approval Workflow"
+              className={inputCls}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <FieldLabel htmlFor="wf-description">Description</FieldLabel>
+            <textarea
+              id="wf-description"
+              rows={2}
+              value={settings.description}
+              onChange={(e) => update({ description: e.target.value })}
+              className={`${inputCls} resize-none`}
+            />
+          </div>
+          <div>
+            <FieldLabel htmlFor="wf-category">Category</FieldLabel>
+            <select
+              id="wf-category"
+              value={settings.category}
+              onChange={(e) => update({ category: e.target.value })}
+              className={inputCls}
+            >
+              {categories.map((c) => (
+                <option key={c}>{c}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </Section>
 
-      <Section title="Form & trigger linkage">
-        <div>
-          <label className="block text-sm font-medium text-fg mb-1">Linked form</label>
-          <select
-            value={settings.linkedFormId || ''}
-            onChange={(e) => update({ linkedFormId: e.target.value || null })}
-            className={inputCls}
-          >
-            <option value="">— Select a published form —</option>
-            {publishedForms.map((f) => (
-              <option key={f.id} value={f.id}>{f.title}</option>
-            ))}
-          </select>
-          {publishedForms.length === 0 && (
-            <p className="mt-1 text-xs text-amber-600">
-              No published forms yet. Create one in Forms first, then come back.
-            </p>
-          )}
+      <Section
+        title="Form & trigger"
+        icon={(
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+          </svg>
+        )}
+      >
+        <div className="space-y-5">
+          <div>
+            <FieldLabel htmlFor="wf-linked-forms">Linked forms</FieldLabel>
+            {(() => {
+              const linkedIds = settings.linkedFormIds?.length
+                ? settings.linkedFormIds.map(String)
+                : (settings.linkedFormId ? [String(settings.linkedFormId)] : [])
+              return (
+                <>
+            <select
+              id="wf-linked-forms"
+              value=""
+              onChange={(e) => {
+                const id = e.target.value
+                if (!id) return
+                if (linkedIds.includes(id)) return
+                const next = [...linkedIds, id]
+                update({ linkedFormIds: next, linkedFormId: next[0] || null })
+                e.target.value = ''
+              }}
+              className={inputCls}
+            >
+              <option value="">+ Add a published form…</option>
+              {publishedForms
+                .filter((f) => !linkedIds.includes(String(f.id)))
+                .map((f) => (
+                  <option key={f.id} value={f.id}>{f.title}</option>
+                ))}
+            </select>
+            {publishedForms.length === 0 && (
+              <p className="mt-1.5 text-xs text-warning-fg">No published forms yet.</p>
+            )}
+            {linkedIds.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {linkedIds.map((id) => {
+                  const f = publishedForms.find((x) => String(x.id) === String(id))
+                    || forms.find((x) => String(x.id) === String(id))
+                  return (
+                    <span
+                      key={id}
+                      className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 text-xs rounded-md border border-info-line bg-info-subtle text-info-fg"
+                    >
+                      {f ? f.title : 'Unknown form'}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = linkedIds.filter((x) => String(x) !== String(id))
+                          update({ linkedFormIds: next, linkedFormId: next[0] || null })
+                        }}
+                        className="w-4 h-4 rounded hover:brightness-95 flex items-center justify-center text-info-fg"
+                        aria-label="Remove form"
+                      >
+                        &times;
+                      </button>
+                    </span>
+                  )
+                })}
+              </div>
+            )}
+                </>
+              )
+            })()}
+          </div>
+          <div>
+            <FieldLabel htmlFor="wf-trigger-on">Trigger on</FieldLabel>
+            <select
+              id="wf-trigger-on"
+              value={settings.triggerOn}
+              onChange={(e) => update({ triggerOn: e.target.value })}
+              className={inputCls}
+            >
+              {TRIGGER_OPTIONS.map((t) => (
+                <option key={t}>{t}</option>
+              ))}
+            </select>
+          </div>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-fg mb-1">Trigger on</label>
-          <select
-            value={settings.triggerOn}
-            onChange={(e) => update({ triggerOn: e.target.value })}
-            className={inputCls}
-          >
-            {TRIGGER_OPTIONS.map((t) => (
-              <option key={t}>{t}</option>
-            ))}
-          </select>
-        </div>
-        <label className="flex items-center gap-2 text-sm text-fg">
-          <input
-            type="checkbox"
-            checked={settings.preventDuplicates}
-            onChange={(e) => update({ preventDuplicates: e.target.checked })}
-            className="w-4 h-4 rounded border-line text-indigo-600 focus:ring-indigo-400"
-          />
-          Prevent duplicate submissions per user per day
-        </label>
+        <ToggleRow
+          checked={settings.preventDuplicates}
+          onChange={(e) => update({ preventDuplicates: e.target.checked })}
+          label="Block duplicate submissions (per user / day)"
+        />
       </Section>
 
-      <Section title="Access & permissions">
+      <Section
+        title="Inbound webhook"
+        icon={(
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        )}
+      >
+        <ToggleRow
+          checked={!!settings.inboundWebhook?.enabled}
+          onChange={(e) =>
+            update({
+              inboundWebhook: {
+                ...(settings.inboundWebhook || {}),
+                enabled: e.target.checked,
+              },
+            })
+          }
+          label="Enable inbound webhook"
+        />
+        {settings.inboundWebhook?.enabled && (
+          <div className="space-y-3">
+            {settings.inboundWebhook?.token ? (
+              <>
+                <div>
+                  <FieldLabel htmlFor="wf-webhook-url">Webhook URL</FieldLabel>
+                  <div className="flex gap-2">
+                    <input
+                      id="wf-webhook-url"
+                      type="text"
+                      readOnly
+                      value={webhookUrlFor(settings.inboundWebhook.token)}
+                      className={`${inputCls} font-mono text-xs`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const url = webhookUrlFor(settings.inboundWebhook.token)
+                        navigator.clipboard?.writeText(url)
+                        toast.success('Webhook URL copied')
+                      }}
+                      className={btnGhost}
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+                {settings.inboundWebhook?.secret && (
+                  <div>
+                    <FieldLabel htmlFor="wf-signing-secret">Signing secret</FieldLabel>
+                    <div className="flex gap-2">
+                      {/* Masked by default — this screen gets shared and
+                          screen-shared far more often than the secret is read. */}
+                      <input
+                        id="wf-signing-secret"
+                        type={showSecret ? 'text' : 'password'}
+                        readOnly
+                        value={settings.inboundWebhook.secret}
+                        className={`${inputCls} font-mono text-xs`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowSecret((v) => !v)}
+                        className={btnGhost}
+                      >
+                        {showSecret ? 'Hide' : 'Reveal'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard?.writeText(settings.inboundWebhook.secret)
+                          toast.success('Signing secret copied')
+                        }}
+                        className={btnGhost}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <FieldLabel htmlFor="wf-callback-url">
+                    Result callback URL
+                  </FieldLabel>
+                  <input
+                    id="wf-callback-url"
+                    type="url"
+                    value={settings.inboundWebhook?.callbackUrl || ''}
+                    onChange={(e) => updateWebhook({ callbackUrl: e.target.value })}
+                    placeholder="https://friend-app.example.com/netflow-result"
+                    className={inputCls}
+                  />
+                </div>
+                <div role="group" aria-labelledby="wf-payload-contract" className="rounded-lg border border-line bg-surface-2/30 p-3.5">
+                  <div className="flex items-center justify-between mb-1">
+                    <span id="wf-payload-contract" className="block text-sm font-medium text-fg">Expected fields</span>
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-indigo-600"
+                      onClick={() =>
+                        updateWebhook({
+                          expectedFields: [
+                            ...(settings.inboundWebhook?.expectedFields || []),
+                            { id: '', label: '', type: 'text', required: false },
+                          ],
+                        })
+                      }
+                    >
+                      + Add field
+                    </button>
+                  </div>
+                  {(settings.inboundWebhook?.expectedFields || []).length === 0 ? (
+                    <p className="text-[11px] text-fg-muted">None — any JSON keys accepted.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {(settings.inboundWebhook.expectedFields || []).map((f, i) => (
+                        <div key={i} className="flex flex-wrap gap-2 items-center">
+                          <input
+                            className={`${inputCls} flex-1 min-w-[6rem]`}
+                            placeholder="id (e.g. grnNo)"
+                            value={f.id}
+                            onChange={(e) => {
+                              const next = [...(settings.inboundWebhook.expectedFields || [])]
+                              next[i] = { ...next[i], id: e.target.value }
+                              updateWebhook({ expectedFields: next })
+                            }}
+                          />
+                          <input
+                            className={`${inputCls} flex-1 min-w-[6rem]`}
+                            placeholder="Label"
+                            value={f.label}
+                            onChange={(e) => {
+                              const next = [...(settings.inboundWebhook.expectedFields || [])]
+                              next[i] = { ...next[i], label: e.target.value }
+                              updateWebhook({ expectedFields: next })
+                            }}
+                          />
+                          <label className="flex items-center gap-1 text-xs text-fg">
+                            <input
+                              type="checkbox"
+                              checked={!!f.required}
+                              onChange={(e) => {
+                                const next = [...(settings.inboundWebhook.expectedFields || [])]
+                                next[i] = { ...next[i], required: e.target.checked }
+                                updateWebhook({ expectedFields: next })
+                              }}
+                            />
+                            Required
+                          </label>
+                          <button
+                            type="button"
+                            className="text-xs text-danger-fg"
+                            onClick={() => {
+                              const next = (settings.inboundWebhook.expectedFields || []).filter((_, j) => j !== i)
+                              updateWebhook({ expectedFields: next })
+                            }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => updateWebhook({ regenerateToken: true })}
+                  className="text-xs font-medium text-warning-fg hover:text-warning-fg"
+                >
+                  Regenerate token &amp; secret on next save
+                </button>
+                {settings.inboundWebhook?.regenerateToken && (
+                  <p className="text-[11px] text-warning-fg">
+                    New token &amp; secret on next save.
+                  </p>
+                )}
+                {editId && (
+                  <div className="pt-2 border-t border-line space-y-2">
+                    <p className="text-xs font-semibold text-fg">Recent deliveries</p>
+                    {deliveries.length === 0 ? (
+                      <p className="text-[11px] text-fg-muted">None yet.</p>
+                    ) : (
+                      <ul className="text-[11px] space-y-1 max-h-36 overflow-y-auto">
+                        {deliveries.map((d) => (
+                          <li key={d._id} className="flex gap-2 flex-wrap">
+                            <span className={d.ok ? 'text-success-fg' : 'text-danger-fg'}>{d.ok ? 'OK' : 'Fail'}</span>
+                            <span className="text-fg-muted">{d.statusCode}</span>
+                            <span className="text-fg-subtle">{d.createdAt ? new Date(d.createdAt).toLocaleString() : ''}</span>
+                            {d.error && <span className="text-fg">{d.error}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <p className="text-xs font-semibold text-fg pt-1">Dead letters</p>
+                    {dlq.length === 0 ? (
+                      <p className="text-[11px] text-fg-muted">None.</p>
+                    ) : (
+                      <ul className="text-[11px] space-y-1 max-h-36 overflow-y-auto">
+                        {dlq.map((d) => (
+                          <li key={d._id} className="text-warning-fg">
+                            {d.nodeId}: {d.error} {d.httpStatus ? `(HTTP ${d.httpStatus})` : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-xs text-warning-fg">
+                Save or publish to generate the webhook URL and secret.
+              </p>
+            )}
+          </div>
+        )}
+      </Section>
+
+      <Section
+        title="Access"
+        icon={(
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+        )}
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <div>
-          <label className="block text-sm font-medium text-fg mb-1">Who can submit</label>
+          <FieldLabel htmlFor="wf-who-can-submit">Who can submit</FieldLabel>
           <select
+            id="wf-who-can-submit"
             value={settings.whoCanSubmit}
             onChange={(e) => update({ whoCanSubmit: e.target.value })}
             className={inputCls}
@@ -564,9 +1160,7 @@ function Step3Settings({ data, setData, forms }) {
               </select>
 
               {allowedInitiators.length === 0 ? (
-                <p className="text-[11px] text-amber-600">
-                  Add at least one person — otherwise anyone who can see the form can start it.
-                </p>
+                <p className="text-[11px] text-warning-fg">Add at least one person.</p>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {allowedInitiators.map((id) => {
@@ -574,13 +1168,13 @@ function Step3Settings({ data, setData, forms }) {
                     return (
                       <span
                         key={id}
-                        className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 text-xs rounded-md border border-indigo-300 bg-indigo-50 text-indigo-700"
+                        className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 text-xs rounded-md border border-info-line bg-info-subtle text-info-fg"
                       >
                         {u ? u.name : 'Unknown user'}
                         <button
                           type="button"
                           onClick={() => removeInitiator(id)}
-                          className="w-4 h-4 rounded hover:bg-indigo-200 flex items-center justify-center text-indigo-500"
+                          className="w-4 h-4 rounded hover:brightness-95 flex items-center justify-center text-info-fg"
                           aria-label={`Remove ${u ? u.name : 'user'}`}
                         >
                           &times;
@@ -590,18 +1184,34 @@ function Step3Settings({ data, setData, forms }) {
                   })}
                 </div>
               )}
-              <p className="text-[11px] text-fg-muted">
-                Only these people can submit the linked form and start this workflow.
-              </p>
             </div>
           )}
         </div>
         <div>
-          <label className="block text-sm font-medium text-fg mb-1">Visibility</label>
-          <p className="text-xs text-fg-muted mb-1.5">Who can see and open this form.</p>
+          <FieldLabel htmlFor="wf-sla-notify">SLA breach notify</FieldLabel>
           <select
+            id="wf-sla-notify"
+            value={settings.notifyOnSlaBreach}
+            onChange={(e) => update({ notifyOnSlaBreach: e.target.value })}
+            className={inputCls}
+          >
+            {SLA_OPTIONS.map((s) => (
+              <option key={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+        </div>
+
+        <div>
+          <FieldLabel htmlFor="wf-visibility">Visibility</FieldLabel>
+          <select
+            id="wf-visibility"
             value={settings.visibility}
-            onChange={(e) => update({ visibility: e.target.value })}
+            onChange={(e) => {
+              const visibility = e.target.value
+              const needsSeed = visibility === 'departments' && !(settings.visibleDepartments || []).length
+              update(needsSeed ? { visibility, visibleDepartments: [...orgDepartments] } : { visibility })
+            }}
             className={inputCls}
           >
             <option value="company">Company-wide (everyone)</option>
@@ -610,17 +1220,17 @@ function Step3Settings({ data, setData, forms }) {
           </select>
 
           {settings.visibility === 'departments' && (
-            <div className="mt-2 flex flex-wrap gap-2">
-              {DEPARTMENTS.map((d) => {
+            <div className="mt-3 flex flex-wrap gap-2">
+              {orgDepartments.map((d) => {
                 const on = settings.visibleDepartments.includes(d)
                 return (
                   <button
                     key={d}
                     type="button"
                     onClick={() => toggleDept(d)}
-                    className={`px-3 py-1.5 text-xs rounded-md border transition flex items-center gap-1.5 ${
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition flex items-center gap-1.5 ${
                       on
-                        ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
+                        ? 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-500/40'
                         : 'border-line bg-surface text-fg-muted hover:bg-surface-2'
                     }`}
                   >
@@ -643,7 +1253,7 @@ function Step3Settings({ data, setData, forms }) {
           )}
 
           {settings.visibility === 'people' && (
-            <div className="mt-2 space-y-2">
+            <div className="mt-3 space-y-2">
               <select
                 value=""
                 onChange={(e) => {
@@ -664,9 +1274,7 @@ function Step3Settings({ data, setData, forms }) {
               </select>
 
               {visibleTo.length === 0 ? (
-                <p className="text-[11px] text-amber-600">
-                  Add at least one person, otherwise the form stays visible to everyone.
-                </p>
+                <p className="text-[11px] text-warning-fg">Add at least one person.</p>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {visibleTo.map((id) => {
@@ -674,13 +1282,13 @@ function Step3Settings({ data, setData, forms }) {
                     return (
                       <span
                         key={id}
-                        className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 text-xs rounded-md border border-indigo-300 bg-indigo-50 text-indigo-700"
+                        className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 text-xs rounded-lg border border-info-line bg-info-subtle text-info-fg"
                       >
                         {u ? u.name : 'Unknown user'}
                         <button
                           type="button"
                           onClick={() => removeVisiblePerson(id)}
-                          className="w-4 h-4 rounded hover:bg-indigo-200 flex items-center justify-center text-indigo-500"
+                          className="w-4 h-4 rounded hover:brightness-95 flex items-center justify-center text-info-fg"
                           aria-label="Remove person"
                         >
                           &times;
@@ -690,44 +1298,31 @@ function Step3Settings({ data, setData, forms }) {
                   })}
                 </div>
               )}
-              <p className="text-[11px] text-fg-muted">Only these people can see and open this form.</p>
             </div>
           )}
         </div>
-        <div>
-          <label className="block text-sm font-medium text-fg mb-1">
-            Notify admin on SLA breach
-          </label>
-          <select
-            value={settings.notifyOnSlaBreach}
-            onChange={(e) => update({ notifyOnSlaBreach: e.target.value })}
-            className={inputCls}
-          >
-            {SLA_OPTIONS.map((s) => (
-              <option key={s}>{s}</option>
-            ))}
-          </select>
-        </div>
       </Section>
 
-      <Section title="Advanced options">
-        {[
-          { key: 'allowCancel', label: 'Allow submitter to cancel pending request' },
-          { key: 'autoPdf', label: 'Auto-generate PDF on workflow completion' },
-        ].map((opt) => (
-          <label
-            key={opt.key}
-            className="flex items-center justify-between text-sm text-fg"
-          >
-            <span>{opt.label}</span>
-            <input
-              type="checkbox"
-              checked={!!settings.advanced[opt.key]}
-              onChange={(e) => updateAdvanced({ [opt.key]: e.target.checked })}
-              className="w-4 h-4 rounded border-line text-indigo-600 focus:ring-indigo-400"
-            />
-          </label>
-        ))}
+      <Section
+        title="Advanced"
+        icon={(
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+          </svg>
+        )}
+      >
+        <div className="space-y-3">
+          <ToggleRow
+            checked={!!settings.advanced.allowCancel}
+            onChange={(e) => updateAdvanced({ allowCancel: e.target.checked })}
+            label="Allow submitter to cancel"
+          />
+          <ToggleRow
+            checked={!!settings.advanced.autoPdf}
+            onChange={(e) => updateAdvanced({ autoPdf: e.target.checked })}
+            label="Auto-generate PDF on completion"
+          />
+        </div>
       </Section>
     </div>
   )
@@ -771,11 +1366,17 @@ function Step4Review({ data, forms }) {
       .join(' · ')
   }, [nodes])
 
-  const linkedFormTitle = useMemo(() => {
-    if (!settings.linkedFormId) return 'None'
-    const f = forms.find((x) => x.id === settings.linkedFormId)
-    return f ? f.title : '(form not found)'
-  }, [forms, settings.linkedFormId])
+  const linkedFormsLabel = useMemo(() => {
+    const ids = settings.linkedFormIds?.length
+      ? settings.linkedFormIds
+      : (settings.linkedFormId ? [settings.linkedFormId] : [])
+    if (!ids.length) return 'None'
+    const titles = ids.map((id) => {
+      const f = forms.find((x) => String(x.id) === String(id))
+      return f ? f.title : '(missing)'
+    })
+    return titles.join(', ')
+  }, [forms, settings.linkedFormId, settings.linkedFormIds])
 
   const hasApprover = (n) =>
     n.type === 'multiApproval'
@@ -783,38 +1384,52 @@ function Step4Review({ data, forms }) {
       : !!(n.approverId || n.approverRole || n.approver)
 
   const flowProblems = graphIssues(nodes, connections)
+  const notifyNodes = nodes.filter((n) => n.type === 'notify')
 
   const checklist = [
-    { label: 'Linked form is selected and published', ok: !!settings.linkedFormId },
     {
-      label: 'All approval, submit & review nodes have an assigned owner',
+      label: 'Name set',
+      ok: !!settings.name?.trim(),
+    },
+    {
+      label: 'Trigger configured',
+      ok: !!(settings.linkedFormIds?.length || settings.linkedFormId) || !!settings.inboundWebhook?.enabled,
+    },
+    {
+      label: 'Owners assigned',
       ok: nodes.filter((n) => n.type === 'approval' || n.type === 'multiApproval' || n.type === 'submit' || n.type === 'review').every(hasApprover),
     },
     {
-      label: 'SLA deadlines configured on all approval nodes',
+      label: 'SLA set on approvals',
       ok: nodes.filter((n) => n.type === 'approval').every((n) => !!n.slaValue),
     },
     {
-      label: 'Every step is connected (Decision branches, approvals → next, no orphans)',
+      label: 'All steps connected',
       ok: flowProblems.length === 0,
     },
-    { label: 'Email notification templates selected', ok: true },
+    {
+      label: notifyNodes.length ? 'Notify channels set' : 'No notify steps',
+      // `every` on an empty list is true, so this passes when there are none.
+      ok: notifyNodes.every((n) => (n.channels || []).length > 0),
+    },
   ]
-
+  const failing = checklist.filter((c) => !c.ok).length
   const connectionsCount = connections?.length ?? 0
 
   return (
     <div className="max-w-3xl mx-auto space-y-4">
-      <div>
-        <h2 className="text-xl font-bold text-fg">Review &amp; publish</h2>
-        <p className="text-sm text-fg-muted mt-1">
-          Everything looks good. Review the summary below, then hit Publish.
-        </p>
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-xl font-bold text-fg">Review</h2>
+        {failing > 0 && (
+          <p className="text-sm text-warning-fg">
+            {failing} {failing === 1 ? 'item' : 'items'} to fix
+          </p>
+        )}
       </div>
 
-      <Section title="Workflow summary">
+      <Section title="Summary">
         <div className="flex justify-end -mt-2">
-          <span className="px-2.5 py-0.5 rounded-md bg-amber-50 text-amber-700 text-xs font-medium">
+          <span className="px-2.5 py-0.5 rounded-md bg-warning-subtle text-warning-fg text-xs font-medium">
             Draft
           </span>
         </div>
@@ -822,28 +1437,26 @@ function Step4Review({ data, forms }) {
           {[
             ['Name', settings.name || '(unnamed)'],
             ['Category', settings.category],
-            ['Linked form', linkedFormTitle],
+            ['Forms', linkedFormsLabel],
             ['Trigger', settings.triggerOn],
+            ['Webhook', settings.inboundWebhook?.enabled ? 'On' : 'Off'],
             ['Visibility',
               settings.visibility === 'company'
                 ? 'Company-wide'
                 : settings.visibility === 'departments'
                   ? (settings.visibleDepartments.join(', ') || 'No departments')
-                  : `${(settings.visibleTo || []).length} specific ${(settings.visibleTo || []).length === 1 ? 'person' : 'people'}`],
-            ['Who can submit', settings.whoCanSubmit],
+                  : `${(settings.visibleTo || []).length} people`],
+            ['Submitters', settings.whoCanSubmit],
             ...(settings.whoCanSubmit === 'Specific people'
               ? [[
                   'Initiators',
                   (settings.allowedInitiators || []).length
-                    ? `${settings.allowedInitiators.length} specific ${settings.allowedInitiators.length === 1 ? 'person' : 'people'}`
-                    : 'None selected',
+                    ? `${settings.allowedInitiators.length} people`
+                    : 'None',
                 ]]
               : []),
-            ['SLA policy', slaPolicy],
-            [
-              'PDF generation',
-              settings.advanced.autoPdf ? 'Enabled on completion' : 'Disabled',
-            ],
+            ['SLA', slaPolicy],
+            ['PDF', settings.advanced.autoPdf ? 'On' : 'Off'],
           ].map(([k, v]) => (
             <React.Fragment key={k}>
               <dt className="col-span-1 text-fg-muted">{k}</dt>
@@ -853,10 +1466,10 @@ function Step4Review({ data, forms }) {
         </dl>
       </Section>
 
-      <Section title="Workflow canvas preview">
+      <Section title="Flow preview">
         <div className="flex items-center justify-between -mt-2 mb-1">
           <span className="text-xs text-fg-muted">
-            {nodes.length} nodes · {connectionsCount} connections
+            {nodes.length} nodes · {connectionsCount} links
           </span>
         </div>
         {/* Main (approved) flow rendered inline; each Decision's rejected branch
@@ -888,19 +1501,19 @@ function Step4Review({ data, forms }) {
         </div>
         {orphans.length > 0 && (
           <div className="mt-3 pl-2">
-            <p className="text-[11px] font-medium text-amber-600 mb-1">Not connected to the flow</p>
+            <p className="text-[11px] font-medium text-warning-fg mb-1">Disconnected</p>
             <PreviewChips path={orphans} muted />
           </div>
         )}
       </Section>
 
-      <Section title="Checklist before publishing">
+      <Section title="Checklist">
         <ul className="-my-2">
           {checklist.map((c) => (
             <li key={c.label} className="flex items-center gap-2 py-2 border-b border-line last:border-0">
               <span
                 className={`w-5 h-5 rounded-md flex items-center justify-center ${
-                  c.ok ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'
+                  c.ok ? 'bg-success-subtle text-success-fg' : 'bg-warning-subtle text-warning-fg'
                 }`}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
@@ -914,36 +1527,51 @@ function Step4Review({ data, forms }) {
       </Section>
 
       {flowProblems.length > 0 && (
-        <div className="p-4 rounded-md bg-red-50 border border-red-200 text-sm text-red-800">
-          <p className="font-semibold mb-1.5">Fix these before publishing:</p>
+        <div className="p-4 rounded-md bg-danger-subtle border border-danger-line text-sm text-danger-fg">
+          <p className="font-semibold mb-1.5">Fix before publishing</p>
           <ul className="list-disc pl-5 space-y-1">
             {flowProblems.map((p, i) => (
-              <li key={i}>{p}</li>
+              <li key={i}>{p.message}</li>
             ))}
           </ul>
         </div>
       )}
-
-      <div className="p-4 rounded-md bg-amber-50 border border-amber-200 text-sm text-amber-900">
-        Publishing will make this workflow live immediately. Existing form submissions will be
-        routed through this workflow. You can pause or unpublish at any time from the workflow list.
-      </div>
     </div>
   )
 }
 
 function NewWorkflow() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { id: editId } = useParams()
   const isEditMode = !!editId
   const forms = useForms()
+  const orgDepartments = useDepartmentNames()
+  // Read once, before any state initialiser looks at it.
+  const restoredDraft = useRef(isEditMode ? null : readDraft()).current
   // Edit mode starts at the canvas (step 2); create mode starts at template picker (step 1).
-  const [step, setStep] = useState(isEditMode ? 2 : 1)
+  // After publishing with inbound webhook, we reopen settings so the URL is copyable.
+  const [step, setStep] = useState(
+    location.state?.openSettings ? 3 : isEditMode ? 2 : restoredDraft?.step || 1
+  )
   const [publishing, setPublishing] = useState(false)
+  const [savingDraft, setSavingDraft] = useState(false)
   const [publishError, setPublishError] = useState('')
   const [loadError, setLoadError] = useState('')
+  const [loadedStatus, setLoadedStatus] = useState('')
+  const [draftNotice, setDraftNotice] = useState(!!restoredDraft)
+  const [publishSuccess, setPublishSuccess] = useState(() => location.state?.publishSuccess || null)
+  // Bumped when the canvas graph is replaced so WorkflowEditor auto-fits again.
+  const [canvasFitKey, setCanvasFitKey] = useState(0)
+  const isLive = isEditMode && loadedStatus === 'published'
+
+  useEffect(() => {
+    if (location.state?.openSettings) setStep(3)
+    if (location.state?.publishSuccess) setPublishSuccess(location.state.publishSuccess)
+  }, [location.state])
 
   const [data, setData] = useState(() => {
+    if (restoredDraft?.data) return restoredDraft.data
     const tpl = TEMPLATES.find((t) => t.id === 'scratch')
     return {
       template: 'scratch',
@@ -953,16 +1581,27 @@ function NewWorkflow() {
       settings: {
         name: '',
         description: '',
-        category: 'HR',
+        category: '',
         linkedFormId: null,
+        linkedFormIds: [],
         triggerOn: 'Every form submission',
         preventDuplicates: true,
         whoCanSubmit: 'All employees',
-        visibleDepartments: [...WORKFLOW_CATEGORIES],
+        // Filled from the tenant's list the first time visibility is set to
+        // 'departments' — there is no list to copy from at this point.
+        visibleDepartments: [],
         allowedInitiators: [],
         visibility: 'company',
         visibleTo: [],
         notifyOnSlaBreach: 'Always',
+        inboundWebhook: {
+          enabled: false,
+          token: '',
+          secret: '',
+          callbackUrl: '',
+          expectedFields: [],
+          regenerateToken: false,
+        },
         advanced: {
           allowCancel: false,
           autoPdf: true,
@@ -979,6 +1618,10 @@ function NewWorkflow() {
         const { workflow } = await api.get(`/api/workflows/${editId}`)
         const nodes = deserializeNodes(workflow.nodes)
         const connections = deserializeEdges(workflow.edges)
+        setLoadedStatus(workflow.status || '')
+        // Re-baseline the dirty check: what came back from the server is the
+        // new "unchanged" state, not whatever the empty initial state was.
+        pristineRef.current = null
         setData((d) => ({
           ...d,
           nodes,
@@ -987,8 +1630,16 @@ function NewWorkflow() {
             ...d.settings,
             name: workflow.title || '',
             description: workflow.description || '',
-            category: workflow.department || 'HR',
-            linkedFormId: workflow.linkedFormId || null,
+            category: workflow.department || d.settings.category,
+            linkedFormIds: (() => {
+              if (Array.isArray(workflow.linkedFormIds) && workflow.linkedFormIds.length) {
+                return workflow.linkedFormIds.map(String)
+              }
+              return workflow.linkedFormId ? [String(workflow.linkedFormId)] : []
+            })(),
+            linkedFormId: workflow.linkedFormId
+              ? String(workflow.linkedFormId)
+              : (workflow.linkedFormIds?.[0] ? String(workflow.linkedFormIds[0]) : null),
             whoCanSubmit: SUBMITTER_OPTIONS.includes(workflow.access?.whoCanSubmit)
               ? workflow.access.whoCanSubmit
               : d.settings.whoCanSubmit,
@@ -1005,6 +1656,21 @@ function NewWorkflow() {
               : d.settings.triggerOn,
             preventDuplicates: workflow.preventDuplicates === true,
             notifyOnSlaBreach: workflow.notifyOnSlaBreach || d.settings.notifyOnSlaBreach,
+            inboundWebhook: {
+              enabled: workflow.inboundWebhook?.enabled === true,
+              token: workflow.inboundWebhook?.token || '',
+              secret: workflow.inboundWebhook?.secret || '',
+              callbackUrl: workflow.inboundWebhook?.callbackUrl || '',
+              expectedFields: Array.isArray(workflow.inboundWebhook?.expectedFields)
+                ? workflow.inboundWebhook.expectedFields.map((f) => ({
+                    id: f.id || '',
+                    label: f.label || '',
+                    type: f.type || 'text',
+                    required: f.required === true,
+                  }))
+                : [],
+              regenerateToken: false,
+            },
             advanced: {
               ...d.settings.advanced,
               allowCancel: workflow.advanced?.allowCancel === true,
@@ -1012,6 +1678,7 @@ function NewWorkflow() {
             },
           },
         }))
+        setCanvasFitKey((k) => k + 1)
       } catch (err) {
         setLoadError(err.message || 'Could not load workflow')
       }
@@ -1037,75 +1704,230 @@ function NewWorkflow() {
       settings: {
         ...d.settings,
         name: tpl.defaults.name || d.settings.name,
-        category: tpl.defaults.category || d.settings.category,
+        // Templates are named after common teams; only adopt the suggestion when
+        // this tenant actually has that department.
+        category: orgDepartments.includes(tpl.defaults.category)
+          ? tpl.defaults.category
+          : d.settings.category,
         description: tpl.defaults.description || d.settings.description,
-        linkedFormId: matched ? matched.id : d.settings.linkedFormId,
+        linkedFormIds: matched
+          ? [matched.id]
+          : (d.settings.linkedFormIds || []),
+        linkedFormId: matched
+          ? matched.id
+          : d.settings.linkedFormId,
       },
     }))
+    setCanvasFitKey((k) => k + 1)
   }
+
+  // Mirror the wizard into localStorage so a refresh doesn't lose the canvas.
+  // Debounced, and only once the user has actually changed something — otherwise
+  // opening the builder and leaving would leave a "restore draft" prompt behind.
+  const pristineRef = useRef(null)
+  const [dirty, setDirty] = useState(false)
+  useEffect(() => {
+    const snapshot = JSON.stringify({ step, data })
+    if (pristineRef.current === null) {
+      pristineRef.current = snapshot
+      return
+    }
+    const changed = snapshot !== pristineRef.current
+    setDirty(changed)
+    if (isEditMode) return
+    if (!changed) {
+      draftStore.clear()
+      return
+    }
+    const t = setTimeout(() => draftStore.write({ step, data }), 600)
+    return () => clearTimeout(t)
+  }, [step, data, isEditMode])
+
+  useBeforeUnloadWarning(dirty && !publishing && !savingDraft)
 
   const handleDiscard = async () => {
     if (await confirm({ title: 'Discard workflow?', message: 'Unsaved changes will be lost.', confirmLabel: 'Discard', danger: false })) {
+      draftStore.clear()
       navigate('/workflows')
+    }
+  }
+
+  const buildPayload = () => {
+    const settings = data.settings
+    return {
+      name: settings.name.trim(),
+      description: settings.description,
+      category: settings.category,
+      linkedFormIds: (() => {
+        const ids = settings.linkedFormIds?.length
+          ? settings.linkedFormIds
+          : (settings.linkedFormId ? [settings.linkedFormId] : [])
+        return ids.map(String)
+      })(),
+      linkedFormId: (() => {
+        const ids = settings.linkedFormIds?.length
+          ? settings.linkedFormIds
+          : (settings.linkedFormId ? [settings.linkedFormId] : [])
+        return ids[0] || undefined
+      })(),
+      access: {
+        whoCanSubmit: settings.whoCanSubmit,
+        allowedInitiators:
+          settings.whoCanSubmit === 'Specific people'
+            ? settings.allowedInitiators || []
+            : [],
+        visibility: settings.visibility,
+        // departments only apply in 'departments' mode; an empty list there means
+        // "no restriction", which is also what selecting every team amounts to.
+        departments:
+          settings.visibility !== 'departments' ? [] : (settings.visibleDepartments || []),
+        visibleTo: settings.visibility === 'people' ? settings.visibleTo || [] : [],
+      },
+      triggerOn: settings.triggerOn,
+      preventDuplicates: settings.preventDuplicates === true,
+      notifyOnSlaBreach: settings.notifyOnSlaBreach,
+      inboundWebhook: {
+        enabled: settings.inboundWebhook?.enabled === true,
+        callbackUrl: settings.inboundWebhook?.callbackUrl || '',
+        expectedFields: Array.isArray(settings.inboundWebhook?.expectedFields)
+          ? settings.inboundWebhook.expectedFields
+          : [],
+        ...(settings.inboundWebhook?.regenerateToken ? { regenerateToken: true } : {}),
+      },
+      advanced: {
+        allowCancel: settings.advanced.allowCancel === true,
+        autoPdf: settings.advanced.autoPdf === true,
+      },
+      nodes: serializeNodes(data.nodes, data.connections),
+      edges: serializeEdges(data.connections),
+    }
+  }
+
+  // A name is the one thing we can't invent — it used to silently become
+  // "Untitled workflow", leaving lists full of identical entries.
+  const requireName = () => {
+    if (data.settings.name.trim()) return true
+    toast.error('Give the workflow a name before saving')
+    setStep(3)
+    return false
+  }
+
+  const handleSaveDraft = async () => {
+    if (!requireName()) return
+    if (isLive) {
+      const ok = await confirm({
+        title: 'Push changes live now?',
+        message: `"${data.settings.name.trim()}" is published, so saving applies your changes to new runs immediately. Runs already in progress keep the old steps.`,
+        confirmLabel: 'Save & go live',
+      })
+      if (!ok) return
+    }
+    setPublishError('')
+    setSavingDraft(true)
+    try {
+      if (isEditMode) {
+        await workflowsStore.update(editId, buildPayload())
+        toast.success(isLive ? 'Changes are live' : 'Draft saved')
+      } else {
+        const created = await workflowsStore.add(buildPayload())
+        draftStore.clear()
+        setDraftNotice(false)
+        toast.success('Draft saved — publish when you are ready')
+        navigate(`/workflows/${created.id}/edit`, { replace: true })
+      }
+    } catch (err) {
+      const limit = limitBanner(err)
+      const msg = limit ? `${limit.title} — ${limit.message}` : (err.message || 'Could not save the draft')
+      setPublishError(msg)
+      toast.error(msg)
+    } finally {
+      setSavingDraft(false)
     }
   }
 
   const handlePublish = async () => {
     setPublishError('')
+    if (!requireName()) return
     const issues = graphIssues(data.nodes, data.connections)
     if (issues.length) {
-      setPublishError(`Can't publish yet — ${issues[0]}${issues.length > 1 ? ` (+${issues.length - 1} more)` : ''}`)
+      const msg = `Can't publish yet — ${issues[0].message}${issues.length > 1 ? ` (+${issues.length - 1} more)` : ''}`
+      setPublishError(msg)
+      toast.error(msg)
       return
+    }
+    if (isLive) {
+      const ok = await confirm({
+        title: 'Push changes live now?',
+        message: `"${data.settings.name.trim()}" is already published, so new submissions start using these steps as soon as you save. Runs already in progress keep the old steps.`,
+        confirmLabel: 'Save & go live',
+      })
+      if (!ok) return
     }
     setPublishing(true)
     try {
-      const payload = {
-        name: data.settings.name || 'Untitled workflow',
-        description: data.settings.description,
-        category: data.settings.category,
-        linkedFormId: data.settings.linkedFormId || undefined,
-        access: {
-          whoCanSubmit: data.settings.whoCanSubmit,
-          allowedInitiators:
-            data.settings.whoCanSubmit === 'Specific people'
-              ? data.settings.allowedInitiators || []
-              : [],
-          visibility: data.settings.visibility,
-          // departments only apply in 'departments' mode; "all selected" → [] (open).
-          departments:
-            data.settings.visibility !== 'departments'
-              ? []
-              : (data.settings.visibleDepartments || []).length >= WORKFLOW_CATEGORIES.length
-                ? []
-                : data.settings.visibleDepartments,
-          visibleTo:
-            data.settings.visibility === 'people' ? data.settings.visibleTo || [] : [],
-        },
-        triggerOn: data.settings.triggerOn,
-        preventDuplicates: data.settings.preventDuplicates === true,
-        notifyOnSlaBreach: data.settings.notifyOnSlaBreach,
-        advanced: {
-          allowCancel: data.settings.advanced.allowCancel === true,
-          autoPdf: data.settings.advanced.autoPdf === true,
-        },
-        nodes: serializeNodes(data.nodes, data.connections),
-        edges: serializeEdges(data.connections)
-      }
+      const payload = buildPayload()
+      let saved
       if (isEditMode) {
         const updated = await workflowsStore.update(editId, payload)
         // Only publish if the updated doc came back as a draft (e.g. it was
         // paused before editing). If it's already published the PUT preserved
         // that status and a second publish call is unnecessary.
-        if (updated.status !== 'Active') {
-          await workflowsStore.publish(updated.id)
-        }
+        saved = updated.status !== 'Active'
+          ? await workflowsStore.publish(updated.id)
+          : updated
       } else {
         const created = await workflowsStore.add(payload)
-        await workflowsStore.publish(created.id)
+        saved = await workflowsStore.publish(created.id)
       }
+      const savedId = saved?.id
+      const wh = saved?.inboundWebhook || saved?._raw?.inboundWebhook
+      draftStore.clear()
+      setDraftNotice(false)
+
+      if (payload.inboundWebhook?.enabled && savedId) {
+        const token = wh?.token || ''
+        const secret = wh?.secret || ''
+        setData((d) => ({
+          ...d,
+          settings: {
+            ...d.settings,
+            inboundWebhook: {
+              ...(d.settings.inboundWebhook || {}),
+              enabled: true,
+              token,
+              secret,
+              regenerateToken: false,
+            },
+          },
+        }))
+        const successPayload = {
+          name: payload.name,
+          webhookUrl: webhookUrlFor(token),
+          secret,
+        }
+        setPublishSuccess(successPayload)
+        toast.success('Workflow published')
+        navigate(`/workflows/${savedId}/edit`, {
+          replace: true,
+          state: {
+            openSettings: true,
+            justPublished: true,
+            publishSuccess: successPayload,
+          },
+        })
+        setStep(3)
+        return
+      }
+
+      toast.success('Workflow published')
       navigate('/workflows')
     } catch (err) {
-      setPublishError(err.message || 'Failed to save workflow')
+      // Keeps the canvas intact and names the limit, so the builder can archive
+      // an old workflow and press publish again.
+      const limit = limitBanner(err)
+      const msg = limit ? `${limit.title} — ${limit.message}` : (err.message || 'Failed to save workflow')
+      setPublishError(msg)
+      toast.error(msg)
     } finally {
       setPublishing(false)
     }
@@ -1114,30 +1936,65 @@ function NewWorkflow() {
   if (loadError) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface-2">
-        <div className="p-6 rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm max-w-md text-center">
+        <div className="p-6 rounded-lg bg-danger-subtle border border-danger-line text-danger-fg text-sm max-w-md text-center">
           <p className="font-semibold mb-1">Could not load workflow</p>
           <p>{loadError}</p>
-          <button onClick={() => navigate('/workflows')} className="mt-4 px-4 py-2 rounded-md bg-red-600 text-white text-sm hover:bg-red-700 transition">Back to workflows</button>
+          <button onClick={() => navigate('/workflows')} className="mt-4 px-4 py-2 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700 transition">Back to workflows</button>
         </div>
       </div>
     )
   }
 
+  const builderFullscreen = step === 2
+
   return (
-    <div className="min-h-screen flex flex-col bg-surface-2 text-fg">
-
-
-      <StepIndicator current={step} />
-
-      <main className="flex-1 p-6 overflow-y-auto">
+    <div className="h-dvh flex flex-col bg-surface-2 text-fg overflow-hidden">
+      <main
+        data-tour="workflow-builder-main"
+        className={
+          builderFullscreen
+            ? 'flex-1 min-h-0 flex flex-col overflow-hidden'
+            : 'flex-1 min-h-0 p-6 overflow-y-auto'
+        }
+      >
+        {draftNotice && (
+          <div className={`mb-4 shrink-0 ${builderFullscreen ? 'px-4 pt-3' : 'max-w-3xl mx-auto'}`}>
+            <AlertBanner
+              tone="info"
+              onRetry={async () => {
+                const ok = await confirm({
+                  title: 'Start over?',
+                  message: 'Your restored draft will be thrown away and the builder resets to a blank workflow.',
+                  confirmLabel: 'Start fresh',
+                  danger: true,
+                })
+                if (!ok) return
+                draftStore.clear()
+                setDraftNotice(false)
+                navigate(0)
+              }}
+              retryLabel="Start fresh"
+            >
+              Picked up where you left off — this is an unsaved draft from your last visit.
+            </AlertBanner>
+          </div>
+        )}
+        {isLive && (
+          <div className={`mb-4 shrink-0 ${builderFullscreen ? 'px-4 pt-3' : 'max-w-3xl mx-auto'}`}>
+            <AlertBanner tone="warning">
+              This workflow is live. Saving applies your changes to new submissions straight away;
+              runs already in progress keep the steps they started with.
+            </AlertBanner>
+          </div>
+        )}
         {step === 1 && !isEditMode && <Step1Template selected={data.template} onSelect={applyTemplate} />}
-        {step === 2 && <Step2Builder data={data} setData={setData} />}
-        {step === 3 && <Step3Settings data={data} setData={setData} forms={forms} />}
+        {step === 2 && <Step2Builder data={data} setData={setData} fitKey={canvasFitKey} />}
+        {step === 3 && <Step3Settings data={data} setData={setData} forms={forms} editId={editId} />}
         {step === 4 && (
           <>
             <Step4Review data={data} forms={forms} />
             {publishError && (
-              <div className="max-w-3xl mx-auto mt-3 p-3 rounded-md bg-red-50 border border-red-200 text-red-700 text-sm">
+              <div className="max-w-3xl mx-auto mt-3 p-3 rounded-md bg-danger-subtle border border-danger-line text-danger-fg text-sm">
                 {publishError}
               </div>
             )}
@@ -1145,8 +2002,7 @@ function NewWorkflow() {
         )}
       </main>
 
-      <footer className="h-16 bg-surface border-t border-line px-6 flex items-center justify-between">
-        <p className="text-sm text-fg-muted">Step {step} of {STEPS.length}</p>
+      <footer data-tour="workflow-builder-actions" className="h-16 shrink-0 bg-surface border-t border-line px-6 flex items-center justify-end">
         <div className="flex items-center gap-2">
           {step > 1 && (
             <button
@@ -1168,10 +2024,20 @@ function NewWorkflow() {
             </svg>
             Discard
           </button>
+          <button
+            onClick={handleSaveDraft}
+            disabled={savingDraft || publishing}
+            className="px-4 py-2 rounded-md border border-line hover:bg-surface-2 disabled:opacity-60 disabled:cursor-not-allowed text-sm font-medium text-fg transition flex items-center gap-1.5"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1-4l-3 3-3-3m3 3V3" />
+            </svg>
+            {savingDraft ? 'Saving…' : isLive ? 'Save changes' : 'Save draft'}
+          </button>
           {step < 4 ? (
             <button
               onClick={() => setStep((s) => s + 1)}
-              className="px-4 py-2 rounded-md border border-line hover:bg-surface-2 text-sm font-medium text-fg transition flex items-center gap-1.5"
+              className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium shadow-sm transition flex items-center gap-1.5"
             >
               Continue
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -1187,12 +2053,23 @@ function NewWorkflow() {
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
-              {publishing ? 'Saving…' : isEditMode ? 'Save & publish' : 'Publish workflow'}
+              {publishing ? 'Publishing…' : isEditMode ? 'Save & publish' : 'Publish workflow'}
             </button>
           )}
         </div>
       </footer>
-      
+
+      <PublishSuccessModal
+        open={!!publishSuccess}
+        name={publishSuccess?.name}
+        webhookUrl={publishSuccess?.webhookUrl}
+        secret={publishSuccess?.secret}
+        onClose={() => setPublishSuccess(null)}
+        onGoToList={() => {
+          setPublishSuccess(null)
+          navigate('/workflows')
+        }}
+      />
     </div>
   )
 }
@@ -1220,49 +2097,95 @@ const toHours = (value, unit) => {
   return Math.max(1, Math.round(v * (SLA_UNIT_TO_HOURS[unit] ?? 1)))
 }
 
-// Structural checks run before publishing. These catch the broken graphs that
-// otherwise fail silently at runtime (e.g. a Decision node whose branches are
-// not connected, an approval with no next step, or an orphaned node).
+// Is this edge the approved / forward branch? Explicit tag wins; a plain
+// (non-dashed) edge from a Decision/Review counts as approve for legacy graphs.
+const isApproveEdge = (c) => c.branch === 'approve' || (!c.branch && !c.dashed)
+// Reject / changes-required: explicit tag or legacy dashed style.
+const isRejectEdge = (c) => c.branch === 'reject' || c.dashed === true
+
+// Structural checks for the canvas banner, Review checklist, and publish gate.
+// Returns { message, nodeIds }[] so the builder can highlight the bad nodes.
 function graphIssues(nodes, connections) {
   const issues = []
   const conns = connections || []
   const label = (n) => n.title || n.id
   const outFrom = (id) => conns.filter((c) => c.from === id)
+  const push = (message, nodeIds = []) => issues.push({ message, nodeIds: nodeIds.filter(Boolean) })
 
   for (const n of nodes) {
     if (n.type === 'condition') {
-      const hasApprove = conns.some((c) => c.from === n.id && c.branch === 'approve')
-      const hasReject = conns.some((c) => c.from === n.id && c.branch === 'reject')
+      const outs = outFrom(n.id)
+      const hasApprove = outs.some(isApproveEdge)
+      const hasReject = outs.some(isRejectEdge)
       if (!hasApprove || !hasReject) {
         const missing = [!hasApprove && 'Approved', !hasReject && 'Rejected']
           .filter(Boolean)
           .join(' and ')
-        issues.push(`Decision "${label(n)}" is missing its ${missing} branch — drag a connection from it to the next step.`)
+        push(
+          `Decision "${label(n)}" is missing its ${missing} branch — connect both paths (or set them in Node Config).`,
+          [n.id]
+        )
+      }
+      // Untagged extras confuse runtime; Decision may only have two branch edges.
+      if (outs.length > 2) {
+        push(
+          `Decision "${label(n)}" has extra connections — keep only Approved and Rejected paths.`,
+          [n.id]
+        )
       }
     }
     if (n.type === 'review') {
-      const hasForward = conns.some((c) => c.from === n.id && c.branch === 'approve')
-      const hasChanges = conns.some((c) => c.from === n.id && c.branch === 'reject')
+      const outs = outFrom(n.id)
+      const hasForward = outs.some(isApproveEdge)
+      const hasChanges = outs.some(isRejectEdge)
       if (!hasForward || !hasChanges) {
         const missing = [!hasForward && 'No-changes / forward', !hasChanges && 'Changes-required']
           .filter(Boolean)
           .join(' and ')
-        issues.push(`Review "${label(n)}" is missing its ${missing} branch — drag a connection from it to the next step.`)
+        push(
+          `Review "${label(n)}" is missing its ${missing} branch — connect both paths (or set them in Node Config).`,
+          [n.id]
+        )
       }
     }
     if ((n.type === 'approval' || n.type === 'multiApproval' || n.type === 'submit' || n.type === 'notify' || n.type === 'api' || n.type === 'timer') && outFrom(n.id).length === 0) {
-      issues.push(`"${label(n)}" has no next step — connect it to the following node (e.g. the next approval or End).`)
+      push(
+        `"${label(n)}" has no next step — connect it to the following node (e.g. the next approval or End).`,
+        [n.id]
+      )
+    }
+    if (n.type === 'end' && outFrom(n.id).length > 0) {
+      push(
+        `"${label(n)}" is an End step and should not connect onward — remove its outgoing link.`,
+        [n.id]
+      )
+    }
+  }
+
+  // Self-loops and edges to missing nodes.
+  for (const c of conns) {
+    if (c.from === c.to) {
+      const n = nodes.find((x) => x.id === c.from)
+      push(`"${label(n || { id: c.from })}" connects to itself — remove that loop.`, [c.from])
+    }
+    if (!nodes.some((n) => n.id === c.to)) {
+      push('A connection points to a missing node — delete the broken link.', [c.from])
     }
   }
 
   // Reachability from the Start node.
   const start = nodes.find((n) => n.type === 'start')
+  if (!start) {
+    push('There is no Start step — add one so NetFlow knows where a run begins.')
+  } else if (outFrom(start.id).length === 0) {
+    push('Start has no next step — drag a connection from it to the first step of the flow.', [start.id])
+  }
   if (start) {
     const seen = new Set([start.id])
     const stack = [start.id]
     while (stack.length) {
       const id = stack.pop()
-      for (const c of conns.filter((c) => c.from === id)) {
+      for (const c of conns.filter((edge) => edge.from === id)) {
         if (!seen.has(c.to)) {
           seen.add(c.to)
           stack.push(c.to)
@@ -1272,7 +2195,7 @@ function graphIssues(nodes, connections) {
     for (const n of nodes) {
       if (n.type === 'start') continue
       if (!seen.has(n.id)) {
-        issues.push(`"${label(n)}" is not reachable from Start — nothing connects into it.`)
+        push(`"${label(n)}" is not reachable from Start — nothing connects into it.`, [n.id])
       }
     }
   }
@@ -1352,14 +2275,15 @@ function serializeNodes(nodes, connections) {
     if (!firstNext.has(c.from)) firstNext.set(c.from, c.to)
   }
 
-  // Index Decision branch targets so we can compose config.truePath / falsePath.
+  // Index Decision / Review branch targets (truePath / falsePath, forward / changes).
+  // Legacy dashed edges count as reject; plain untagged as approve.
   const approveTargetByFrom = new Map()
   const rejectTargetByFrom = new Map()
   for (const c of connections || []) {
-    if (c.branch === 'approve' && !approveTargetByFrom.has(c.from)) {
+    if (isApproveEdge(c) && !approveTargetByFrom.has(c.from)) {
       approveTargetByFrom.set(c.from, c.to)
     }
-    if (c.branch === 'reject' && !rejectTargetByFrom.has(c.from)) {
+    if (isRejectEdge(c) && !rejectTargetByFrom.has(c.from)) {
       rejectTargetByFrom.set(c.from, c.to)
     }
   }
@@ -1475,8 +2399,7 @@ function serializeEdges(connections) {
   return (connections || []).map((c, i) => {
     let label = ''
     if (c.branch === 'approve') label = 'approved'
-    else if (c.branch === 'reject') label = 'rejected'
-    else if (c.dashed) label = 'reject'
+    else if (c.branch === 'reject' || c.dashed) label = 'rejected'
     return {
       id: `e${i}`,
       source: c.from,
@@ -1614,9 +2537,12 @@ function deserializeNodes(apiNodes) {
 function deserializeEdges(apiEdges) {
   return (apiEdges || []).map((e) => {
     const conn = { from: e.source, to: e.target }
-    if (e.label === 'approved') conn.branch = 'approve'
-    else if (e.label === 'rejected') conn.branch = 'reject'
-    else if (e.label === 'reject') conn.dashed = true
+    if (e.label === 'approved') {
+      conn.branch = 'approve'
+    } else if (e.label === 'rejected' || e.label === 'reject') {
+      conn.branch = 'reject'
+      conn.dashed = true
+    }
     return conn
   })
 }

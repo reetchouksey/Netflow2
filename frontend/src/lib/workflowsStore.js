@@ -45,10 +45,12 @@ export const workflowsStore = {
       description: input.description,
       department: input.category || input.department,
       linkedFormId: input.linkedFormId,
+      linkedFormIds: input.linkedFormIds,
       access: input.access,
       triggerOn: input.triggerOn,
       preventDuplicates: input.preventDuplicates,
       notifyOnSlaBreach: input.notifyOnSlaBreach,
+      inboundWebhook: input.inboundWebhook,
       advanced: input.advanced,
       nodes: input.nodes || [],
       edges: input.edges || []
@@ -72,8 +74,10 @@ export const workflowsStore = {
   },
   async publish(id) {
     const { workflow } = await api.post(`/api/workflows/${id}/publish`)
-    cache = cache.map((w) => (w.id === id ? adaptWorkflow(workflow) : w))
+    const adapted = adaptWorkflow(workflow)
+    cache = cache.map((w) => (w.id === id ? adapted : w))
     emit()
+    return adapted
   },
   async pause(id) {
     const { workflow } = await api.post(`/api/workflows/${id}/pause`)
@@ -86,10 +90,12 @@ export const workflowsStore = {
       description: input.description,
       department: input.category || input.department,
       linkedFormId: input.linkedFormId,
+      linkedFormIds: input.linkedFormIds,
       access: input.access,
       triggerOn: input.triggerOn,
       preventDuplicates: input.preventDuplicates,
       notifyOnSlaBreach: input.notifyOnSlaBreach,
+      inboundWebhook: input.inboundWebhook,
       advanced: input.advanced,
       nodes: input.nodes || [],
       edges: input.edges || []
@@ -112,18 +118,26 @@ export const workflowsStore = {
   }
 }
 
-export function useWorkflows() {
+// `enabled` is false in the platform shell, where tenant APIs are forbidden —
+// subscribing there would fire a request that always 403s.
+export function useWorkflows(enabled = true) {
   const snapshot = useSyncExternalStore(
-    workflowsStore.subscribe,
-    workflowsStore.getSnapshot,
-    workflowsStore.getSnapshot
+    enabled ? workflowsStore.subscribe : noopSubscribe,
+    enabled ? workflowsStore.getSnapshot : getEmpty,
+    enabled ? workflowsStore.getSnapshot : getEmpty
   )
   useEffect(() => {
+    if (!enabled) return
     if (cache.length === 0 && Date.now() - lastFetchedAt > 5000) {
       fetchAll().catch(() => {})
     }
-  }, [])
+  }, [enabled])
   return snapshot
 }
 
-export const WORKFLOW_CATEGORIES = ['HR', 'Finance', 'IT', 'Operations', 'Sales', 'Legal']
+const EMPTY = []
+const getEmpty = () => EMPTY
+const noopSubscribe = () => () => {}
+
+// A workflow's category is the department that owns it, so the list comes from
+// lib/departmentsStore (per tenant) rather than a constant kept here.

@@ -7,7 +7,7 @@ import { api, toAbsoluteUrl } from '../utils/api'
 import { fieldMaxMb, MAX_UPLOAD_MB } from '../utils/uploads'
 
 const inputCls =
-  'w-full px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition'
+  'w-full px-3 py-2 text-sm rounded-md border border-line bg-surface text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition'
 const inputErrorCls = 'border-red-400 focus:ring-red-200 focus:border-red-400'
 
 // Field types a designer can drop into a Submit-node form.
@@ -163,15 +163,43 @@ export function SignaturePad({ onChange, disabled, label }) {
           {uploaded && <SignatureMark signature={{ kind: 'uploaded', url: uploaded.url }} className="mt-2" />}
         </>
       )}
-      {err && <p className="mt-2 text-xs text-red-600">{err}</p>}
+      {err && <p className="mt-2 text-xs text-danger-fg">{err}</p>}
     </div>
   )
 }
 
 // Uploads the chosen file to /api/uploads and stores { name, url, mime, size }
 // as the field value, so it can later be opened as a real attachment.
+// Shared progress readout: a determinate bar when the browser reports totals,
+// an indeterminate shimmer otherwise. Big attachments used to show nothing but
+// the word "Uploading…" for a minute.
+export function UploadProgress({ percent }) {
+  const known = typeof percent === 'number'
+  return (
+    <div className="mt-1.5">
+      <div
+        className="h-1.5 w-full rounded-full bg-surface-3 overflow-hidden"
+        role="progressbar"
+        aria-label="Upload progress"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={known ? percent : undefined}
+      >
+        <div
+          className={`h-full rounded-full bg-info-solid transition-[width] duration-150 ${known ? '' : 'animate-pulse w-1/3'}`}
+          style={known ? { width: `${percent}%` } : undefined}
+        />
+      </div>
+      <p className="mt-1 text-xs text-fg-muted">
+        {known ? `Uploading… ${percent}%` : 'Uploading…'}
+      </p>
+    </div>
+  )
+}
+
 export function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB, disabled }) {
   const [uploading, setUploading] = useState(false)
+  const [progress, setProgress] = useState(null)
   const [uploadError, setUploadError] = useState('')
 
   const handleFile = async (e) => {
@@ -184,15 +212,17 @@ export function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB, disabled }) 
       return
     }
     setUploading(true)
+    setProgress(0)
     setUploadError('')
     try {
-      const { file: saved } = await api.upload(file, maxMb)
+      const { file: saved } = await api.upload(file, maxMb, { onProgress: setProgress })
       onChange(saved)
     } catch (err) {
       setUploadError(err.message || 'Upload failed')
       onChange('')
     } finally {
       setUploading(false)
+      setProgress(null)
     }
   }
 
@@ -204,15 +234,15 @@ export function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB, disabled }) 
         type="file"
         onChange={handleFile}
         disabled={uploading || disabled}
-        className="block w-full text-sm text-fg-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 disabled:opacity-60"
+        className="block w-full text-sm text-fg-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-info-subtle file:text-info-fg hover:file:brightness-95 disabled:opacity-60"
       />
       {!uploading && !uploadError && <p className="mt-1 text-xs text-fg-subtle">Max {maxMb} MB</p>}
-      {uploading && <p className="mt-1 text-xs text-fg-muted">Uploading…</p>}
-      {uploadError && <p className="mt-1 text-xs text-red-600">{uploadError}</p>}
+      {uploading && <UploadProgress percent={progress} />}
+      {uploadError && <p className="mt-1 text-xs text-danger-fg">{uploadError}</p>}
       {current && !uploading && (
-        <p className="mt-1 text-xs text-green-700">
+        <p className="mt-1 text-xs text-success-fg">
           Uploaded:{' '}
-          <a href={toAbsoluteUrl(current.url)} target="_blank" rel="noreferrer" className="underline hover:text-green-800">
+          <a href={toAbsoluteUrl(current.url)} target="_blank" rel="noreferrer" className="underline hover:brightness-110">
             {current.name}
           </a>
         </p>
@@ -223,14 +253,30 @@ export function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB, disabled }) 
 
 // Renders a single labelled field. `richSignature` swaps the plain typed-name
 // signature input for the full SignaturePad (typed-font / image upload).
+// `fieldDomId` keeps the label/input/error wiring and the scroll-to-first-error
+// lookup in one place — callers only need the field id.
+export const fieldDomId = (fieldId) => `ff-${fieldId}`
+
 export function FieldRow({ field, value, onChange, error, richSignature = false, disabled = false }) {
   const cls = `${inputCls} ${error ? inputErrorCls : ''}`
+  const inputId = fieldDomId(field.id)
+  const labelId = `${inputId}-label`
+  const errorId = error ? `${inputId}-error` : undefined
+  // Inputs that carry the label/error wiring. Checkbox has its own inline
+  // label, and the composite fields (file, grid, repeater, signature pad)
+  // render their own controls.
+  const a11y = {
+    id: inputId,
+    'aria-invalid': error ? true : undefined,
+    'aria-describedby': errorId,
+  }
 
   const renderInput = () => {
     switch (field.type) {
       case 'textarea':
         return (
           <textarea
+            {...a11y}
             rows={4}
             value={value ?? ''}
             disabled={disabled}
@@ -242,6 +288,7 @@ export function FieldRow({ field, value, onChange, error, richSignature = false,
       case 'number':
         return (
           <input
+            {...a11y}
             type="number"
             value={value ?? ''}
             disabled={disabled}
@@ -252,11 +299,11 @@ export function FieldRow({ field, value, onChange, error, richSignature = false,
         )
       case 'date':
         return (
-          <input type="date" value={value ?? ''} disabled={disabled} onChange={(e) => onChange(e.target.value)} className={cls} />
+          <input {...a11y} type="date" value={value ?? ''} disabled={disabled} onChange={(e) => onChange(e.target.value)} className={cls} />
         )
       case 'dropdown':
         return (
-          <select value={value ?? ''} disabled={disabled} onChange={(e) => onChange(e.target.value)} className={cls}>
+          <select {...a11y} value={value ?? ''} disabled={disabled} onChange={(e) => onChange(e.target.value)} className={cls}>
             <option value="">— Select —</option>
             {(field.options || []).map((opt) => (
               <option key={opt} value={opt}>{opt}</option>
@@ -267,6 +314,7 @@ export function FieldRow({ field, value, onChange, error, richSignature = false,
         return (
           <label className="flex items-center gap-2 text-sm text-fg">
             <input
+              {...a11y}
               type="checkbox"
               checked={!!value}
               disabled={disabled}
@@ -276,11 +324,32 @@ export function FieldRow({ field, value, onChange, error, richSignature = false,
             <span>{field.placeholder || 'Yes'}</span>
           </label>
         )
+      case 'radio':
+        return (
+          <div className="space-y-1.5" role="radiogroup" aria-labelledby={labelId} aria-describedby={errorId}>
+            {(field.options || []).map((opt, i) => (
+              <label key={opt} className="flex items-center gap-2 text-sm text-fg">
+                <input
+                  id={i === 0 ? inputId : undefined}
+                  type="radio"
+                  name={inputId}
+                  value={opt}
+                  checked={value === opt}
+                  disabled={disabled}
+                  onChange={(e) => onChange(e.target.value)}
+                  className="w-4 h-4 border-line text-indigo-600 focus:ring-indigo-400"
+                />
+                <span>{opt}</span>
+              </label>
+            ))}
+          </div>
+        )
       case 'signature':
         return richSignature ? (
           <SignaturePad onChange={onChange} disabled={disabled} />
         ) : (
           <input
+            {...a11y}
             type="text"
             value={value ?? ''}
             disabled={disabled}
@@ -297,6 +366,7 @@ export function FieldRow({ field, value, onChange, error, richSignature = false,
       default:
         return (
           <input
+            {...a11y}
             type="text"
             value={value ?? ''}
             disabled={disabled}
@@ -309,15 +379,38 @@ export function FieldRow({ field, value, onChange, error, richSignature = false,
   }
 
   return (
-    <div>
-      <label className="block text-sm font-medium text-fg mb-1">
+    <div data-field-row={field.id}>
+      <label id={labelId} htmlFor={inputId} className="block text-sm font-medium text-fg mb-1">
         {field.label}
-        {field.required && <span className="text-red-500 ml-0.5">*</span>}
+        {field.required && <span className="text-danger-fg ml-0.5" aria-hidden="true">*</span>}
+        {field.required && <span className="sr-only"> (required)</span>}
       </label>
       {renderInput()}
-      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+      {error && (
+        <p id={errorId} className="mt-1 text-xs text-danger-fg">
+          {error}
+        </p>
+      )}
     </div>
   )
+}
+
+// After a failed submit, bring the first offending field into view and focus it
+// — otherwise the errors can be several screens below the button.
+export function focusFirstError(fields, errors) {
+  const first = (fields || []).find((f) => errors?.[f.id])
+  if (!first) return
+  const row = document.querySelector(`[data-field-row="${first.id}"]`)
+  const control = document.getElementById(fieldDomId(first.id))
+  const target = control || row
+  try {
+    ;(row || target)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  } catch {
+    row?.scrollIntoView()
+  }
+  if (control && typeof control.focus === 'function') {
+    control.focus({ preventScroll: true })
+  }
 }
 
 // Conditional field logic: should a field be shown given the current answers?

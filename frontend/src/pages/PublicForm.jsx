@@ -7,10 +7,10 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { API_BASE, toAbsoluteUrl } from '../utils/api'
 import { fieldMaxMb } from '../utils/uploads'
-import { isFieldVisible, stripHiddenValues, validateField } from '../components/FormFields'
+import { fieldDomId, focusFirstError, isFieldVisible, stripHiddenValues, UploadProgress, validateField } from '../components/FormFields'
 
 const inputCls =
-  'w-full px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition'
+  'w-full px-3 py-2 text-sm rounded-md border border-line bg-surface text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition'
 const inputErrorCls = 'border-red-400 focus:ring-red-200 focus:border-red-400'
 
 // --- tiny fetch helpers (no auth headers, no redirect-on-401) ---------------
@@ -22,20 +22,33 @@ async function readJson(res) {
   return data
 }
 
-async function publicUpload(token, file, maxMb) {
+// XHR rather than fetch so the field can show a real percentage.
+function publicUpload(token, file, maxMb, onProgress) {
   const fd = new FormData()
   fd.append('file', file)
-  const res = await fetch(
-    `${API_BASE}/api/public/forms/${token}/upload?maxMb=${maxMb}`,
-    { method: 'POST', body: fd }
-  )
-  const data = await readJson(res)
-  return data.file
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${API_BASE}/api/public/forms/${token}/upload?maxMb=${maxMb}`)
+    xhr.upload.onprogress = (e) => {
+      onProgress?.(e.lengthComputable ? Math.round((e.loaded / e.total) * 100) : null)
+    }
+    xhr.onerror = () => reject(new Error('Network error — please try again'))
+    xhr.onload = () => {
+      let data = {}
+      if (xhr.responseText) {
+        try { data = JSON.parse(xhr.responseText) } catch { data = { error: xhr.responseText } }
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data.file)
+      else reject(new Error(data.error || `Upload failed (${xhr.status})`))
+    }
+    xhr.send(fd)
+  })
 }
 
 // --- field renderers (mirrors FillForm, but uploads via the public route) ---
 function FileField({ token, value, onChange, maxMb }) {
   const [uploading, setUploading] = useState(false)
+  const [progress, setProgress] = useState(null)
   const [uploadError, setUploadError] = useState('')
 
   const handleFile = async (e) => {
@@ -48,15 +61,17 @@ function FileField({ token, value, onChange, maxMb }) {
       return
     }
     setUploading(true)
+    setProgress(0)
     setUploadError('')
     try {
-      const saved = await publicUpload(token, file, maxMb)
+      const saved = await publicUpload(token, file, maxMb, setProgress)
       onChange(saved)
     } catch (err) {
       setUploadError(err.message || 'Upload failed')
       onChange('')
     } finally {
       setUploading(false)
+      setProgress(null)
     }
   }
 
@@ -68,15 +83,15 @@ function FileField({ token, value, onChange, maxMb }) {
         type="file"
         onChange={handleFile}
         disabled={uploading}
-        className="block w-full text-sm text-fg-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 disabled:opacity-60"
+        className="block w-full text-sm text-fg-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-info-subtle file:text-info-fg hover:file:brightness-95 disabled:opacity-60"
       />
       {!uploading && !uploadError && <p className="mt-1 text-xs text-fg-subtle">Max {maxMb} MB</p>}
-      {uploading && <p className="mt-1 text-xs text-fg-muted">Uploading…</p>}
-      {uploadError && <p className="mt-1 text-xs text-red-600">{uploadError}</p>}
+      {uploading && <UploadProgress percent={progress} />}
+      {uploadError && <p className="mt-1 text-xs text-danger-fg">{uploadError}</p>}
       {current && !uploading && (
-        <p className="mt-1 text-xs text-green-700">
+        <p className="mt-1 text-xs text-success-fg">
           Uploaded:{' '}
-          <a href={toAbsoluteUrl(current.url)} target="_blank" rel="noreferrer" className="underline hover:text-green-800">
+          <a href={toAbsoluteUrl(current.url)} target="_blank" rel="noreferrer" className="underline hover:brightness-110">
             {current.name}
           </a>
         </p>
@@ -123,11 +138,11 @@ function GridField({ field, value, onChange }) {
           <thead>
             <tr className="bg-surface-2">
               {cols.map((c) => (
-                <th key={c.id} className="px-2 py-1.5 text-left font-medium text-fg-muted border-b border-line whitespace-nowrap">
+                <th scope="col" key={c.id} className="px-2 py-1.5 text-left font-medium text-fg-muted border-b border-line whitespace-nowrap">
                   {c.label}
                 </th>
               ))}
-              <th className="w-8 border-b border-line" />
+              <th scope="col" className="w-8 border-b border-line"><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
@@ -150,7 +165,8 @@ function GridField({ field, value, onChange }) {
                     type="button"
                     onClick={() => removeRow(i)}
                     title="Remove row"
-                    className="text-fg-subtle hover:text-red-500 transition"
+                    aria-label={`Remove row ${i + 1}`}
+                    className="text-fg-subtle hover:text-danger-fg transition"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -165,7 +181,7 @@ function GridField({ field, value, onChange }) {
       <button
         type="button"
         onClick={addRow}
-        className="mt-2 px-3 py-1.5 rounded-md border border-dashed border-line text-sm text-fg-muted hover:border-indigo-300 hover:text-indigo-700 transition"
+        className="mt-2 px-3 py-1.5 rounded-md border border-dashed border-line text-sm text-fg-muted hover:border-info-line hover:text-info-fg transition"
       >
         + Add row
       </button>
@@ -175,18 +191,26 @@ function GridField({ field, value, onChange }) {
 
 function FieldRow({ token, field, value, onChange, error }) {
   const cls = `${inputCls} ${error ? inputErrorCls : ''}`
+  const inputId = fieldDomId(field.id)
+  const labelId = `${inputId}-label`
+  const errorId = error ? `${inputId}-error` : undefined
+  const a11y = {
+    id: inputId,
+    'aria-invalid': error ? true : undefined,
+    'aria-describedby': errorId,
+  }
 
   const renderInput = () => {
     switch (field.type) {
       case 'textarea':
-        return <textarea rows={4} value={value ?? ''} onChange={(e) => onChange(e.target.value)} placeholder={field.placeholder || ''} className={`${cls} resize-y`} />
+        return <textarea {...a11y} rows={4} value={value ?? ''} onChange={(e) => onChange(e.target.value)} placeholder={field.placeholder || ''} className={`${cls} resize-y`} />
       case 'number':
-        return <input type="number" value={value ?? ''} onChange={(e) => onChange(e.target.value)} placeholder={field.placeholder || ''} className={cls} />
+        return <input {...a11y} type="number" value={value ?? ''} onChange={(e) => onChange(e.target.value)} placeholder={field.placeholder || ''} className={cls} />
       case 'date':
-        return <input type="date" value={value ?? ''} onChange={(e) => onChange(e.target.value)} className={cls} />
+        return <input {...a11y} type="date" value={value ?? ''} onChange={(e) => onChange(e.target.value)} className={cls} />
       case 'dropdown':
         return (
-          <select value={value ?? ''} onChange={(e) => onChange(e.target.value)} className={cls}>
+          <select {...a11y} value={value ?? ''} onChange={(e) => onChange(e.target.value)} className={cls}>
             <option value="">— Select —</option>
             {(field.options || []).map((opt) => (
               <option key={opt} value={opt}>{opt}</option>
@@ -196,20 +220,20 @@ function FieldRow({ token, field, value, onChange, error }) {
       case 'checkbox':
         return (
           <label className="flex items-center gap-2 text-sm text-fg">
-            <input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} className="w-4 h-4 rounded border-line text-indigo-600 focus:ring-indigo-400" />
+            <input {...a11y} type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} className="w-4 h-4 rounded border-line text-indigo-600 focus:ring-indigo-400" />
             <span>{field.placeholder || 'Yes'}</span>
           </label>
         )
       case 'signature':
-        return <input type="text" value={value ?? ''} onChange={(e) => onChange(e.target.value)} placeholder="Type your full name to sign" className={cls} />
+        return <input {...a11y} type="text" value={value ?? ''} onChange={(e) => onChange(e.target.value)} placeholder="Type your full name to sign" className={cls} />
       case 'file':
         return <FileField token={token} value={value} onChange={onChange} maxMb={fieldMaxMb(field)} />
       case 'radio':
         return (
-          <div className="space-y-1.5">
-            {(field.options || []).map((opt) => (
+          <div className="space-y-1.5" role="radiogroup" aria-labelledby={labelId} aria-describedby={errorId}>
+            {(field.options || []).map((opt, i) => (
               <label key={opt} className="flex items-center gap-2 text-sm text-fg">
-                <input type="radio" name={field.id} value={opt} checked={value === opt} onChange={(e) => onChange(e.target.value)} className="w-4 h-4 border-line text-indigo-600 focus:ring-indigo-400" />
+                <input id={i === 0 ? inputId : undefined} type="radio" name={field.id} value={opt} checked={value === opt} onChange={(e) => onChange(e.target.value)} className="w-4 h-4 border-line text-indigo-600 focus:ring-indigo-400" />
                 <span>{opt}</span>
               </label>
             ))}
@@ -221,24 +245,32 @@ function FieldRow({ token, field, value, onChange, error }) {
         return <div className="text-xs text-fg-muted italic">This field type isn&apos;t supported here.</div>
       case 'text':
       default:
-        return <input type="text" value={value ?? ''} onChange={(e) => onChange(e.target.value)} placeholder={field.placeholder || ''} className={cls} />
+        return <input {...a11y} type="text" value={value ?? ''} onChange={(e) => onChange(e.target.value)} placeholder={field.placeholder || ''} className={cls} />
     }
   }
 
   return (
-    <div>
-      <label className="block text-sm font-medium text-fg mb-1">
+    <div data-field-row={field.id}>
+      <label id={labelId} htmlFor={inputId} className="block text-sm font-medium text-fg mb-1">
         {field.label}
-        {field.required && <span className="text-red-500 ml-0.5">*</span>}
+        {field.required && <span className="text-danger-fg ml-0.5" aria-hidden="true">*</span>}
+        {field.required && <span className="sr-only"> (required)</span>}
       </label>
       {renderInput()}
-      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+      {error && (
+        <p id={errorId} className="mt-1 text-xs text-danger-fg">
+          {error}
+        </p>
+      )}
     </div>
   )
 }
 
-  // ---------- shells ----------
-  const Page = ({ children }) => (
+// Module scope on purpose: defining this inside PublicForm gives it a new
+// component identity on every render, which remounts the whole form and drops
+// input focus on each keystroke.
+function Page({ children }) {
+  return (
     <div className="min-h-screen bg-surface-2">
       <header className="bg-surface border-b border-line">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-2">
@@ -252,6 +284,7 @@ function FieldRow({ token, field, value, onChange, error }) {
       </footer>
     </div>
   )
+}
 
 function PublicForm() {
   const { token } = useParams()
@@ -322,7 +355,10 @@ function PublicForm() {
     setSubmitError('')
     const errs = validate()
     setFieldErrors(errs)
-    if (Object.keys(errs).length > 0) return
+    if (Object.keys(errs).length > 0) {
+      focusFirstError(visibleFields, errs)
+      return
+    }
 
     setSubmitting(true)
     try {
@@ -353,8 +389,6 @@ function PublicForm() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-
-
   if (loading) {
     return <Page><div className="bg-surface border border-line rounded-lg p-8 text-center text-sm text-fg-muted">Loading form…</div></Page>
   }
@@ -374,8 +408,8 @@ function PublicForm() {
     return (
       <Page>
         <div className="bg-surface border border-line rounded-lg p-8 text-center">
-          <div className="mx-auto w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mb-3">
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+          <div className="mx-auto w-12 h-12 rounded-full bg-success-subtle flex items-center justify-center mb-3">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-success-fg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
@@ -408,12 +442,12 @@ function PublicForm() {
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-2 border-b border-line">
                 <div>
-                  <label className="block text-sm font-medium text-fg mb-1">Your name <span className="text-fg-subtle font-normal">(optional)</span></label>
-                  <input type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="e.g. Acme Supplies Ltd." />
+                  <label htmlFor="public-submitter-name" className="block text-sm font-medium text-fg mb-1">Your name <span className="text-fg-subtle font-normal">(optional)</span></label>
+                  <input id="public-submitter-name" name="name" autoComplete="name" type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="e.g. Acme Supplies Ltd." />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-fg mb-1">Your email <span className="text-fg-subtle font-normal">(optional)</span></label>
-                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} placeholder="you@company.com" />
+                  <label htmlFor="public-submitter-email" className="block text-sm font-medium text-fg mb-1">Your email <span className="text-fg-subtle font-normal">(optional)</span></label>
+                  <input id="public-submitter-email" name="email" autoComplete="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} placeholder="you@company.com" />
                 </div>
               </div>
 
@@ -431,7 +465,7 @@ function PublicForm() {
           )}
 
           {submitError && (
-            <div className="p-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-700">{submitError}</div>
+            <div className="p-3 rounded-md bg-danger-subtle border border-danger-line text-sm text-danger-fg">{submitError}</div>
           )}
 
           {visibleFields.length > 0 && (

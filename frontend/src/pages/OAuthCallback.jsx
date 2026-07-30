@@ -35,9 +35,15 @@ export default function OAuthCallback() {
     }
 
     ;(async () => {
-      setToken(token)
-      const user = await authStore.refresh()
-      navigate(user ? '/dashboard' : '/login?sso_error=session', { replace: true })
+      try {
+        setToken(token)
+        const user = await authStore.refresh()
+        navigate(user ? '/dashboard' : '/login?sso_error=session', { replace: true })
+      } catch {
+        // Never leave the user staring at "Signing you in…" — bounce to login
+        // so they can retry (e.g. /api/auth/me failed or the network dropped).
+        navigate('/login?sso_error=session', { replace: true })
+      }
     })()
   }, [navigate])
 

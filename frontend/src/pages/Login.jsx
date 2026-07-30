@@ -18,7 +18,7 @@ const SSO_ERROR_MESSAGES = {
   failed: 'Microsoft sign-in failed. Please try again.',
 }
 
-// ── Left panel decoration ──────────────────────────────────────────────────
+// ---------- Left panel decoration ----------
 function MockupCard() {
   return (
     <div className="relative w-full max-w-xs mx-auto mt-10">
@@ -29,7 +29,7 @@ function MockupCard() {
           {/* Donut */}
           <div className="relative w-20 h-20 flex-shrink-0">
             <svg viewBox="0 0 36 36" className="w-20 h-20 -rotate-90">
-              <circle cx="18" cy="18" r="15.9" fill="none" stroke="#e5e7eb" strokeWidth="3.5" />
+              <circle cx="18" cy="18" r="15.9" fill="none" stroke="var(--color-line)" strokeWidth="3.5" />
               <circle cx="18" cy="18" r="15.9" fill="none" stroke="#6366f1" strokeWidth="3.5"
                 strokeDasharray="75 25" strokeLinecap="round" />
             </svg>
@@ -55,16 +55,15 @@ function MockupCard() {
           </div>
         </div>
       </div>
-      {/* AI Routing badge */}
       <div className="absolute -bottom-4 -left-4 bg-surface rounded-xl shadow-lg px-3 py-2 flex items-center gap-2">
         <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center flex-shrink-0">
           <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
           </svg>
         </div>
         <div>
-          <p className="text-[11px] font-semibold text-fg">AI Routing</p>
-          <p className="text-[9px] text-fg-subtle">Smart decisions, faster outcomes</p>
+          <p className="text-[11px] font-semibold text-fg">Approvals</p>
+          <p className="text-[9px] text-fg-subtle">Clear owners, faster outcomes</p>
         </div>
       </div>
     </div>
@@ -81,7 +80,7 @@ function Login() {
   const [attemptsLeft, setAttemptsLeft] = useState(null)
   const [locked, setLocked] = useState(false)
 
-  // MFA flow: 'login' | 'mfa' (enter code) | 'setup' (admin enrol) | 'backup' (show codes)
+  // MFA flow: 'login' | 'mfa' (enter code) | 'setup' (opt-in enrol) | 'backup' (show codes)
   const [step, setStep] = useState('login')
   const [challenge, setChallenge] = useState('')
   const [code, setCode] = useState('')
@@ -229,9 +228,9 @@ function Login() {
   }
 
   return (
-    <div className="min-h-screen flex bg-[#f0f0ff]">
-      {/* ── Left branding panel ── */}
-      <div className="hidden lg:flex flex-col justify-between w-1/2 px-14 py-12 bg-[#f0f0ff]">
+    <div className="min-h-screen flex bg-auth-bg">
+      {/* ---------- Left branding panel ---------- */}
+      <div className="hidden lg:flex flex-col justify-between w-1/2 px-14 py-12 bg-auth-bg">
         {/* Logo */}
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shadow">
@@ -257,7 +256,7 @@ function Login() {
         </div>
       </div>
 
-      {/* ── Right form panel ── */}
+      {/* ---------- Right form panel ---------- */}
       <div className="flex flex-1 items-center justify-center px-6 py-12 bg-surface lg:rounded-l-3xl shadow-2xl">
         <div className="w-full max-w-sm">
           {/* Mobile logo */}
@@ -272,7 +271,7 @@ function Login() {
 
           {step === 'login' && (
           <>
-          {/* Workspace context (step 9 — subdomain routing) */}
+          {/* Workspace context (step 9 - subdomain routing) */}
           {orgContext && !orgUnknown && (
             <div className="inline-flex items-center gap-1.5 mb-3 px-2.5 py-1 rounded-full bg-indigo-50 border border-indigo-100 text-xs font-semibold text-indigo-700">
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -289,7 +288,7 @@ function Login() {
           </p>
 
           {orgSuspended && (
-            <div className="mb-5 p-3 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm flex items-start gap-2">
+            <div className="mb-5 p-3 rounded-lg border border-danger-line bg-danger-subtle text-danger-fg text-sm flex items-start gap-2">
               <svg className="w-4 h-4 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M12 3l9 16H3L12 3z" />
               </svg>
@@ -297,7 +296,7 @@ function Login() {
             </div>
           )}
           {orgUnknown && (
-            <div className="mb-5 p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-sm flex items-start gap-2">
+            <div className="mb-5 p-3 rounded-lg border border-warning-line bg-warning-subtle text-warning-fg text-sm flex items-start gap-2">
               <svg className="w-4 h-4 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M12 3l9 16H3L12 3z" />
               </svg>
@@ -309,10 +308,10 @@ function Login() {
             <div
               className={`mb-5 p-3 rounded-lg border text-sm flex items-start gap-2 ${
                 locked
-                  ? 'bg-red-50 border-red-200 text-red-700'
+                  ? 'bg-danger-subtle border-danger-line text-danger-fg'
                   : attemptsLeft !== null
-                    ? 'bg-amber-50 border-amber-200 text-amber-800'
-                    : 'bg-red-50 border-red-200 text-red-700'
+                    ? 'bg-warning-subtle border-warning-line text-warning-fg'
+                    : 'bg-danger-subtle border-danger-line text-danger-fg'
               }`}
             >
               <svg className="w-4 h-4 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -324,11 +323,11 @@ function Login() {
               </svg>
               <span>
                 {serverError}
-                {attemptsLeft !== null && !locked && attemptsLeft <= 2 && (
+                {/* The server message already spells out the remaining count, so
+                    only add emphasis on the final attempt. */}
+                {attemptsLeft === 1 && !locked && (
                   <span className="block mt-0.5 font-semibold">
-                    {attemptsLeft === 0
-                      ? 'This is your last try.'
-                      : `Warning: ${attemptsLeft} ${attemptsLeft === 1 ? 'attempt' : 'attempts'} remaining.`}
+                    This is your last try — one more failure locks your account.
                   </span>
                 )}
               </span>
@@ -351,11 +350,11 @@ function Login() {
                   id="email" name="email" type="email" autoComplete="email"
                   value={form.email} onChange={handleChange}
                   placeholder="Enter your email"
-                  className={`w-full pl-9 pr-4 py-2.5 rounded-lg border text-sm focus:outline-none focus:ring-2 transition ${errors.email ? 'border-red-400 focus:ring-red-200' : 'border-line focus:ring-indigo-200 focus:border-indigo-400'
+                  className={`w-full pl-9 pr-4 py-2.5 rounded-lg border border-line bg-surface text-fg placeholder:text-fg-subtle text-sm focus:outline-none focus:ring-2 transition ${errors.email ? 'border-red-400 focus:ring-red-200' : 'focus:ring-indigo-200 focus:border-indigo-400'
                     }`}
                 />
               </div>
-              {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
+              {errors.email && <p className="mt-1 text-xs text-danger-fg">{errors.email}</p>}
             </div>
 
             {/* Password */}
@@ -375,7 +374,7 @@ function Login() {
                   autoComplete="current-password"
                   value={form.password} onChange={handleChange}
                   placeholder="Enter your password"
-                  className={`w-full pl-9 pr-14 py-2.5 rounded-lg border text-sm focus:outline-none focus:ring-2 transition ${errors.password ? 'border-red-400 focus:ring-red-200' : 'border-line focus:ring-indigo-200 focus:border-indigo-400'
+                  className={`w-full pl-9 pr-14 py-2.5 rounded-lg border border-line bg-surface text-fg placeholder:text-fg-subtle text-sm focus:outline-none focus:ring-2 transition ${errors.password ? 'border-red-400 focus:ring-red-200' : 'focus:ring-indigo-200 focus:border-indigo-400'
                     }`}
                 />
                 <button
@@ -386,7 +385,7 @@ function Login() {
                   {showPassword ? 'Hide' : 'Show'}
                 </button>
               </div>
-              {errors.password && <p className="mt-1 text-xs text-red-600">{errors.password}</p>}
+              {errors.password && <p className="mt-1 text-xs text-danger-fg">{errors.password}</p>}
             </div>
 
             {/* Forgot password */}
@@ -443,7 +442,7 @@ function Login() {
                 Enter the 6-digit code from your authenticator app.
               </p>
               {mfaError && (
-                <div className="mb-5 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                <div className="mb-5 p-3 rounded-lg bg-danger-subtle border border-danger-line text-danger-fg text-sm">
                   {mfaError}
                 </div>
               )}
@@ -453,7 +452,7 @@ function Login() {
                   value={code}
                   onChange={(e) => { setCode(e.target.value); setMfaError('') }}
                   placeholder="Enter the 6-digit code"
-                  className="w-full px-4 py-2.5 rounded-lg border border-line text-sm tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition"
+                  className="w-full px-4 py-2.5 rounded-lg border border-line bg-surface text-fg placeholder:text-fg-subtle text-sm tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition"
                 />
                 <button
                   type="submit" disabled={busy}
@@ -476,7 +475,7 @@ function Login() {
                 Google Authenticator (or Authy), then enter the 6-digit code.
               </p>
               {mfaError && (
-                <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                <div className="mb-4 p-3 rounded-lg bg-danger-subtle border border-danger-line text-danger-fg text-sm">
                   {mfaError}
                 </div>
               )}
@@ -497,7 +496,7 @@ function Login() {
                   value={code}
                   onChange={(e) => { setCode(e.target.value); setMfaError('') }}
                   placeholder="Enter 6-digit code"
-                  className="w-full px-4 py-2.5 rounded-lg border border-line text-sm tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition"
+                  className="w-full px-4 py-2.5 rounded-lg border border-line bg-surface text-fg placeholder:text-fg-subtle text-sm tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition"
                 />
                 <button
                   type="submit" disabled={busy || !setupData}

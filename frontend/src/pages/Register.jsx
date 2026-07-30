@@ -66,9 +66,9 @@ function Register() {
   const inputErr  = 'border-red-300 focus:ring-red-200 focus:border-red-400'
 
   return (
-    <div className="h-screen overflow-hidden flex bg-[#f0f0ff]">
+    <div className="h-screen overflow-hidden flex bg-auth-bg">
       {/* ── Left branding panel ── */}
-      <div className="hidden lg:flex flex-col justify-between w-1/2 px-14 py-12 bg-[#f0f0ff]">
+      <div className="hidden lg:flex flex-col justify-between w-1/2 px-14 py-12 bg-auth-bg">
         {/* Logo */}
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shadow">
@@ -126,7 +126,7 @@ function Register() {
           <p className="text-sm text-fg-muted mt-1 mb-7">Start building approval workflows today.</p>
 
           {serverError && (
-            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+            <div className="mb-4 p-3 rounded-lg bg-danger-subtle border border-danger-line text-danger-fg text-sm">
               {serverError}
             </div>
           )}
@@ -139,14 +139,14 @@ function Register() {
                 <input id="firstName" name="firstName" type="text" autoComplete="given-name"
                   value={form.firstName} onChange={handleChange} placeholder="Arjun"
                   className={`${inputBase} ${errors.firstName ? inputErr : inputOk}`} />
-                {errors.firstName && <p className="mt-1 text-xs text-red-600">{errors.firstName}</p>}
+                {errors.firstName && <p className="mt-1 text-xs text-danger-fg">{errors.firstName}</p>}
               </div>
               <div>
                 <label htmlFor="lastName" className="block text-sm font-medium text-fg mb-1.5">Last name</label>
                 <input id="lastName" name="lastName" type="text" autoComplete="family-name"
                   value={form.lastName} onChange={handleChange} placeholder="Kumar"
                   className={`${inputBase} ${errors.lastName ? inputErr : inputOk}`} />
-                {errors.lastName && <p className="mt-1 text-xs text-red-600">{errors.lastName}</p>}
+                {errors.lastName && <p className="mt-1 text-xs text-danger-fg">{errors.lastName}</p>}
               </div>
             </div>
 
@@ -163,7 +163,7 @@ function Register() {
                   value={form.email} onChange={handleChange} placeholder="you@company.com"
                   className={`${inputBase} pl-9 ${errors.email ? inputErr : inputOk}`} />
               </div>
-              {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
+              {errors.email && <p className="mt-1 text-xs text-danger-fg">{errors.email}</p>}
             </div>
 
             {/* Department */}
@@ -194,7 +194,7 @@ function Register() {
                   {showPassword ? 'Hide' : 'Show'}
                 </button>
               </div>
-              {errors.password && <p className="mt-1 text-xs text-red-600">{errors.password}</p>}
+              {errors.password && <p className="mt-1 text-xs text-danger-fg">{errors.password}</p>}
             </div>
 
             {/* Terms */}
@@ -209,7 +209,7 @@ function Register() {
                   <a href="#" className="text-indigo-600 hover:text-indigo-800 font-medium">Privacy Policy</a>
                 </span>
               </label>
-              {errors.agree && <p className="mt-1 text-xs text-red-600">{errors.agree}</p>}
+              {errors.agree && <p className="mt-1 text-xs text-danger-fg">{errors.agree}</p>}
             </div>
 
             <button type="submit" disabled={submitting}

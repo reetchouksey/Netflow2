@@ -5,22 +5,21 @@ import React, { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../utils/api'
 
- const Shell = ({ children }) => (
-    <div className="min-h-screen flex items-center justify-center bg-[#f0f0ff] px-6 py-12">
-      <div className="w-full max-w-sm bg-surface rounded-2xl shadow-xl p-8">
-        <div className="flex items-center gap-2 mb-6">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
-            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-            </svg>
-          </div>
-          <span className="font-bold text-fg">NetFlow</span>
+const Shell = ({ children }) => (
+  <div className="min-h-screen flex items-center justify-center bg-auth-bg px-6 py-12">
+    <div className="w-full max-w-sm bg-surface rounded-2xl shadow-xl p-8">
+      <div className="flex items-center gap-2 mb-6">
+        <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
+          <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+          </svg>
         </div>
-        {children}
+        <span className="font-bold text-fg">NetFlow</span>
       </div>
+      {children}
     </div>
-  )
-
+  </div>
+)
 
 function ResetPassword() {
   const navigate = useNavigate()
@@ -131,7 +130,7 @@ function ResetPassword() {
       </p>
 
       {serverError && (
-        <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+        <div className="mb-4 p-3 rounded-lg bg-danger-subtle border border-danger-line text-danger-fg text-sm">
           {serverError}
         </div>
       )}
@@ -148,7 +147,7 @@ function ResetPassword() {
               autoComplete="new-password"
               value={form.password} onChange={handleChange}
               placeholder="At least 6 characters"
-              className={`w-full pl-4 pr-14 py-2.5 rounded-lg border text-sm focus:outline-none focus:ring-2 transition ${errors.password ? 'border-red-400 focus:ring-red-200' : 'border-line focus:ring-indigo-200 focus:border-indigo-400'}`}
+              className={`w-full pl-4 pr-14 py-2.5 rounded-lg border border-line bg-surface text-fg placeholder:text-fg-subtle text-sm focus:outline-none focus:ring-2 transition ${errors.password ? 'border-red-400 focus:ring-red-200' : 'focus:ring-indigo-200 focus:border-indigo-400'}`}
             />
             <button
               type="button"
@@ -158,7 +157,7 @@ function ResetPassword() {
               {showPassword ? 'Hide' : 'Show'}
             </button>
           </div>
-          {errors.password && <p className="mt-1 text-xs text-red-600">{errors.password}</p>}
+          {errors.password && <p className="mt-1 text-xs text-danger-fg">{errors.password}</p>}
         </div>
 
         <div>
@@ -171,9 +170,9 @@ function ResetPassword() {
             autoComplete="new-password"
             value={form.confirm} onChange={handleChange}
             placeholder="Re-enter your password"
-            className={`w-full px-4 py-2.5 rounded-lg border text-sm focus:outline-none focus:ring-2 transition ${errors.confirm ? 'border-red-400 focus:ring-red-200' : 'border-line focus:ring-indigo-200 focus:border-indigo-400'}`}
+            className={`w-full px-4 py-2.5 rounded-lg border border-line bg-surface text-fg placeholder:text-fg-subtle text-sm focus:outline-none focus:ring-2 transition ${errors.confirm ? 'border-red-400 focus:ring-red-200' : 'focus:ring-indigo-200 focus:border-indigo-400'}`}
           />
-          {errors.confirm && <p className="mt-1 text-xs text-red-600">{errors.confirm}</p>}
+          {errors.confirm && <p className="mt-1 text-xs text-danger-fg">{errors.confirm}</p>}
         </div>
 
         <button

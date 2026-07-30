@@ -1,8 +1,8 @@
 // Multi-tenancy polish - pages/ChangePassword.jsx
 // Handles two cases:
-//   • Forced change  — user.mustChangePassword is true (e.g. a Super-Admin-
+//   - Forced change: user.mustChangePassword is true (e.g. a Super-Admin-
 //     provisioned org admin on first login). Current password not required.
-//   • Voluntary change — reached from Profile; current password required.
+//   - Voluntary change: reached from Profile; current password required.
 
 import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
@@ -20,13 +20,18 @@ export default function ChangePassword() {
   const [show, setShow] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [touchedConfirm, setTouchedConfirm] = useState(false)
+
+  const mismatch = confirm.length > 0 && newPassword !== confirm
+  const showMismatch = touchedConfirm && mismatch
 
   const submit = async (e) => {
     e.preventDefault()
     setError('')
+    setTouchedConfirm(true)
     if (!forced && !currentPassword) return setError('Enter your current password')
     if (newPassword.length < 6) return setError('New password must be at least 6 characters')
-    if (newPassword !== confirm) return setError('New passwords do not match')
+    if (newPassword !== confirm) return setError('Passwords do not match')
 
     setBusy(true)
     try {
@@ -41,9 +46,10 @@ export default function ChangePassword() {
   }
 
   const field = 'mt-1 w-full px-3 py-2.5 text-sm border border-line rounded-lg bg-surface-2 text-fg focus:outline-none focus:ring-2 focus:ring-indigo-300'
+  const fieldError = 'mt-1 w-full px-3 py-2.5 text-sm border border-danger-line rounded-lg bg-surface-2 text-fg focus:outline-none focus:ring-2 focus:ring-danger-line/40'
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#f0f0ff] px-6 py-12">
+    <div className="min-h-screen flex items-center justify-center bg-auth-bg px-6 py-12">
       <div className="w-full max-w-sm bg-surface border border-line rounded-2xl shadow-xl p-6">
         <div className="flex items-center gap-2.5 mb-5">
           <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shadow">
@@ -62,7 +68,7 @@ export default function ChangePassword() {
         </p>
 
         {error && (
-          <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+          <div className="mb-4 p-3 rounded-lg bg-danger-subtle border border-danger-line text-danger-fg text-sm">
             {error}
           </div>
         )}
@@ -97,10 +103,21 @@ export default function ChangePassword() {
             <input
               type={show ? 'text' : 'password'}
               value={confirm}
-              onChange={(e) => { setConfirm(e.target.value); setError('') }}
+              onChange={(e) => {
+                setConfirm(e.target.value)
+                setTouchedConfirm(true)
+                setError('')
+              }}
+              onBlur={() => setTouchedConfirm(true)}
               autoComplete="new-password"
-              className={field}
+              aria-invalid={showMismatch}
+              className={showMismatch ? fieldError : field}
             />
+            {showMismatch && (
+              <p className="mt-1.5 text-xs font-medium text-danger-fg" role="alert">
+                Passwords do not match
+              </p>
+            )}
           </label>
 
           <label className="flex items-center gap-2 text-xs text-fg-muted">

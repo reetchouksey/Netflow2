@@ -31,7 +31,7 @@ function ForgotPassword() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#f0f0ff] px-6 py-12">
+    <div className="min-h-screen flex items-center justify-center bg-auth-bg px-6 py-12">
       <div className="w-full max-w-sm bg-surface rounded-2xl shadow-xl p-8">
         <div className="flex items-center gap-2 mb-6">
           <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
@@ -64,7 +64,7 @@ function ForgotPassword() {
             </p>
 
             {error && (
-              <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+              <div className="mb-4 p-3 rounded-lg bg-danger-subtle border border-danger-line text-danger-fg text-sm">
                 {error}
               </div>
             )}

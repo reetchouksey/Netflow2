@@ -6,7 +6,9 @@
 import React from 'react'
 
 export function Skeleton({ className = '' }) {
-  return <div className={`animate-pulse rounded bg-line ${className}`} />
+  // surface-3 rather than `line`: the border tone is too faint to read as a
+  // placeholder on a white card.
+  return <div aria-hidden="true" className={`animate-pulse rounded bg-surface-3 ${className}`} />
 }
 
 // Mirrors StatCard5 in Dashboard.jsx

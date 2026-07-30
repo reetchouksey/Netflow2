@@ -4,11 +4,15 @@ import { Link, useNavigate } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import { api } from '../utils/api'
 import { useUser } from '../utils/auth'
-import { canViewReports } from '../utils/permissions'
+import { canViewReports, isSuperAdmin, isOpsLeader } from '../utils/permissions'
 import { useWorkflows, workflowsStore } from '../lib/workflowsStore'
 import { useTasks, tasksStore } from '../lib/tasksStore'
 import { Skeleton, StatCardSkeleton, ListRowSkeleton } from '../components/Skeleton'
 import EmptyState from '../components/EmptyState'
+import { AlertBanner } from '../components/Alert'
+import { statusBadge } from '../utils/badges'
+import PlatformOverview from './PlatformOverview'
+import OpsDashboard from './OpsDashboard'
 
 // ---------- helpers -------------------------------------------------------
 
@@ -38,40 +42,99 @@ const RANGE_OPTIONS = [
 
 // ---------- top stat cards ------------------------------------------------
 
-function StatCard5({ icon: Icon, iconBg, iconColor, label, value }) {
+function StatCard5({ icon: Icon, iconBg, iconColor, label, value, hint, help }) {
   return (
-    <div className="bg-surface border border-line rounded-xl p-5 flex items-start gap-4">
-      <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${iconBg}`}>
+    <div
+      className="rounded-xl border border-line bg-surface px-4 py-3.5 shadow-sm flex items-start gap-3"
+      title={help || hint || undefined}
+    >
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ring-1 ring-black/5 dark:ring-white/10 ${iconBg}`}>
         <Icon className={`w-5 h-5 ${iconColor}`} />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-xs text-fg-muted mb-0.5">{label}</p>
-        <p className="text-2xl font-bold text-fg leading-tight">{value}</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">{label}</p>
+        <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-fg leading-none">{value}</p>
+        {hint ? <p className="mt-1.5 text-[11px] text-fg-muted leading-snug line-clamp-2">{hint}</p> : null}
       </div>
     </div>
   )
 }
 
+function Panel({ title, subtitle, action, children, className = '', bodyClass = 'p-5' }) {
+  return (
+    <section className={`bg-surface border border-line rounded-xl shadow-sm overflow-hidden flex flex-col min-h-0 ${className}`}>
+      {(title || action) && (
+        <div className="shrink-0 px-5 py-3.5 border-b border-line bg-surface-2/40 flex items-start justify-between gap-3">
+          {title ? (
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-fg">{title}</h2>
+              {subtitle ? <p className="mt-0.5 text-xs text-fg-muted leading-snug">{subtitle}</p> : null}
+            </div>
+          ) : <span />}
+          {action}
+        </div>
+      )}
+      <div className={`flex-1 min-h-0 ${bodyClass}`}>{children}</div>
+    </section>
+  )
+}
+
 function TopStats({ summary }) {
-  const inProgress = summary?.runningExecutions  ?? 0
-  const completed  = summary?.completedExecutions ?? 0
-  const onHold     = summary?.pausedExecutions    ?? 0
+  const activeRuns = summary?.runningExecutions ?? 0
+  const pausedRuns = summary?.pausedExecutions ?? 0
   const sla = useMemo(() => {
     return summary?.slaCompliance != null ? `${summary.slaCompliance}%` : '—'
   }, [summary])
 
   const cards = [
-    { label: 'Total Workflows', value: summary?.totalWorkflows ?? 0, icon: IconNetwork, iconBg: 'bg-indigo-50',  iconColor: 'text-indigo-600'  },
-    { label: 'Completed',       value: completed,        icon: IconCheck,   iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600' },
-    { label: 'In Progress',     value: inProgress,       icon: IconClock,   iconBg: 'bg-blue-50',    iconColor: 'text-blue-600'    },
-    { label: 'On Hold',         value: onHold,           icon: IconPause,   iconBg: 'bg-orange-50',  iconColor: 'text-orange-500'  },
-    { label: 'SLA Compliance',  value: sla,              icon: IconShield,  iconBg: 'bg-violet-50',  iconColor: 'text-violet-600'  },
+    {
+      label: 'Forms',
+      value: summary?.totalForms ?? 0,
+      hint: 'Forms people can fill in',
+      help: 'A form collects the request details. Submitting a form can start a workflow.',
+      icon: IconDoc, iconBg: 'bg-sky-50 dark:bg-sky-500/15', iconColor: 'text-sky-600 dark:text-sky-300',
+    },
+    {
+      label: 'Workflows',
+      value: summary?.totalWorkflows ?? 0,
+      hint: 'Approval paths you designed',
+      help: 'A workflow is the step-by-step path (approvals, notifications, etc.) a request follows after submit.',
+      icon: IconNetwork, iconBg: 'bg-indigo-50 dark:bg-indigo-500/15', iconColor: 'text-indigo-600 dark:text-indigo-300',
+    },
+    {
+      label: 'In progress',
+      value: activeRuns,
+      hint: 'Requests moving through steps now',
+      help: 'A “run” starts when someone submits a form linked to a workflow. In progress means the request is advancing through automatic steps right now.',
+      icon: IconClock, iconBg: 'bg-blue-50 dark:bg-blue-500/15', iconColor: 'text-blue-600 dark:text-blue-300',
+    },
+    {
+      label: 'Waiting',
+      value: pausedRuns,
+      hint: 'Stopped until someone acts',
+      help: 'These runs are waiting on a person — usually an approval, review, or other action — before the workflow can continue.',
+      icon: IconPause, iconBg: 'bg-warning-subtle', iconColor: 'text-warning-fg',
+    },
+    {
+      label: 'Submissions',
+      value: summary?.totalSubmissions ?? 0,
+      hint: 'Times a form was filled in',
+      help: 'Total form responses in the selected period (each submit counts as one submission).',
+      icon: IconCheck, iconBg: 'bg-success-subtle', iconColor: 'text-success-fg',
+    },
+    {
+      label: 'On-time',
+      value: sla,
+      hint: 'Finished within 7 days',
+      help: 'Share of completed runs that finished within the 7-day target (SLA).',
+      icon: IconShield, iconBg: 'bg-violet-50 dark:bg-violet-500/15', iconColor: 'text-violet-600 dark:text-violet-300',
+    },
   ]
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
       {summary == null
-        ? Array.from({ length: 5 }).map((_, i) => <StatCardSkeleton key={i} />)
+        ? Array.from({ length: 6 }).map((_, i) => <StatCardSkeleton key={i} />)
         : cards.map((c) => <StatCard5 key={c.label} {...c} />)}
     </div>
   )
@@ -104,10 +167,10 @@ function MultiLineChart({ series }) {
   }
 
   const lines = [
-    { key: 'completed',  color: '#22c55e', fill: 'rgba(34,197,94,0.10)',  label: 'Completed'   },
-    { key: 'inProgress', color: '#3b82f6', fill: 'rgba(59,130,246,0.08)', label: 'In Progress' },
-    { key: 'onHold',     color: '#f59e0b', fill: 'rgba(245,158,11,0.08)', label: 'On Hold'     },
-    { key: 'failed',     color: '#ef4444', fill: 'rgba(239,68,68,0.08)',  label: 'Failed'      },
+    { key: 'completed',  color: '#22c55e', fill: 'rgba(34,197,94,0.10)',  label: 'Completed',   help: 'Runs that reached the end of the workflow' },
+    { key: 'inProgress', color: '#3b82f6', fill: 'rgba(59,130,246,0.08)', label: 'In progress', help: 'Runs advancing through automatic steps right now' },
+    { key: 'onHold',     color: '#f59e0b', fill: 'rgba(245,158,11,0.08)', label: 'Waiting',     help: 'Runs paused until someone approves or acts' },
+    { key: 'failed',     color: '#ef4444', fill: 'rgba(239,68,68,0.08)',  label: 'Failed',      help: 'Runs that stopped with an error' },
   ]
 
   const yTicks = [0, Math.round(maxVal * 0.5), maxVal].map((v) => ({ v, y: y(v) }))
@@ -125,15 +188,19 @@ function MultiLineChart({ series }) {
   return (
     <div>
       {/* Legend */}
-      <div className="flex items-center gap-5 mb-3">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-3">
         {lines.map((l) => (
-          <span key={l.key} className="flex items-center gap-1.5 text-xs text-fg-muted">
+          <span
+            key={l.key}
+            title={l.help}
+            className="flex items-center gap-1.5 text-xs text-fg-muted cursor-help"
+          >
             <span className="w-2 h-2 rounded-full inline-block" style={{ background: l.color }} />
             {l.label}
           </span>
         ))}
       </div>
-      <div className="relative">
+      <div className="relative overflow-visible">
         <svg
           ref={svgRef}
           width="100%"
@@ -145,8 +212,8 @@ function MultiLineChart({ series }) {
           {/* Y gridlines */}
           {yTicks.map(({ v, y: yPos }) => (
             <g key={v}>
-              <line x1={padL} y1={yPos} x2={W - padR} y2={yPos} stroke="#f1f5f9" strokeWidth="1" />
-              <text x={padL - 4} y={yPos + 3.5} textAnchor="end" fontSize="7" fill="#94a3b8">{v}</text>
+              <line x1={padL} y1={yPos} x2={W - padR} y2={yPos} stroke="var(--color-surface-3)" strokeWidth="1" />
+              <text x={padL - 4} y={yPos + 3.5} textAnchor="end" fontSize="7" fill="var(--color-fg-subtle)">{v}</text>
             </g>
           ))}
           {/* Areas */}
@@ -159,25 +226,33 @@ function MultiLineChart({ series }) {
           ))}
           {/* Dots at tooltip */}
           {tooltip !== null && lines.map((l) => (
-            <circle key={l.key + 'dot'} cx={xs[tooltip.i]} cy={y(series[tooltip.i][l.key])} r="3.5" fill="#fff" stroke={l.color} strokeWidth="2" />
+            <circle key={l.key + 'dot'} cx={xs[tooltip.i]} cy={y(series[tooltip.i][l.key])} r="3.5" fill="var(--color-surface)" stroke={l.color} strokeWidth="2" />
           ))}
           {/* X axis labels */}
           {series.map((row, i) => (
-            <text key={i} x={xs[i]} y={H - 6} textAnchor="middle" fontSize="7.5" fill="#94a3b8">
+            <text key={i} x={xs[i]} y={H - 6} textAnchor="middle" fontSize="7.5" fill="var(--color-fg-subtle)">
               {row.label}
             </text>
           ))}
           {/* Tooltip vertical line */}
           {tooltip !== null && (
-            <line x1={xs[tooltip.i]} y1={padT} x2={xs[tooltip.i]} y2={H - padB} stroke="#cbd5e1" strokeWidth="1" strokeDasharray="3 2" />
+            <line x1={xs[tooltip.i]} y1={padT} x2={xs[tooltip.i]} y2={H - padB} stroke="var(--color-fg-subtle)" strokeWidth="1" strokeDasharray="3 2" />
           )}
         </svg>
-        {/* Tooltip box */}
+        {/* Tooltip box — flip to the left near the right edge so it stays in view */}
         {tooltip !== null && (() => {
           const row = series[tooltip.i]
+          const pct = (xs[tooltip.i] / W) * 100
+          const flipLeft = pct > 62
           return (
-            <div className="absolute pointer-events-none z-10 bg-surface border border-line rounded-lg shadow-lg px-3 py-2 text-xs"
-              style={{ top: '8px', left: `calc(${(xs[tooltip.i] / W) * 100}% + 8px)` }}>
+            <div
+              className="absolute pointer-events-none z-10 bg-surface border border-line rounded-lg shadow-lg px-3 py-2 text-xs whitespace-nowrap"
+              style={{
+                top: 8,
+                left: flipLeft ? undefined : `calc(${pct}% + 8px)`,
+                right: flipLeft ? `calc(${100 - pct}% + 8px)` : undefined,
+              }}
+            >
               <p className="font-semibold text-fg mb-1">{row.label}</p>
               {lines.map((l) => (
                 <p key={l.key} className="flex items-center gap-2 text-fg-muted">
@@ -196,38 +271,34 @@ function MultiLineChart({ series }) {
 function WorkflowActivityCard({ series, days, onDaysChange, loading }) {
   const selectedLabel = RANGE_OPTIONS.find((o) => o.days === days)?.label ?? 'Last 7 days'
   return (
-    <div className="bg-surface border border-line rounded-xl p-5">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold text-fg">Workflow Activity</h2>
+    <Panel
+      className="h-full"
+      title="Workflow activity"
+      subtitle="A run starts when someone submits a form linked to a workflow. Hover a legend item for what each status means."
+      action={
         <select
           value={selectedLabel}
           onChange={(e) => {
             const opt = RANGE_OPTIONS.find((o) => o.label === e.target.value)
             if (opt) onDaysChange(opt.days)
           }}
-          className="text-xs border border-line rounded-md px-2 py-1 text-fg-muted bg-surface focus:outline-none focus:ring-1 focus:ring-indigo-300"
+          aria-label="Activity date range"
+          className="text-xs border border-line rounded-lg px-2.5 py-1.5 text-fg bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200"
         >
           {RANGE_OPTIONS.map((o) => <option key={o.days}>{o.label}</option>)}
         </select>
-      </div>
+      }
+    >
       {loading ? (
-        <Skeleton className="h-40 w-full rounded-lg" />
+        <Skeleton className="h-44 w-full rounded-lg" />
       ) : (
         <MultiLineChart series={series} />
       )}
-    </div>
+    </Panel>
   )
 }
 
 // ---------- recent requests -----------------------------------------------
-
-const STATUS_STYLES = {
-  Approved:  { badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' },
-  Rejected:  { badge: 'bg-rose-50 text-rose-700 border-rose-200',         dot: 'bg-rose-500' },
-  Pending:   { badge: 'bg-amber-50 text-amber-700 border-amber-200',       dot: 'bg-amber-400' },
-  Escalated: { badge: 'bg-orange-50 text-orange-700 border-orange-200',    dot: 'bg-orange-500' },
-  default:   { badge: 'bg-blue-50 text-blue-700 border-blue-200',          dot: 'bg-blue-500' },
-}
 
 function requestDisplayStatus(task) {
   const chain = task.approvalChain || []
@@ -252,11 +323,16 @@ function RecentRequests({ tasks, loading }) {
   }, [tasks])
 
   return (
-    <div className="bg-surface border border-line rounded-xl flex flex-col h-full">
-      <div className="px-5 py-4 flex items-center justify-between border-b border-line">
-        <h2 className="text-sm font-semibold text-fg">Recent Requests</h2>
-        <Link to="/tasks" className="text-xs font-medium text-indigo-600 hover:text-indigo-700">View all</Link>
-      </div>
+    <Panel
+      className="h-full"
+      title="Recent requests"
+      bodyClass="p-0 flex flex-col min-h-0"
+      action={
+        <Link to="/tasks" className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">
+          View all
+        </Link>
+      }
+    >
       {loading && recent.length === 0 ? (
         <div className="divide-y divide-line flex-1">
           {Array.from({ length: 5 }).map((_, i) => <ListRowSkeleton key={i} />)}
@@ -267,32 +343,36 @@ function RecentRequests({ tasks, loading }) {
           title="No requests yet"
           description="Fill out a form to submit your first request — it'll show up here."
           action={
-            <Link to="/forms" className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium shadow-sm transition">
+            <Link to="/forms" className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-sm transition">
               Browse forms
             </Link>
           }
         />
       ) : (
-        <ul className="divide-y divide-line flex-1">
+        <ul className="divide-y divide-line flex-1 overflow-y-auto">
           {recent.map((t) => {
             const status = requestDisplayStatus(t)
-            const styles = STATUS_STYLES[status] || STATUS_STYLES.default
+            const styles = statusBadge(status)
             return (
               <li key={t.id}>
                 <button
                   onClick={() => navigate(`/tasks/${t.id}`)}
-                  className="w-full text-left px-5 py-3 hover:bg-surface-2 transition flex items-center gap-3"
+                  className="w-full text-left px-5 py-3 hover:bg-surface-2/70 transition flex items-center gap-3"
                 >
                   <span className={`w-2 h-2 rounded-full shrink-0 ${styles.dot}`} />
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs font-medium text-fg truncate">{t.title}</p>
-                    <p className="text-[10px] text-fg-subtle truncate mt-0.5">{t._raw?.workflowExecutionId ? `EX-${String(t._raw.workflowExecutionId).slice(-6).toUpperCase()}` : `T-${String(t.id).slice(-6).toUpperCase()}`}</p>
+                    <p className="text-sm font-medium text-fg truncate">{t.title}</p>
+                    <p className="text-[11px] text-fg-subtle truncate mt-0.5">
+                      {t._raw?.workflowExecutionId
+                        ? `EX-${String(t._raw.workflowExecutionId).slice(-6).toUpperCase()}`
+                        : `T-${String(t.id).slice(-6).toUpperCase()}`}
+                    </p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${styles.badge}`}>
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${styles.badge}`}>
                       {status}
                     </span>
-                    <p className="text-[10px] text-fg-subtle mt-1">{timeAgo(t.createdAt)}</p>
+                    <p className="text-[11px] text-fg-subtle mt-1">{timeAgo(t.createdAt)}</p>
                   </div>
                 </button>
               </li>
@@ -300,8 +380,7 @@ function RecentRequests({ tasks, loading }) {
           })}
         </ul>
       )}
-    
-    </div>
+    </Panel>
   )
 }
 
@@ -315,14 +394,14 @@ function DonutChart({ segments, total }) {
   if (total === 0) {
     return (
       <svg width={90} height={90} viewBox="0 0 100 100" className="shrink-0">
-        <circle cx={CX} cy={CY} r={R} fill="none" stroke="#f1f5f9" strokeWidth={STROKE} />
-        <text x={CX} y={CY + 4} textAnchor="middle" fontSize="14" fontWeight="700" fill="#1f2937">0</text>
+        <circle cx={CX} cy={CY} r={R} fill="none" stroke="var(--color-surface-3)" strokeWidth={STROKE} />
+        <text x={CX} y={CY + 4} textAnchor="middle" fontSize="14" fontWeight="700" fill="var(--color-fg)">0</text>
       </svg>
     )
   }
   return (
     <svg width={90} height={90} viewBox="0 0 100 100" className="shrink-0">
-      <circle cx={CX} cy={CY} r={R} fill="none" stroke="#f1f5f9" strokeWidth={STROKE} />
+      <circle cx={CX} cy={CY} r={R} fill="none" stroke="var(--color-surface-3)" strokeWidth={STROKE} />
       {segments.map((s, i) => {
         if (s.value === 0) return null
         const len = (s.value / total) * circumference
@@ -334,8 +413,8 @@ function DonutChart({ segments, total }) {
         offset += len
         return el
       })}
-      <text x={CX} y={CY - 2} textAnchor="middle" fontSize="15" fontWeight="700" fill="#1f2937">{total}</text>
-      <text x={CX} y={CY + 11} textAnchor="middle" fontSize="7" fill="#9ca3af">Total Tasks</text>
+      <text x={CX} y={CY - 2} textAnchor="middle" fontSize="15" fontWeight="700" fill="var(--color-fg)">{total}</text>
+      <text x={CX} y={CY + 11} textAnchor="middle" fontSize="7" fill="var(--color-fg-subtle)">Total Tasks</text>
     </svg>
   )
 }
@@ -356,21 +435,20 @@ function TasksOverviewCard({ tasks }) {
   }, [tasks])
   const total = segs.reduce((s, x) => s + x.value, 0)
   return (
-    <div className="bg-surface border border-line rounded-xl p-5">
-      <p className="text-xs font-semibold text-fg mb-4">Tasks Overview</p>
+    <Panel title="Tasks overview" className="h-full">
       <div className="flex items-center gap-4">
         <DonutChart segments={segs} total={total} />
-        <ul className="space-y-1.5 text-xs text-fg-muted">
+        <ul className="space-y-2 text-xs text-fg-muted flex-1 min-w-0">
           {segs.map((s) => (
             <li key={s.label} className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
-              <span className="flex-1">{s.label}</span>
-              <span className="text-fg-subtle font-medium ml-2">{s.value}</span>
+              <span className="flex-1 truncate">{s.label}</span>
+              <span className="text-fg font-semibold tabular-nums">{s.value}</span>
             </li>
           ))}
         </ul>
       </div>
-    </div>
+    </Panel>
   )
 }
 
@@ -378,66 +456,92 @@ function TasksOverviewCard({ tasks }) {
 function SemiGauge({ pct }) {
   const R = 38, CX = 50, CY = 50
   const halfCirc = Math.PI * R
-  const filled = (pct / 100) * halfCirc
+  const value = Number.isFinite(pct) ? Math.min(100, Math.max(0, pct)) : null
+  const filled = value === null ? 0 : (value / 100) * halfCirc
   return (
     <svg width={110} height={65} viewBox="0 0 100 58" className="block mx-auto">
-      <path d={`M ${CX - R} ${CY} A ${R} ${R} 0 0 1 ${CX + R} ${CY}`} fill="none" stroke="#f1f5f9" strokeWidth="11" strokeLinecap="round" />
+      <path d={`M ${CX - R} ${CY} A ${R} ${R} 0 0 1 ${CX + R} ${CY}`} fill="none" stroke="var(--color-surface-3)" strokeWidth="11" strokeLinecap="round" />
       <path d={`M ${CX - R} ${CY} A ${R} ${R} 0 0 1 ${CX + R} ${CY}`} fill="none" stroke="#6366f1" strokeWidth="11" strokeLinecap="round"
         strokeDasharray={`${filled} ${halfCirc}`} />
-      <text x={CX} y={CY - 4} textAnchor="middle" fontSize="14" fontWeight="700" fill="#1f2937">{pct}%</text>
+      <text x={CX} y={CY - 4} textAnchor="middle" fontSize="14" fontWeight="700" fill="var(--color-fg)">
+        {value === null ? '—' : `${value}%`}
+      </text>
     </svg>
   )
 }
 
+const APPROVAL_TARGET = 90
+
 function ApprovalRateCard({ approvalRate }) {
-  const rate = approvalRate ?? null
+  const rate = Number.isFinite(approvalRate) ? approvalRate : null
+  const delta = rate === null ? null : rate - APPROVAL_TARGET
+  const above = delta !== null && delta > 0
   return (
-    <div className="bg-surface border border-line rounded-xl p-5">
-      <p className="text-xs font-semibold text-fg mb-2">Approval Rate</p>
+    <Panel title="Approval rate" className="h-full">
       <SemiGauge pct={rate} />
       <div className="mt-1 text-center">
-        {rate !== null && <p className="text-[10px] text-fg-subtle">vs target 90%</p>}
-        <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-emerald-600 mt-0.5">
-          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg>
-          {Math.max(0, rate - 90).toFixed(1)}% above target
-        </span>
+        {rate === null ? (
+          <p className="text-[11px] text-fg-subtle">No approvals yet</p>
+        ) : (
+          <>
+            <p className="text-[11px] text-fg-subtle">vs target {APPROVAL_TARGET}%</p>
+            {delta === 0 ? (
+              <span className="inline-flex items-center text-[11px] font-semibold text-fg-muted mt-0.5">
+                On target
+              </span>
+            ) : (
+              <span
+                className={`inline-flex items-center gap-0.5 text-[11px] font-semibold mt-0.5 ${
+                  above ? 'text-success-fg' : 'text-danger-fg'
+                }`}
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d={above ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
+                </svg>
+                {Math.abs(delta).toFixed(1)}% {above ? 'above' : 'below'} target
+              </span>
+            )}
+          </>
+        )}
       </div>
-    </div>
+    </Panel>
   )
 }
 
 function CompletionTimeCard({ avgDays }) {
   const val = avgDays != null ? avgDays.toFixed(1) : '—'
   return (
-    <div className="bg-surface border border-line rounded-xl p-5 flex flex-col">
-      <p className="text-xs font-semibold text-fg mb-3">Average Completion Time</p>
-      <div className="flex items-center gap-3 flex-1">
-        <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center shrink-0">
-          <IconClock className="w-5 h-5 text-indigo-600" />
+    <Panel title="Avg completion time" className="h-full">
+      <div className="flex items-center gap-3 h-full min-h-[5rem]">
+        <div className="w-11 h-11 rounded-xl bg-indigo-50 dark:bg-indigo-500/15 ring-1 ring-indigo-100 dark:ring-indigo-500/20 flex items-center justify-center shrink-0">
+          <IconClock className="w-5 h-5 text-indigo-600 dark:text-indigo-300" />
         </div>
         <div>
-          <p className="text-2xl font-bold text-fg">{val !== '—' ? `${val} days` : ''}</p>
-          {val !== '—' && <p className="text-[11px] text-fg-subtle mt-0.5">vs last week</p>}
+          <p className="text-2xl font-semibold tabular-nums tracking-tight text-fg">
+            {val !== '—' ? `${val}` : '—'}
+            {val !== '—' && <span className="text-base font-medium text-fg-muted ml-1">days</span>}
+          </p>
+          {val !== '—' && <p className="text-[11px] text-fg-muted mt-0.5">Mean time to finish</p>}
         </div>
       </div>
-    </div>
+    </Panel>
   )
 }
 
 function ActiveWorkflowsCard({ workflows }) {
   const active = workflows.filter((w) => w.status === 'Active').length
   return (
-    <div className="bg-surface border border-line rounded-xl p-5 flex flex-col">
-      <p className="text-xs font-semibold text-fg mb-3">Active Workflows</p>
-      <div className="flex items-center gap-3 flex-1">
-        <div className="w-10 h-10 rounded-full bg-violet-50 flex items-center justify-center shrink-0">
-          <IconLayers className="w-5 h-5 text-violet-600" />
+    <Panel title="Active workflows" className="h-full">
+      <div className="flex items-center gap-3 h-full min-h-[5rem]">
+        <div className="w-11 h-11 rounded-xl bg-violet-50 dark:bg-violet-500/15 ring-1 ring-violet-100 dark:ring-violet-500/20 flex items-center justify-center shrink-0">
+          <IconLayers className="w-5 h-5 text-violet-600 dark:text-violet-300" />
         </div>
         <div>
-          <p className="text-2xl font-bold text-fg">{active}</p>
+          <p className="text-2xl font-semibold tabular-nums tracking-tight text-fg">{active}</p>
+          <p className="text-[11px] text-fg-muted mt-0.5">Routing new submissions</p>
         </div>
       </div>
-    </div>
+    </Panel>
   )
 }
 
@@ -467,21 +571,27 @@ function BuilderDashboard() {
   const [activityRaw, setActivityRaw]       = useState([])
   const [activityLoading, setActivityLoading] = useState(true)
   const [booting, setBooting]               = useState(true)
+  const [statsError, setStatsError]         = useState('')
+  const [statsReloadKey, setStatsReloadKey] = useState(0)
 
   // Fetch global stats once on mount (no date filter tied to badge).
   useEffect(() => {
-    api.get('/api/analytics/summary')
-      .then((d) => setSummary(d.summary || d))
-      .catch(() => {})
-
-    api.get('/api/analytics/approval-rate')
-      .then((d) => setApprovalDist(d.distribution || []))
-      .catch(() => {})
-
-    api.get('/api/analytics/completion-time?months=7')
-      .then((d) => setCompletionSeries(d.series || []))
-      .catch(() => {})
-  }, [])
+    let cancelled = false
+    setStatsError('')
+    // allSettled: one failing panel shouldn't blank the others, but the user
+    // still needs to know the numbers are incomplete.
+    Promise.allSettled([
+      api.get('/api/analytics/summary').then((d) => { if (!cancelled) setSummary(d.summary || d) }),
+      api.get('/api/analytics/approval-rate').then((d) => { if (!cancelled) setApprovalDist(d.distribution || []) }),
+      api.get('/api/analytics/completion-time?months=7').then((d) => { if (!cancelled) setCompletionSeries(d.series || []) }),
+    ]).then((results) => {
+      if (cancelled) return
+      if (results.some((r) => r.status === 'rejected')) {
+        setStatsError("Some dashboard figures couldn't be loaded.")
+      }
+    })
+    return () => { cancelled = true }
+  }, [statsReloadKey])
 
   // Re-fetch activity chart when the chart dropdown changes.
   useEffect(() => {
@@ -535,33 +645,43 @@ function BuilderDashboard() {
   return (
     <AppShell
       title={<>Welcome back, {firstName}</>}
-      subtitle={builderView ? "Here's what's happening with your workflows today." : "Here's what's happening with your requests today."}
+      subtitle={builderView ? 'Workspace workflow health and recent activity' : 'Your requests and approvals at a glance'}
+      mainClass="flex-1 min-h-0 flex flex-col p-4 md:p-6 pb-24 md:pb-6 overflow-hidden"
     >
-      <div className="space-y-5">
-        {/* Row 1 — 5 stat cards */}
-        <TopStats summary={summary} />
+      <div className="flex-1 min-h-0 flex flex-col gap-4 w-full overflow-hidden">
+        {statsError && (
+          <div className="shrink-0">
+            <AlertBanner tone="warning" onRetry={() => setStatsReloadKey((k) => k + 1)}>
+              {statsError}
+            </AlertBanner>
+          </div>
+        )}
 
-        {/* Row 2 — activity chart + recent requests */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-          <div className="xl:col-span-2">
-            <WorkflowActivityCard
-              series={activitySeries}
-              days={chartDays}
-              onDaysChange={setChartDays}
-              loading={activityLoading}
-            />
-          </div>
-          <div className="xl:col-span-1">
-            <RecentRequests tasks={tasks} loading={booting} />
-          </div>
+        <div className="shrink-0">
+          <TopStats summary={summary} />
         </div>
 
-        {/* Row 3 — 4 bottom cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          <TasksOverviewCard tasks={tasks} />
-          <ApprovalRateCard approvalRate={approvalRate} />
-          <CompletionTimeCard avgDays={avgDays} />
-          <ActiveWorkflowsCard workflows={workflows} />
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 min-h-[18rem] mb-4">
+            <div className="xl:col-span-2 min-h-[16rem] flex flex-col">
+              <WorkflowActivityCard
+                series={activitySeries}
+                days={chartDays}
+                onDaysChange={setChartDays}
+                loading={activityLoading}
+              />
+            </div>
+            <div className="xl:col-span-1 min-h-[16rem] flex flex-col">
+              <RecentRequests tasks={tasks} loading={booting} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 pb-1">
+            <TasksOverviewCard tasks={tasks} />
+            <ApprovalRateCard approvalRate={approvalRate} />
+            <CompletionTimeCard avgDays={avgDays} />
+            <ActiveWorkflowsCard workflows={workflows} />
+          </div>
         </div>
       </div>
     </AppShell>
@@ -630,11 +750,11 @@ function groupRequests(tasks, myId) {
 }
 
 const barColor = (status) => ({
-  Approved: 'bg-emerald-500',
-  'In Review': 'bg-blue-500',
-  Pending: 'bg-amber-400',
-  Rejected: 'bg-rose-500',
-}[status] || 'bg-gray-300')
+  Approved: 'bg-success-solid',
+  'In Review': 'bg-info-solid',
+  Pending: 'bg-warning-solid',
+  Rejected: 'bg-danger-solid',
+}[status] || 'bg-fg-subtle')
 
 const ACTIVITY_VERB = {
   Approved: 'was approved',
@@ -657,11 +777,11 @@ function EmployeeStats({ requests, needsAttention, loading }) {
   const approved    = requests.filter((r) => r.status === 'Approved').length
 
   const cards = [
-    { label: 'My Requests',     value: total,          icon: IconDoc,   iconBg: 'bg-indigo-50',  iconColor: 'text-indigo-600'  },
-    { label: 'Submitted (mo.)', value: submitted,      icon: IconSend,  iconBg: 'bg-sky-50',     iconColor: 'text-sky-600'     },
-    { label: 'Pending',         value: pending,        icon: IconClock, iconBg: 'bg-amber-50',   iconColor: 'text-amber-500'   },
-    { label: 'Approved',        value: approved,       icon: IconCheck, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600' },
-    { label: 'Needs Attention', value: needsAttention, icon: IconAlert, iconBg: 'bg-rose-50',    iconColor: 'text-rose-600'    },
+    { label: 'My Requests',     value: total,          icon: IconDoc,   iconBg: 'bg-indigo-50 dark:bg-indigo-500/15', iconColor: 'text-indigo-600 dark:text-indigo-300' },
+    { label: 'Submitted (mo.)', value: submitted,      icon: IconSend,  iconBg: 'bg-sky-50 dark:bg-sky-500/15',       iconColor: 'text-sky-600 dark:text-sky-300'       },
+    { label: 'Pending',         value: pending,        icon: IconClock, iconBg: 'bg-warning-subtle', iconColor: 'text-warning-fg' },
+    { label: 'Approved',        value: approved,       icon: IconCheck, iconBg: 'bg-success-subtle', iconColor: 'text-success-fg' },
+    { label: 'Needs Attention', value: needsAttention, icon: IconAlert, iconBg: 'bg-danger-subtle',    iconColor: 'text-danger-fg'    },
   ]
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
@@ -699,7 +819,7 @@ function MyRequestsList({ requests, loading }) {
       ) : (
         <ul className="divide-y divide-line">
           {rows.map((r) => {
-            const styles = STATUS_STYLES[r.status] || STATUS_STYLES.default
+            const styles = statusBadge(r.status)
             return (
               <li key={r.key}>
                 <button onClick={() => navigate(`/tasks/${r.latestTaskId}`)}
@@ -739,7 +859,7 @@ function MyProgressCard({ requests, loading }) {
       ) : (
         <ul className="space-y-3.5">
           {rows.map((r) => {
-            const styles = STATUS_STYLES[r.status] || STATUS_STYLES.default
+            const styles = statusBadge(r.status)
             return (
               <li key={r.key}>
                 <div className="flex items-center justify-between mb-1">
@@ -761,10 +881,10 @@ function MyProgressCard({ requests, loading }) {
 // Visual treatment for a single approval-chain node's status.
 function statusVisual(s) {
   switch (s) {
-    case 'approved':  return { ring: 'bg-emerald-500 border-emerald-500 text-white', icon: 'check' }
-    case 'rejected':  return { ring: 'bg-rose-500 border-rose-500 text-white',       icon: 'x' }
-    case 'escalated': return { ring: 'bg-orange-500 border-orange-500 text-white',    icon: 'up' }
-    case 'pending':   return { ring: 'bg-blue-500 border-blue-500 text-white',        icon: 'dot' }
+    case 'approved':  return { ring: 'bg-success-solid border-success-solid text-white', icon: 'check' }
+    case 'rejected':  return { ring: 'bg-danger-solid border-danger-solid text-white',   icon: 'x' }
+    case 'escalated': return { ring: 'bg-orange-500 border-orange-500 text-white',       icon: 'up' }
+    case 'pending':   return { ring: 'bg-info-solid border-info-solid text-white',       icon: 'dot' }
     default:          return { ring: 'bg-surface border-line text-fg-subtle',        icon: 'dot' }
   }
 }
@@ -807,7 +927,7 @@ function TrackStatusCard({ requests }) {
       out.push({ key: s.nodeId, title: s.title || s.roleLabel || 'Approval', sub, vis: statusVisual(norm), current: s.isCurrent })
     }
     if (active.status === 'Approved') {
-      out.push({ key: 'done', title: 'Completed', sub: timeAgo(active.latestAt), vis: { ring: 'bg-emerald-500 border-emerald-500 text-white', icon: 'check' } })
+      out.push({ key: 'done', title: 'Completed', sub: timeAgo(active.latestAt), vis: { ring: 'bg-success-solid border-success-solid text-white', icon: 'check' } })
     }
     return out
   }, [active])
@@ -830,7 +950,7 @@ function TrackStatusCard({ requests }) {
     )
   }
 
-  const styles = STATUS_STYLES[active.status] || STATUS_STYLES.default
+  const styles = statusBadge(active.status)
 
   return (
     <div className="bg-surface border border-line rounded-xl p-5 flex flex-col">
@@ -885,7 +1005,7 @@ function RecentActivityCard({ requests }) {
       ) : (
         <ul className="space-y-3">
           {items.map((r) => {
-            const styles = STATUS_STYLES[r.status] || STATUS_STYLES.default
+            const styles = statusBadge(r.status)
             return (
               <li key={r.key} className="flex items-start gap-3">
                 <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${styles.dot}`} />
@@ -949,7 +1069,7 @@ function NeedsAttentionCard({ rejected, approvals }) {
       <h2 className="text-sm font-semibold text-fg mb-4">Needs Your Attention</h2>
       {items.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-10 text-center">
-          <IconCheck className="w-6 h-6 text-emerald-500 mb-2" />
+          <IconCheck className="w-6 h-6 text-success-solid mb-2" />
           <p className="text-xs text-fg-subtle">You're all caught up</p>
         </div>
       ) : (
@@ -958,10 +1078,10 @@ function NeedsAttentionCard({ rejected, approvals }) {
             <li key={it.key}>
               <button onClick={() => navigate(`/tasks/${it.taskId}`)}
                 className="w-full text-left flex items-center gap-3 p-2.5 rounded-lg hover:bg-surface-2 transition">
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${it.tone === 'rose' ? 'bg-rose-500' : 'bg-amber-400'}`} />
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${it.tone === 'rose' ? 'bg-danger-solid' : 'bg-warning-solid'}`} />
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium text-fg truncate">{it.title}</p>
-                  <p className={`text-[10px] mt-0.5 ${it.tone === 'rose' ? 'text-rose-600' : 'text-amber-600'}`}>{it.note}</p>
+                  <p className={`text-[10px] mt-0.5 ${it.tone === 'rose' ? 'text-danger-fg' : 'text-warning-fg'}`}>{it.note}</p>
                 </div>
                 <span className="text-fg-subtle text-xs">›</span>
               </button>
@@ -992,9 +1112,18 @@ function EmployeeDashboard({ user }) {
   return (
     <AppShell
       title={<>Welcome back, {firstName}</>}
-      subtitle="Here's what's happening with your requests today."
+      subtitle="Your requests and anything that needs attention"
+      actions={
+        <Link
+          to="/forms"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-sm transition"
+        >
+          Start a request
+        </Link>
+      }
+      mainClass="flex-1 min-h-0 flex flex-col p-4 md:p-6 pb-24 md:pb-6 overflow-hidden"
     >
-      <div className="space-y-5">
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-4">
         <EmployeeStats requests={requests} needsAttention={needsAttention} loading={booting} />
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -1003,7 +1132,7 @@ function EmployeeDashboard({ user }) {
           <TrackStatusCard requests={requests} />
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 pb-1">
           <RecentActivityCard requests={requests} />
           <RequestSummaryCard requests={requests} />
           <NeedsAttentionCard rejected={rejected} approvals={myApprovals} />
@@ -1021,8 +1150,13 @@ function IconAlert(p) { return <svg {...p} xmlns="http://www.w3.org/2000/svg" fi
 
 // ---------- role-routed page ----------------------------------------------
 
+// One page, four shells: the platform overview, the builder view an Org Admin
+// needs, the approvals-first view a leader needs, and the employee's own
+// requests.
 function Dashboard() {
   const user = useUser()
+  if (isSuperAdmin(user)) return <PlatformOverview />
+  if (isOpsLeader(user)) return <OpsDashboard />
   return canViewReports(user) ? <BuilderDashboard /> : <EmployeeDashboard user={user} />
 }
 

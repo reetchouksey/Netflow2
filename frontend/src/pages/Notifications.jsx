@@ -4,7 +4,9 @@ import React, { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import EmptyState from '../components/EmptyState'
-import { useNotifications, notificationsStore } from '../lib/notificationsStore'
+import { ListRowSkeleton } from '../components/Skeleton'
+import { AlertBanner } from '../components/Alert'
+import { useNotifications, useNotificationsStatus, notificationsStore } from '../lib/notificationsStore'
 
 const FILTERS = [
   { value: 'all',    label: 'All' },
@@ -23,6 +25,7 @@ const SORTS = [
 function Notifications() {
   const navigate = useNavigate()
   const items = useNotifications()
+  const { loading, error } = useNotificationsStatus()
   const [filter, setFilter] = useState('all')
   const [sort, setSort] = useState('date_desc')
   const [busy, setBusy] = useState(false)
@@ -70,7 +73,7 @@ function Notifications() {
     <span className="flex items-center gap-2">
       <span>{items.length} {items.length === 1 ? 'notification' : 'notifications'}</span>
       {unreadCount > 0 && (
-        <span className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
+        <span className="text-xs font-medium text-info-fg bg-info-subtle px-2 py-0.5 rounded-md">
           {unreadCount} unread
         </span>
       )}
@@ -106,11 +109,25 @@ function Notifications() {
 
   return (
     <AppShell title="Notifications" subtitle={subtitle} actions={actions}>
+      {error && (
+        <AlertBanner className="mb-4" onRetry={() => notificationsStore.refresh().catch(() => {})}>
+          {error}
+        </AlertBanner>
+      )}
+
       <div className="bg-surface border border-line rounded-lg overflow-hidden">
-            {visible.length === 0 ? (
+            {loading && items.length === 0 ? (
+              <div className="divide-y divide-line">
+                {Array.from({ length: 6 }).map((_, i) => <ListRowSkeleton key={i} />)}
+              </div>
+            ) : visible.length === 0 ? (
               <EmptyState
-                title="You're all caught up"
-                description="New notifications will show up here."
+                title={items.length === 0 ? "You're all caught up" : 'Nothing matches this filter'}
+                description={
+                  items.length === 0
+                    ? 'New notifications will show up here.'
+                    : 'Try switching the filter back to All.'
+                }
               />
             ) : (
               <ul className="divide-y divide-line">
@@ -119,7 +136,7 @@ function Notifications() {
                     key={n.id}
                     onClick={() => handleClick(n)}
                     className={`group px-5 py-4 flex items-start gap-3 cursor-pointer transition ${
-                      n.read ? 'bg-surface hover:bg-surface-2' : 'bg-blue-50/40 hover:bg-blue-50'
+                      n.read ? 'bg-surface hover:bg-surface-2' : 'bg-info-subtle/50 hover:bg-info-subtle'
                     }`}
                   >
                     <span className={`w-8 h-8 rounded-full shrink-0 ${n.dotColor}`} />
@@ -140,7 +157,7 @@ function Notifications() {
                       onClick={(e) => handleDelete(e, n.id)}
                       aria-label="Delete notification"
                       title="Delete"
-                      className="shrink-0 -mr-1 p-1 rounded-md text-fg-subtle hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 focus:opacity-100 transition"
+                      className="shrink-0 -mr-1 p-1 rounded-md text-fg-subtle hover:text-danger-fg hover:bg-danger-subtle opacity-0 group-hover:opacity-100 focus:opacity-100 transition"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-1 0v12a1 1 0 01-1 1H8a1 1 0 01-1-1V7m3 4v6m4-6v6" />

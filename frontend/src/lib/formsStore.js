@@ -117,19 +117,26 @@ export const formsStore = {
   }
 }
 
-export function useForms() {
+// `enabled` is false in the platform shell, where tenant APIs are forbidden —
+// subscribing there would fire a request that always 403s.
+export function useForms(enabled = true) {
   const snapshot = useSyncExternalStore(
-    formsStore.subscribe,
-    formsStore.getSnapshot,
-    formsStore.getSnapshot
+    enabled ? formsStore.subscribe : noopSubscribe,
+    enabled ? formsStore.getSnapshot : getEmpty,
+    enabled ? formsStore.getSnapshot : getEmpty
   )
   useEffect(() => {
+    if (!enabled) return
     if (cache.length === 0 && Date.now() - lastFetchedAt > 5000) {
       fetchAll().catch(() => {})
     }
-  }, [])
+  }, [enabled])
   return snapshot
 }
+
+const EMPTY = []
+const getEmpty = () => EMPTY
+const noopSubscribe = () => () => {}
 
 // Category is an organisational label only — it does NOT restrict who can see
 // or submit a form, nor does it affect approval routing (that uses each

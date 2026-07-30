@@ -9,10 +9,11 @@ import { api, toAbsoluteUrl } from '../utils/api'
 import { useUser } from '../utils/auth'
 import { formsStore } from '../lib/formsStore'
 import { fieldMaxMb, MAX_UPLOAD_MB } from '../utils/uploads'
-import { isFieldVisible, stripHiddenValues, validateField } from '../components/FormFields'
+import { fieldDomId, focusFirstError, isFieldVisible, stripHiddenValues, UploadProgress, validateField } from '../components/FormFields'
+import { limitBanner } from '../lib/limitFeedback'
 
 const inputCls =
-  'w-full px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition'
+  'w-full px-3 py-2 text-sm rounded-md border border-line bg-surface text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition'
 
 const inputErrorCls =
   'border-red-400 focus:ring-red-200 focus:border-red-400'
@@ -44,6 +45,7 @@ function buildUserPrefill(fields, me) {
 // as the field value, so the approver can later open the actual attachment.
 function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB }) {
   const [uploading, setUploading] = useState(false)
+  const [progress, setProgress] = useState(null)
   const [uploadError, setUploadError] = useState('')
 
   const handleFile = async (e) => {
@@ -58,15 +60,19 @@ function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB }) {
       return
     }
     setUploading(true)
+    setProgress(0)
     setUploadError('')
     try {
-      const { file: saved } = await api.upload(file, maxMb)
+      const { file: saved } = await api.upload(file, maxMb, { onProgress: setProgress })
       onChange(saved)
     } catch (err) {
-      setUploadError(err.message || 'Upload failed')
+      // "Storage full" is not the same problem as "that file is too big".
+      const limit = limitBanner(err)
+      setUploadError(limit ? `${limit.title} — ${limit.message}` : (err.message || 'Upload failed'))
       onChange('')
     } finally {
       setUploading(false)
+      setProgress(null)
     }
   }
 
@@ -78,15 +84,15 @@ function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB }) {
         type="file"
         onChange={handleFile}
         disabled={uploading}
-        className="block w-full text-sm text-fg-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 disabled:opacity-60"
+        className="block w-full text-sm text-fg-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-info-subtle file:text-info-fg hover:file:brightness-95 disabled:opacity-60"
       />
       {!uploading && !uploadError && <p className="mt-1 text-xs text-fg-subtle">Max {maxMb} MB</p>}
-      {uploading && <p className="mt-1 text-xs text-fg-muted">Uploading…</p>}
-      {uploadError && <p className="mt-1 text-xs text-red-600">{uploadError}</p>}
+      {uploading && <UploadProgress percent={progress} />}
+      {uploadError && <p className="mt-1 text-xs text-danger-fg">{uploadError}</p>}
       {current && !uploading && (
-        <p className="mt-1 text-xs text-green-700">
+        <p className="mt-1 text-xs text-success-fg">
           Uploaded:{' '}
-          <a href={toAbsoluteUrl(current.url)} target="_blank" rel="noreferrer" className="underline hover:text-green-800">
+          <a href={toAbsoluteUrl(current.url)} target="_blank" rel="noreferrer" className="underline hover:brightness-110">
             {current.name}
           </a>
         </p>
@@ -137,11 +143,11 @@ function GridField({ field, value, onChange }) {
           <thead>
             <tr className="bg-surface-2">
               {cols.map((c) => (
-                <th key={c.id} className="px-2 py-1.5 text-left font-medium text-fg-muted border-b border-line whitespace-nowrap">
+                <th scope="col" key={c.id} className="px-2 py-1.5 text-left font-medium text-fg-muted border-b border-line whitespace-nowrap">
                   {c.label}
                 </th>
               ))}
-              <th className="w-8 border-b border-line" />
+              <th scope="col" className="w-8 border-b border-line"><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
@@ -164,7 +170,8 @@ function GridField({ field, value, onChange }) {
                     type="button"
                     onClick={() => removeRow(i)}
                     title="Remove row"
-                    className="text-fg-subtle hover:text-red-500 transition"
+                    aria-label={`Remove row ${i + 1}`}
+                    className="text-fg-subtle hover:text-danger-fg transition"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -189,12 +196,23 @@ function GridField({ field, value, onChange }) {
 
 function FieldRow({ field, value, onChange, error }) {
   const cls = `${inputCls} ${error ? inputErrorCls : ''}`
+  // Same wiring as the shared FieldRow: the label points at the control and
+  // focusFirstError finds it by this id after a failed submit.
+  const inputId = fieldDomId(field.id)
+  const labelId = `${inputId}-label`
+  const errorId = error ? `${inputId}-error` : undefined
+  const a11y = {
+    id: inputId,
+    'aria-invalid': error ? true : undefined,
+    'aria-describedby': errorId,
+  }
 
   const renderInput = () => {
     switch (field.type) {
       case 'textarea':
         return (
           <textarea
+            {...a11y}
             rows={4}
             value={value ?? ''}
             onChange={(e) => onChange(e.target.value)}
@@ -202,9 +220,21 @@ function FieldRow({ field, value, onChange, error }) {
             className={`${cls} resize-y`}
           />
         )
+      case 'number':
+        return (
+          <input
+            {...a11y}
+            type="number"
+            value={value ?? ''}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={field.placeholder || ''}
+            className={cls}
+          />
+        )
       case 'date':
         return (
           <input
+            {...a11y}
             type="date"
             value={value ?? ''}
             onChange={(e) => onChange(e.target.value)}
@@ -214,6 +244,7 @@ function FieldRow({ field, value, onChange, error }) {
       case 'dropdown':
         return (
           <select
+            {...a11y}
             value={value ?? ''}
             onChange={(e) => onChange(e.target.value)}
             className={cls}
@@ -228,6 +259,7 @@ function FieldRow({ field, value, onChange, error }) {
         return (
           <label className="flex items-center gap-2 text-sm text-fg">
             <input
+              {...a11y}
               type="checkbox"
               checked={!!value}
               onChange={(e) => onChange(e.target.checked)}
@@ -239,6 +271,7 @@ function FieldRow({ field, value, onChange, error }) {
       case 'signature':
         return (
           <input
+            {...a11y}
             type="text"
             value={value ?? ''}
             onChange={(e) => onChange(e.target.value)}
@@ -251,10 +284,11 @@ function FieldRow({ field, value, onChange, error }) {
 
       case 'radio':
         return (
-          <div className="space-y-1.5">
-            {(field.options || []).map((opt) => (
+          <div className="space-y-1.5" role="radiogroup" aria-labelledby={labelId} aria-describedby={errorId}>
+            {(field.options || []).map((opt, i) => (
               <label key={opt} className="flex items-center gap-2 text-sm text-fg">
                 <input
+                  id={i === 0 ? inputId : undefined}
                   type="radio"
                   name={field.id}
                   value={opt}
@@ -280,6 +314,7 @@ function FieldRow({ field, value, onChange, error }) {
       default:
         return (
           <input
+            {...a11y}
             type="text"
             value={value ?? ''}
             onChange={(e) => onChange(e.target.value)}
@@ -291,13 +326,14 @@ function FieldRow({ field, value, onChange, error }) {
   }
 
   return (
-    <div>
-      <label className="block text-sm font-medium text-fg mb-1">
+    <div data-field-row={field.id}>
+      <label id={labelId} htmlFor={inputId} className="block text-sm font-medium text-fg mb-1">
         {field.label}
-        {field.required && <span className="text-red-500 ml-0.5">*</span>}
+        {field.required && <span className="text-danger-fg ml-0.5" aria-hidden="true">*</span>}
+        {field.required && <span className="sr-only"> (required)</span>}
       </label>
       {renderInput()}
-      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+      {error && <p id={errorId} className="mt-1 text-xs text-danger-fg">{error}</p>}
     </div>
   )
 }
@@ -424,7 +460,10 @@ function FillForm() {
     setSubmitError('')
     const errs = validate()
     setFieldErrors(errs)
-    if (Object.keys(errs).length > 0) return
+    if (Object.keys(errs).length > 0) {
+      focusFirstError(visibleFields, errs)
+      return
+    }
 
     setSubmitting(true)
     try {
@@ -436,7 +475,10 @@ function FillForm() {
       setDraftRestored(false)
       setResult(data)
     } catch (err) {
-      setSubmitError(err.message || 'Submission failed')
+      // A refused submission is usually the workspace being out of allowance or
+      // read-only, not a bad form — say which, and keep the answers on screen.
+      const limit = limitBanner(err)
+      setSubmitError(limit ? `${limit.title} — ${limit.message}` : (err.message || 'Submission failed'))
     } finally {
       setSubmitting(false)
     }
@@ -516,8 +558,8 @@ function FillForm() {
     return (
       <AppShell title={form.title} back={{ to: '/forms', label: 'Back to forms' }}>
         <div className="max-w-xl mx-auto bg-surface border border-line rounded-lg p-8 text-center">
-          <div className="mx-auto w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mb-3">
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+          <div className="mx-auto w-12 h-12 rounded-full bg-success-subtle flex items-center justify-center mb-3">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-success-fg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
@@ -530,7 +572,7 @@ function FillForm() {
               and the task is now in their inbox.
             </div>
           ) : (
-            <div className="mt-4 p-3 rounded-md bg-amber-50 border border-amber-200 text-sm text-amber-800">
+            <div className="mt-4 p-3 rounded-md bg-warning-subtle border border-warning-line text-sm text-warning-fg">
               No published workflow is linked to this form, so no approval
               task was created.
             </div>
@@ -572,12 +614,12 @@ function FillForm() {
     >
       <form onSubmit={handleSubmit} noValidate className="max-w-xl mx-auto bg-surface border border-line rounded-lg p-6 space-y-5">
         {draftRestored && (
-          <div className="flex items-center justify-between gap-3 p-3 rounded-md bg-amber-50 border border-amber-200 text-sm text-amber-800">
+          <div className="flex items-center justify-between gap-3 p-3 rounded-md bg-warning-subtle border border-warning-line text-sm text-warning-fg">
             <span>We restored your saved draft. Pick up where you left off.</span>
             <button
               type="button"
               onClick={handleDiscardDraft}
-              className="shrink-0 text-amber-700 hover:text-amber-900 font-medium underline"
+              className="shrink-0 text-warning-fg hover:brightness-110 font-medium underline"
             >
               Discard draft
             </button>
@@ -612,18 +654,18 @@ function FillForm() {
         ))}
 
         {submitError && (
-          <div className="p-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-700">
+          <div className="p-3 rounded-md bg-danger-subtle border border-danger-line text-sm text-danger-fg">
             {submitError}
           </div>
         )}
 
         {draftError && (
-          <p className="text-right text-xs text-red-600">{draftError}</p>
+          <p className="text-right text-xs text-danger-fg">{draftError}</p>
         )}
 
         <div className="flex items-center justify-end gap-2 pt-2 border-t border-line">
           {draftSavedAt && !savingDraft && (
-            <span className="mr-auto text-xs text-green-600">Draft saved</span>
+            <span className="mr-auto text-xs text-success-fg">Draft saved</span>
           )}
           <button
             type="button"

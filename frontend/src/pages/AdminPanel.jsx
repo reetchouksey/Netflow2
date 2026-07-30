@@ -1,24 +1,95 @@
 // Shared - AdminPanel.jsx
 // Real user management. Pulls users from GET /api/users and roles from
-// GET /api/roles. Admins can invite, change role, change department, and
-// deactivate / reactivate users. Non-admins see a friendly forbidden screen.
+// GET /api/roles. Admins can invite, change role, grant builder seats, change
+// department, and deactivate / reactivate users. Non-admins see a friendly
+// forbidden screen.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import AppShell from '../components/AppShell'
 import { api } from '../utils/api'
-import { useUser, DEPARTMENTS, initials } from '../utils/auth'
+import { fetchAllUsers } from '../utils/users'
+import { useUser, initials } from '../utils/auth'
+import { useDepartmentNames } from '../lib/departmentsStore'
 import { canManageUsers } from '../utils/permissions'
 import { parseCsv, buildTemplate } from '../utils/csv'
 import { confirm } from '../lib/confirmStore'
+import { Skeleton } from '../components/Skeleton'
+import EmptyState from '../components/EmptyState'
+import { AlertBanner } from '../components/Alert'
+import Modal from '../components/Modal'
+import UsageCard from '../components/UsageCard'
+import { limitBanner, reportLimit } from '../lib/limitFeedback'
+import { usageStore, useReadOnly, useUsage } from '../lib/usageStore'
+import { meterText } from '../lib/licensing'
+import { toast } from '../lib/toastStore'
 
+// A licensing refusal already carries an actionable sentence from the server;
+// this only adds the heading so it doesn't read like an unexpected failure.
+const errorText = (err, fallback) => {
+  const info = limitBanner(err)
+  return info ? `${info.title} — ${info.message}` : (err?.message || fallback)
+}
+
+const reportDialogError = (err, fallback) => {
+  if (reportLimit(err)) return
+  toast.error(err?.message || fallback)
+}
+
+// Designer routes also require the Administrator role — the seat alone is not enough.
+const DESIGNER_ROLE_NAMES = new Set(['Admin'])
+
+function useBuilderSeats() {
+  const { usage } = useUsage()
+  const meter = usage?.resources?.builders || null
+  const seatsFull = Boolean(meter && !meter.unlimited && Number(meter.used) >= Number(meter.limit))
+  const seatsHint = !meter
+    ? 'Lets this person design forms and workflows.'
+    : meter.unlimited
+      ? 'Unlimited builder seats on this plan.'
+      : `${meterText('builders', meter)} builder seats used.`
+  return { meter, seatsFull, seatsHint }
+}
+
+function BuilderSeatField({ id, checked, onChange, seatsFull, seatsHint, designerRole }) {
+  // Keep an already-granted seat editable (uncheck / re-check) even at the limit.
+  const grantBlocked = seatsFull && !checked
+  return (
+    <div className={`rounded-md border border-line px-3 py-2.5 ${grantBlocked ? 'opacity-70' : ''}`}>
+      <label htmlFor={id} className={`flex items-start gap-3 ${grantBlocked ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+        <input
+          id={id}
+          type="checkbox"
+          checked={checked}
+          disabled={grantBlocked}
+          onChange={(e) => onChange(e.target.checked)}
+          className="mt-0.5 rounded border-line text-indigo-600 focus:ring-indigo-400"
+        />
+        <span className="min-w-0">
+          <span className="block text-sm font-medium text-fg">Builder seat</span>
+          <span className="block text-[11px] text-fg-subtle mt-0.5">
+            {grantBlocked
+              ? 'No free builder seats — turn the seat off for someone else first.'
+              : seatsHint}
+            {!designerRole && !grantBlocked && (
+              <> Designing also requires the Administrator role.</>
+            )}
+          </span>
+        </span>
+      </label>
+    </div>
+  )
+}
+
+// Identity hues, not statuses — a person's initials shouldn't read as a warning,
+// so each entry keeps its own colour and carries an explicit dark pair.
 const AVATAR_PALETTE = [
-  'bg-pink-100 text-pink-700',
-  'bg-blue-100 text-blue-700',
-  'bg-amber-100 text-amber-700',
-  'bg-emerald-100 text-emerald-700',
-  'bg-purple-100 text-purple-700',
-  'bg-indigo-100 text-indigo-700',
-  'bg-rose-100 text-rose-700'
+  'bg-pink-100 text-pink-700 dark:bg-pink-500/20 dark:text-pink-200',
+  'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-200',
+  'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200',
+  'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200',
+  'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-200',
+  'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-200',
+  'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200'
 ]
 const avatarClassFor = (name) => {
   if (!name) return AVATAR_PALETTE[0]
@@ -31,10 +102,7 @@ const avatarClassFor = (name) => {
 
 // Show roles in a sensible order in the dropdown. Anything not in this list
 // (e.g. a future custom role) is appended alphabetically.
-const ROLE_ORDER = [
-  'Admin', 'CEO', 'Manager', 'HR', 'VP', 'Employee', 'Viewer',
-  'Receiving Staff', 'Warehouse Manager', 'Accounts Officer', 'Brand Rep', 'Finance Approver'
-]
+const ROLE_ORDER = ['Admin', 'CEO', 'VP', 'Manager', 'HR', 'Employee']
 
 // System-admin roles sit outside the org chart: no department, no reporting
 // manager, and their role isn't reassigned inline from this table.
@@ -55,6 +123,8 @@ const sortRoles = (roles) => {
 
 function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
   const sortedRoles = useMemo(() => sortRoles(roles), [roles])
+  const departments = useDepartmentNames()
+  const { seatsFull, seatsHint } = useBuilderSeats()
   const defaultRoleId =
     sortedRoles.find((r) => r.name === 'Employee')?._id ||
     sortedRoles[0]?._id ||
@@ -63,20 +133,29 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
   const [form, setForm] = useState({
     name: '',
     email: '',
-    department: DEPARTMENTS[0],
+    department: '',
     roleId: defaultRoleId,
     managerId: '',
     hrId: '',
-    password: ''
+    password: '',
+    canBuild: false
   })
+
+  // The list arrives a beat after the dialog opens; pick the first team then.
+  useEffect(() => {
+    if (!form.department && departments.length) {
+      setForm((p) => ({ ...p, department: departments[0] }))
+    }
+  }, [departments, form.department])
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState('')
+
+  const selectedRole = sortedRoles.find((r) => r._id === form.roleId)
+  const designerRole = DESIGNER_ROLE_NAMES.has(selectedRole?.name)
 
   const handleChange = (e) => {
     const { name, value } = e.target
     setForm((p) => ({ ...p, [name]: value }))
-    setError('')
   }
 
   const generatePassword = () => {
@@ -85,21 +164,24 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
     for (let i = 0; i < 10; i++) out += chars[Math.floor(Math.random() * chars.length)]
     setForm((p) => ({ ...p, password: out }))
     setShowPassword(true)
-    setError('')
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!form.name.trim() || !form.email.trim()) {
-      setError('Name and email are required')
+      toast.error('Name and email are required')
+      return
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      toast.error('Enter a valid email address')
       return
     }
     if (!form.roleId) {
-      setError('Pick a role for this user')
+      toast.error('Pick a role for this user')
       return
     }
     if (!form.password || form.password.length < 6) {
-      setError('Password must be at least 6 characters')
+      toast.error('Password must be at least 6 characters')
       return
     }
     setSubmitting(true)
@@ -111,53 +193,30 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
         roleId: form.roleId,
         managerId: form.managerId || undefined,
         hrId: form.hrId || undefined,
-        password: form.password
+        password: form.password,
+        canBuild: form.canBuild === true
       }
       const data = await api.post('/api/users', payload)
       onCreated(data.user, data.domainWarning)
     } catch (err) {
-      setError(err.message || 'Failed to create user')
+      reportDialogError(err, 'Failed to create user')
     } finally {
       setSubmitting(false)
     }
   }
 
   return (
-    <div
-      className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center px-4"
-      onClick={onClose}
+    <Modal
+      onClose={onClose}
+      title="Create a user"
+      description="You set the role, department, builder seat and initial password. Share the credentials with the user."
+      bodyClass="overflow-y-auto"
     >
-      <div
-        className="w-full max-w-md bg-surface rounded-xl shadow-xl border border-line"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-5 py-4 border-b border-line flex items-center justify-between">
+      <form onSubmit={handleSubmit} className="px-5 py-4 space-y-3" noValidate>
           <div>
-            <h2 className="text-sm font-semibold text-fg">Create a user</h2>
-            <p className="text-[11px] text-fg-muted mt-0.5">
-              You set the role, department and initial password. Share the credentials with the user.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-7 h-7 rounded-md hover:bg-surface-3 text-fg-subtle flex items-center justify-center transition"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-3" noValidate>
-          {error && (
-            <div className="p-2 rounded-md bg-red-50 border border-red-200 text-xs text-red-700">
-              {error}
-            </div>
-          )}
-
-          <div>
-            <label className="block text-xs font-medium text-fg-muted mb-1">Full name</label>
+            <label htmlFor="cu-name" className="block text-xs font-medium text-fg-muted mb-1">Full name</label>
             <input
+              id="cu-name"
               name="name"
               value={form.name}
               onChange={handleChange}
@@ -167,8 +226,9 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-fg-muted mb-1">Work email</label>
+            <label htmlFor="cu-email" className="block text-xs font-medium text-fg-muted mb-1">Work email</label>
             <input
+              id="cu-email"
               name="email"
               type="email"
               value={form.email}
@@ -180,8 +240,9 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-fg-muted mb-1">Role</label>
+              <label htmlFor="cu-role" className="block text-xs font-medium text-fg-muted mb-1">Role</label>
               <select
+                id="cu-role"
                 name="roleId"
                 value={form.roleId}
                 onChange={handleChange}
@@ -193,21 +254,23 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-fg-muted mb-1">Department</label>
+              <label htmlFor="cu-department" className="block text-xs font-medium text-fg-muted mb-1">Department</label>
               <select
+                id="cu-department"
                 name="department"
                 value={form.department}
                 onChange={handleChange}
                 className="w-full px-3 py-2 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
               >
-                {DEPARTMENTS.map((d) => <option key={d}>{d}</option>)}
+                {departments.map((d) => <option key={d}>{d}</option>)}
               </select>
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-fg-muted mb-1">Reporting manager</label>
+            <label htmlFor="cu-manager" className="block text-xs font-medium text-fg-muted mb-1">Reporting manager</label>
             <select
+              id="cu-manager"
               name="managerId"
               value={form.managerId}
               onChange={handleChange}
@@ -226,8 +289,9 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-fg-muted mb-1">HR partner</label>
+            <label htmlFor="cu-hr" className="block text-xs font-medium text-fg-muted mb-1">HR partner</label>
             <select
+              id="cu-hr"
               name="hrId"
               value={form.hrId}
               onChange={handleChange}
@@ -247,9 +311,18 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
             </p>
           </div>
 
+          <BuilderSeatField
+            id="cu-canBuild"
+            checked={form.canBuild}
+            onChange={(canBuild) => { setForm((p) => ({ ...p, canBuild })); setError('') }}
+            seatsFull={seatsFull}
+            seatsHint={seatsHint}
+            designerRole={designerRole}
+          />
+
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-medium text-fg-muted">
+              <label htmlFor="cu-password" className="block text-xs font-medium text-fg-muted">
                 Initial password <span className="text-rose-500">*</span>
               </label>
               <button
@@ -262,6 +335,7 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
             </div>
             <div className="relative">
               <input
+                id="cu-password"
                 name="password"
                 type={showPassword ? 'text' : 'password'}
                 value={form.password}
@@ -299,9 +373,8 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
               {submitting ? 'Creating…' : 'Create user'}
             </button>
           </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </Modal>
   )
 }
 
@@ -309,6 +382,8 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
 
 function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSaved }) {
   const sortedRoles = useMemo(() => sortRoles(roles || []), [roles])
+  const orgDepartments = useDepartmentNames()
+  const { seatsFull, seatsHint } = useBuilderSeats()
   // System admins (Admin) sit outside the org chart: no department, manager or
   // HR partner, and their role is managed separately. You also can't change
   // your own role.
@@ -320,18 +395,28 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
     email: user.email || '',
     password: '',
     roleId: user.role?._id || '',
-    department: user.department || DEPARTMENTS[0],
+    department: user.department || '',
     managerId: user.managerId || '',
-    hrId: user.hrId || ''
+    hrId: user.hrId || '',
+    canBuild: user.canBuild === true
   })
+  // Keep whoever is already filed under a retired department visible in the
+  // picker, so saving an unrelated change does not move them.
+  const departments = useMemo(
+    () => (form.department && !orgDepartments.includes(form.department)
+      ? [...orgDepartments, form.department]
+      : orgDepartments),
+    [orgDepartments, form.department]
+  )
   const [showPw, setShowPw] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState('')
+
+  const selectedRole = sortedRoles.find((r) => r._id === form.roleId)
+  const designerRole = DESIGNER_ROLE_NAMES.has(selectedRole?.name || user.role?.name)
 
   const handleChange = (e) => {
     const { name, value } = e.target
     setForm((p) => ({ ...p, [name]: value }))
-    setError('')
   }
 
   const handleSubmit = async (e) => {
@@ -339,13 +424,13 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
     const name = form.name.trim()
     const email = form.email.trim().toLowerCase()
     const password = form.password
-    if (!name) { setError('Name is required'); return }
+    if (!name) { toast.error('Name is required'); return }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setError('Enter a valid email address')
+      toast.error('Enter a valid email address')
       return
     }
     if (password && password.length < 6) {
-      setError('Password must be at least 6 characters')
+      toast.error('Password must be at least 6 characters')
       return
     }
     setSubmitting(true)
@@ -354,7 +439,7 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
       if (!roleLocked && form.roleId && form.roleId !== (user.role?._id || '')) {
         await api.post(`/api/users/${user._id}/assign-role`, { roleId: form.roleId })
       }
-      const payload = { name, email }
+      const payload = { name, email, canBuild: form.canBuild === true }
       if (password) payload.password = password
       if (!orgExempt) {
         payload.department = form.department
@@ -364,48 +449,24 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
       const data = await api.put(`/api/users/${user._id}`, payload)
       onSaved(data.user)
     } catch (err) {
-      setError(err.message || 'Failed to update user')
+      reportDialogError(err, 'Failed to update user')
     } finally {
       setSubmitting(false)
     }
   }
 
   return (
-    <div
-      className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center px-4"
-      onClick={onClose}
+    <Modal
+      onClose={onClose}
+      title="Edit user"
+      description="Update name, email, role, builder seat, department, manager & HR partner, or reset the password."
+      bodyClass="overflow-y-auto"
     >
-      <div
-        className="w-full max-w-md bg-surface rounded-xl shadow-xl border border-line"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-5 py-4 border-b border-line flex items-center justify-between">
+      <form onSubmit={handleSubmit} className="px-5 py-4 space-y-3" noValidate>
           <div>
-            <h2 className="text-sm font-semibold text-fg">Edit user</h2>
-            <p className="text-[11px] text-fg-muted mt-0.5">
-              Update name, email, role, department, manager &amp; HR partner, or reset the password.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-7 h-7 rounded-md hover:bg-surface-3 text-fg-subtle flex items-center justify-center transition"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-3" noValidate>
-          {error && (
-            <div className="p-2 rounded-md bg-red-50 border border-red-200 text-xs text-red-700">
-              {error}
-            </div>
-          )}
-
-          <div>
-            <label className="block text-xs font-medium text-fg-muted mb-1">Full name</label>
+            <label htmlFor="eu-name" className="block text-xs font-medium text-fg-muted mb-1">Full name</label>
             <input
+              id="eu-name"
               name="name"
               value={form.name}
               onChange={handleChange}
@@ -415,8 +476,9 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-fg-muted mb-1">Work email</label>
+            <label htmlFor="eu-email" className="block text-xs font-medium text-fg-muted mb-1">Work email</label>
             <input
+              id="eu-email"
               name="email"
               type="email"
               value={form.email}
@@ -433,8 +495,9 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
           {orgExempt ? (
             <>
               <div>
-                <label className="block text-xs font-medium text-fg-muted mb-1">Role</label>
+                <label htmlFor="eu-role-locked" className="block text-xs font-medium text-fg-muted mb-1">Role</label>
                 <select
+                  id="eu-role-locked"
                   name="roleId"
                   value={form.roleId}
                   onChange={handleChange}
@@ -453,8 +516,9 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-fg-muted mb-1">Role</label>
+                  <label htmlFor="eu-role" className="block text-xs font-medium text-fg-muted mb-1">Role</label>
                   <select
+                    id="eu-role"
                     name="roleId"
                     value={form.roleId}
                     onChange={handleChange}
@@ -466,21 +530,23 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-fg-muted mb-1">Department</label>
+                  <label htmlFor="eu-department" className="block text-xs font-medium text-fg-muted mb-1">Department</label>
                   <select
+                    id="eu-department"
                     name="department"
                     value={form.department}
                     onChange={handleChange}
                     className="w-full px-3 py-2 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
                   >
-                    {DEPARTMENTS.map((d) => <option key={d}>{d}</option>)}
+                    {departments.map((d) => <option key={d}>{d}</option>)}
                   </select>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-fg-muted mb-1">Reporting manager</label>
+                <label htmlFor="eu-manager" className="block text-xs font-medium text-fg-muted mb-1">Reporting manager</label>
                 <select
+                  id="eu-manager"
                   name="managerId"
                   value={form.managerId}
                   onChange={handleChange}
@@ -496,8 +562,9 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-fg-muted mb-1">HR partner</label>
+                <label htmlFor="eu-hr" className="block text-xs font-medium text-fg-muted mb-1">HR partner</label>
                 <select
+                  id="eu-hr"
                   name="hrId"
                   value={form.hrId}
                   onChange={handleChange}
@@ -519,10 +586,20 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
             </>
           )}
 
+          <BuilderSeatField
+            id="eu-canBuild"
+            checked={form.canBuild}
+            onChange={(canBuild) => { setForm((p) => ({ ...p, canBuild })); setError('') }}
+            seatsFull={seatsFull}
+            seatsHint={seatsHint}
+            designerRole={designerRole}
+          />
+
           <div>
-            <label className="block text-xs font-medium text-fg-muted mb-1">New password</label>
+            <label htmlFor="eu-password" className="block text-xs font-medium text-fg-muted mb-1">New password</label>
             <div className="relative">
               <input
+                id="eu-password"
                 name="password"
                 type={showPw ? 'text' : 'password'}
                 value={form.password}
@@ -561,9 +638,8 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
               {submitting ? 'Saving…' : 'Save changes'}
             </button>
           </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </Modal>
   )
 }
 
@@ -571,6 +647,7 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
 
 function AdminPanel() {
   const me = useUser()
+  const departments = useDepartmentNames()
 
   const [users, setUsers] = useState([])
   const [roles, setRoles] = useState([])
@@ -580,6 +657,7 @@ function AdminPanel() {
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('All roles')
   const [deptFilter, setDeptFilter] = useState('All departments')
+  const [statusFilter, setStatusFilter] = useState('') // '', 'active', 'inactive', 'admins'
   const [createOpen, setCreateOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [editUser, setEditUser] = useState(null)
@@ -587,12 +665,16 @@ function AdminPanel() {
   const [feedback, setFeedback] = useState('')
 
   const isAdmin = canManageUsers(me)
+  const readOnly = useReadOnly()
 
   // ---------- load ----------
   const loadUsers = async () => {
     try {
-      const data = await api.get('/api/users?limit=100')
+      const data = await fetchAllUsers()
       setUsers(data.users || [])
+      // Every mutation on this page reloads the list, and each one can move a
+      // seat count, so the card is refreshed from the same place.
+      usageStore.refresh({ withUsage: true }).catch(() => {})
     } catch (e) {
       setError(e.message || 'Failed to load users')
     }
@@ -615,7 +697,6 @@ function AdminPanel() {
       return
     }
     Promise.all([loadUsers(), loadRoles()]).finally(() => setLoading(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin])
 
   // ---------- mutations ----------
@@ -635,6 +716,15 @@ function AdminPanel() {
       setError('You cannot deactivate your own account.')
       return
     }
+    if (user.isActive) {
+      const ok = await confirm({
+        title: 'Deactivate user?',
+        message: `${user.name} will be signed out and won't be able to log in until reactivated.`,
+        confirmLabel: 'Deactivate',
+        danger: true,
+      })
+      if (!ok) return
+    }
     setBusyKey(user._id, 'deactivate')
     setError('')
     try {
@@ -647,7 +737,7 @@ function AdminPanel() {
       }
       await loadUsers()
     } catch (e) {
-      setError(e.message || 'Failed to update user')
+      setError(errorText(e, 'Failed to update user'))
     } finally {
       clearBusy(user._id)
     }
@@ -717,9 +807,21 @@ function AdminPanel() {
         (u.email || '').toLowerCase().includes(search.toLowerCase())
       const matchesRole = roleFilter === 'All roles' || u.role?.name === roleFilter
       const matchesDept = deptFilter === 'All departments' || u.department === deptFilter
-      return matchesSearch && matchesRole && matchesDept
+      const matchesStatus =
+        !statusFilter ||
+        (statusFilter === 'active' && u.isActive) ||
+        (statusFilter === 'inactive' && !u.isActive) ||
+        (statusFilter === 'admins' && SYSTEM_ADMIN_ROLES.has(u.role?.name))
+      return matchesSearch && matchesRole && matchesDept && matchesStatus
     })
-  }, [users, search, roleFilter, deptFilter])
+  }, [users, search, roleFilter, deptFilter, statusFilter])
+
+  const userStats = useMemo(() => {
+    const active = users.filter((u) => u.isActive).length
+    const inactive = users.length - active
+    const admins = users.filter((u) => SYSTEM_ADMIN_ROLES.has(u.role?.name)).length
+    return { total: users.length, active, inactive, admins }
+  }, [users])
 
   // ---------- gates ----------
 
@@ -727,10 +829,10 @@ function AdminPanel() {
 
   if (!isAdmin) {
     return (
-      <AppShell title="Admin Panel">
-        <div className="max-w-md mx-auto bg-surface border border-line rounded-lg p-8 text-center">
-          <div className="mx-auto w-12 h-12 rounded-full bg-rose-100 flex items-center justify-center mb-3">
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+      <AppShell title="Users">
+        <div className="max-w-md mx-auto bg-surface border border-line rounded-xl p-8 text-center shadow-sm">
+          <div className="mx-auto w-12 h-12 rounded-full bg-danger-subtle flex items-center justify-center mb-3">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-danger-fg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 4h.01M5 19h14a2 2 0 001.85-2.74L13.85 4.74a2 2 0 00-3.7 0L3.15 16.26A2 2 0 005 19z" />
             </svg>
           </div>
@@ -743,198 +845,345 @@ function AdminPanel() {
     )
   }
 
+  const newUserBlocked = roles.length === 0 || readOnly
+  const blockedHint = readOnly ? 'The workspace licence has expired — adding users is paused.' : undefined
   const actions = (
     <div className="flex items-center gap-2">
       <button
         onClick={() => setImportOpen(true)}
-        disabled={roles.length === 0}
-        className="px-4 py-2 rounded-md border border-line hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed text-fg text-sm font-medium transition"
+        disabled={newUserBlocked}
+        title={blockedHint}
+        className="px-4 py-2 rounded-lg border border-line hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed text-fg text-sm font-medium transition"
       >
         Import users
       </button>
       <button
         onClick={() => setCreateOpen(true)}
-        disabled={roles.length === 0}
-        className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium shadow-sm transition"
+        disabled={newUserBlocked}
+        title={blockedHint}
+        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold shadow-sm transition"
       >
-        + New user
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+        </svg>
+        New user
       </button>
     </div>
   )
 
+  const fieldCls =
+    'w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-line bg-surface-2 text-fg placeholder:text-fg-subtle focus:bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition'
+  const selectCls =
+    'px-3 py-2 text-sm rounded-lg border border-line bg-surface text-fg focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition'
+
+  const selectStatus = (next) => setStatusFilter((cur) => (cur === next ? '' : next))
+
   return (
     <AppShell
-      title="Admin Panel"
-      subtitle={`${users.length} ${users.length === 1 ? 'user' : 'users'} in your workspace`}
+      title="Users"
+      subtitle="Invite teammates, assign roles and builder seats, and manage access"
       actions={actions}
+      mainClass="flex-1 min-h-0 flex flex-col p-4 md:p-6 pb-24 md:pb-6 overflow-hidden"
     >
-      {feedback && (
-        <div className="mb-4 p-3 rounded-md bg-emerald-50 border border-emerald-200 text-sm text-emerald-700">
-          {feedback}
+      <div className="flex-1 min-h-0 flex flex-col gap-4 w-full overflow-hidden">
+        <div className="shrink-0 grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatusCard
+            label="All users"
+            value={loading ? '—' : userStats.total}
+            hint="In this workspace"
+            loading={loading}
+            active={!statusFilter}
+            onClick={() => setStatusFilter('')}
+            tone="neutral"
+            icon={<IconUsers className="w-5 h-5" />}
+          />
+          <StatusCard
+            label="Active"
+            value={loading ? '—' : userStats.active}
+            hint="Can sign in"
+            loading={loading}
+            active={statusFilter === 'active'}
+            onClick={() => selectStatus('active')}
+            tone="success"
+            icon={<IconActive className="w-5 h-5" />}
+          />
+          <StatusCard
+            label="Inactive"
+            value={loading ? '—' : userStats.inactive}
+            hint="Deactivated accounts"
+            loading={loading}
+            active={statusFilter === 'inactive'}
+            onClick={() => selectStatus('inactive')}
+            tone="muted"
+            icon={<IconInactive className="w-5 h-5" />}
+          />
+          <StatusCard
+            label="Admins"
+            value={loading ? '—' : userStats.admins}
+            hint="Workspace administrators"
+            loading={loading}
+            active={statusFilter === 'admins'}
+            onClick={() => selectStatus('admins')}
+            tone="info"
+            icon={<IconAdmin className="w-5 h-5" />}
+          />
         </div>
-      )}
-      {error && (
-        <div className="mb-4 p-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-700">
-          {error}
-        </div>
-      )}
-      {roles.length === 0 && !loading && (
-        <div className="mb-4 p-3 rounded-md bg-amber-50 border border-amber-200 text-sm text-amber-800">
-          Role catalogue is empty. Run <code className="font-mono text-xs">npm run seed</code> on the
-          server to create the default roles, then refresh this page.
-        </div>
-      )}
 
-      <div className="bg-surface border border-line rounded-lg">
-        <div className="px-5 py-4 flex flex-col md:flex-row gap-3 md:items-center border-b border-line">
-          <div className="relative flex-1 md:max-w-xs">
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-fg-subtle absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name or email…"
-              className="w-full pl-9 pr-3 py-2 text-sm rounded-md border border-line bg-surface-2 focus:bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition"
-            />
+        <div className="shrink-0">
+          <UsageCard />
+        </div>
+
+        {(feedback || error || (roles.length === 0 && !loading)) && (
+          <div className="shrink-0 space-y-3">
+            {feedback && <AlertBanner tone="success">{feedback}</AlertBanner>}
+            {error && <AlertBanner>{error}</AlertBanner>}
+            {roles.length === 0 && !loading && (
+              <AlertBanner tone="warning">
+                No roles are set up for this workspace yet, so new users can&rsquo;t be created. Ask your
+                platform administrator to finish setting up the workspace, then reload this page.
+              </AlertBanner>
+            )}
           </div>
-          <select
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value)}
-            className="px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
-          >
-            <option>All roles</option>
-            {roles.map((r) => <option key={r._id}>{r.name}</option>)}
-          </select>
-          <select
-            value={deptFilter}
-            onChange={(e) => setDeptFilter(e.target.value)}
-            className="px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
-          >
-            <option>All departments</option>
-            {DEPARTMENTS.map((d) => <option key={d}>{d}</option>)}
-          </select>
-        </div>
+        )}
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-[11px] font-semibold tracking-wider text-fg-subtle uppercase border-b border-line">
-                <th className="px-5 py-3">User</th>
-                <th className="px-5 py-3">Role</th>
-                <th className="px-5 py-3">Status</th>
-                <th className="px-5 py-3">Department</th>
-                <th className="px-5 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {loading ? (
-                <tr>
-                  <td colSpan={5} className="px-5 py-12 text-center text-sm text-fg-subtle">
-                    Loading users…
-                  </td>
-                </tr>
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-5 py-12 text-center text-sm text-fg-subtle">
-                    {users.length === 0
-                      ? 'No users yet. Click "+ New user" to create your first teammate.'
-                      : 'No users match your filters.'}
-                  </td>
-                </tr>
-              ) : filtered.map((u) => {
-                const isMe = u._id === me._id
-                const userBusy = busy[u._id]
-                return (
-                  <tr key={u._id} className="hover:bg-surface-2/60 transition">
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-9 h-9 rounded-md flex items-center justify-center text-xs font-semibold ${avatarClassFor(u.name)}`}>
-                          {initials(u.name)}
+        <div className="flex-1 min-h-0 flex flex-col bg-surface border border-line rounded-xl shadow-sm overflow-hidden">
+          <div className="shrink-0 px-5 py-4 flex flex-col sm:flex-row gap-3 sm:items-center border-b border-line bg-surface-2/40">
+            <div className="relative flex-1 min-w-0">
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-fg-subtle absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by name or email…"
+                aria-label="Search users"
+                className={fieldCls}
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+                aria-label="Filter by role"
+                className={selectCls}
+              >
+                <option>All roles</option>
+                {roles.map((r) => <option key={r._id}>{r.name}</option>)}
+              </select>
+              <select
+                value={deptFilter}
+                onChange={(e) => setDeptFilter(e.target.value)}
+                aria-label="Filter by department"
+                className={selectCls}
+              >
+                <option>All departments</option>
+                {departments.map((d) => <option key={d}>{d}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-auto">
+            {loading ? (
+              <div className="divide-y divide-line">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="px-5 py-4 flex items-center gap-4">
+                    <Skeleton className="w-10 h-10 rounded-full shrink-0" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-4 w-40" />
+                      <Skeleton className="h-3 w-56" />
+                    </div>
+                    <Skeleton className="h-6 w-16 rounded-full hidden sm:block" />
+                    <Skeleton className="h-8 w-24 rounded-lg" />
+                  </div>
+                ))}
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="h-full min-h-[16rem] flex items-center justify-center">
+                <EmptyState
+                  title={users.length === 0 ? 'No users yet' : 'No users match your filters'}
+                  description={
+                    users.length === 0
+                      ? 'Use “New user” to add your first teammate.'
+                      : 'Try clearing the search, status, role or department filter.'
+                  }
+                />
+              </div>
+            ) : (
+              <>
+                <table className="hidden md:table w-full table-fixed text-sm">
+                  <colgroup>
+                    <col />
+                    <col className="w-[9rem]" />
+                    <col className="w-[7.5rem]" />
+                    <col className="w-[8rem]" />
+                    <col className="w-[14rem]" />
+                  </colgroup>
+                  <thead className="sticky top-0 z-10">
+                    <tr className="text-left text-[11px] font-semibold tracking-wider text-fg-subtle uppercase border-b border-line bg-surface-2/95 backdrop-blur-sm">
+                      <th scope="col" className="px-5 py-3 font-semibold">User</th>
+                      <th scope="col" className="px-4 py-3 font-semibold">Role</th>
+                      <th scope="col" className="px-4 py-3 font-semibold">Status</th>
+                      <th scope="col" className="px-4 py-3 font-semibold">Department</th>
+                      <th scope="col" className="px-5 py-3 font-semibold text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-line">
+                    {filtered.map((u) => {
+                      const isMe = u._id === me._id
+                      const userBusy = busy[u._id]
+                      return (
+                        <tr key={u._id} className="hover:bg-surface-2/50 transition">
+                          <td className="px-5 py-3.5">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${avatarClassFor(u.name)}`}>
+                                {initials(u.name)}
+                              </div>
+                              <div className="min-w-0 leading-tight">
+                                <p className="font-semibold text-fg truncate">
+                                  {u.name}
+                                  {isMe && <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-info-fg bg-info-subtle px-1.5 py-0.5 rounded">You</span>}
+                                  {u.isProtected && <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-warning-fg bg-warning-subtle px-1.5 py-0.5 rounded" title="Protected system account">Locked</span>}
+                                  {u.canBuild && <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-700 bg-indigo-50 dark:text-indigo-200 dark:bg-indigo-500/20 px-1.5 py-0.5 rounded" title="Holds a builder seat">Builder</span>}
+                                </p>
+                                <p className="text-xs text-fg-muted truncate">{u.email}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-info-subtle text-info-fg">
+                              {u.role?.name || '—'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <span
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                                u.isActive
+                                  ? 'bg-success-subtle text-success-fg'
+                                  : 'bg-surface-3 text-fg-muted'
+                              }`}
+                            >
+                              <span className={`w-1.5 h-1.5 rounded-full ${u.isActive ? 'bg-success-fg' : 'bg-fg-subtle'}`} />
+                              {u.isActive ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5 text-xs text-fg-muted">
+                            {u.department || '—'}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => setEditUser(u)}
+                                disabled={!!userBusy || u.isProtected}
+                                title={u.isProtected ? 'Protected account — cannot be edited' : 'Edit details, role, builder seat & org placement'}
+                                className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white transition"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleToggleActive(u)}
+                                disabled={isMe || !!userBusy || u.isProtected}
+                                title={
+                                  isMe
+                                    ? 'You cannot deactivate yourself'
+                                    : u.isProtected
+                                      ? 'Protected account — cannot be deactivated'
+                                      : u.isActive ? 'Deactivate user' : 'Reactivate user'
+                                }
+                                className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-line hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed text-fg transition"
+                              >
+                                {userBusy === 'deactivate'
+                                  ? '...'
+                                  : u.isActive ? 'Deactivate' : 'Reactivate'}
+                              </button>
+                              <button
+                                onClick={() => handleDelete(u)}
+                                disabled={isMe || !!userBusy || u.isProtected}
+                                aria-label={`Delete ${u.name}`}
+                                title={
+                                  isMe
+                                    ? 'You cannot delete yourself'
+                                    : u.isProtected
+                                      ? 'Protected account — cannot be deleted'
+                                      : 'Permanently delete user'
+                                }
+                                className="w-8 h-8 rounded-lg border border-line text-fg-muted hover:text-danger-fg hover:border-danger-line hover:bg-danger-subtle disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition"
+                              >
+                                {userBusy === 'delete' ? (
+                                  <span className="text-xs">…</span>
+                                ) : (
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                )}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+
+                <ul className="md:hidden divide-y divide-line">
+                  {filtered.map((u) => {
+                    const isMe = u._id === me._id
+                    const userBusy = busy[u._id]
+                    return (
+                      <li key={u._id} className="px-4 py-4">
+                        <div className="flex items-start gap-3">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${avatarClassFor(u.name)}`}>
+                            {initials(u.name)}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-semibold text-fg truncate">
+                              {u.name}
+                              {isMe && <span className="ml-1.5 text-[10px] font-semibold text-info-fg">You</span>}
+                            </p>
+                            <p className="text-xs text-fg-muted truncate">{u.email}</p>
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-info-subtle text-info-fg">
+                                {u.role?.name || '—'}
+                              </span>
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                                u.isActive ? 'bg-success-subtle text-success-fg' : 'bg-surface-3 text-fg-muted'
+                              }`}>
+                                {u.isActive ? 'Active' : 'Inactive'}
+                              </span>
+                              {u.canBuild && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium text-indigo-700 bg-indigo-50 dark:text-indigo-200 dark:bg-indigo-500/20">
+                                  Builder
+                                </span>
+                              )}
+                              {u.department && (
+                                <span className="text-[11px] text-fg-subtle">{u.department}</span>
+                              )}
+                            </div>
+                            <div className="mt-3 flex items-center gap-2">
+                              <button
+                                onClick={() => setEditUser(u)}
+                                disabled={!!userBusy || u.isProtected}
+                                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white disabled:opacity-50"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleToggleActive(u)}
+                                disabled={isMe || !!userBusy || u.isProtected}
+                                className="px-3 py-1.5 text-xs font-medium rounded-lg border border-line disabled:opacity-50"
+                              >
+                                {u.isActive ? 'Deactivate' : 'Reactivate'}
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                        <div className="leading-tight">
-                          <p className="font-medium text-fg">
-                            {u.name}
-                            {isMe && <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">You</span>}
-                            {u.isProtected && <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded" title="Protected system account">Locked</span>}
-                          </p>
-                          <p className="text-xs text-fg-muted">{u.email}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
-                        {u.role?.name || '—'}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
-                          u.isActive
-                            ? 'bg-green-50 text-green-700 border border-green-200'
-                            : 'bg-surface-3 text-fg-muted border border-line'
-                        }`}
-                      >
-                        {u.isActive ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 text-xs text-fg-muted">
-                      {u.department}
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => setEditUser(u)}
-                          disabled={!!userBusy || u.isProtected}
-                          title={u.isProtected ? 'Protected account — cannot be edited' : 'Edit details, role & org placement'}
-                          className="px-3 py-1.5 text-xs font-medium rounded-md border border-line hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed text-fg transition"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleToggleActive(u)}
-                          disabled={isMe || !!userBusy || u.isProtected}
-                          title={
-                            isMe
-                              ? 'You cannot deactivate yourself'
-                              : u.isProtected
-                                ? 'Protected account — cannot be deactivated'
-                                : u.isActive ? 'Deactivate user' : 'Reactivate user'
-                          }
-                          className="px-3 py-1.5 text-xs font-medium rounded-md border border-line hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed text-fg transition"
-                        >
-                          {userBusy === 'deactivate'
-                            ? '...'
-                            : u.isActive ? 'Deactivate' : 'Reactivate'}
-                        </button>
-                        <button
-                          onClick={() => handleDelete(u)}
-                          disabled={isMe || !!userBusy || u.isProtected}
-                          title={
-                            isMe
-                              ? 'You cannot delete yourself'
-                              : u.isProtected
-                                ? 'Protected account — cannot be deleted'
-                                : 'Permanently delete user'
-                          }
-                          className="p-1.5 rounded-md border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
-                        >
-                          {userBusy === 'delete' ? (
-                            <span className="text-xs px-1">…</span>
-                          ) : (
-                            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          )}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -975,11 +1224,89 @@ function AdminPanel() {
   )
 }
 
+function StatusCard({ label, value, hint, tone = 'neutral', icon, active, onClick, loading }) {
+  const tones = {
+    neutral: {
+      icon: 'bg-surface-2 text-fg-muted ring-line',
+      value: 'text-fg',
+      active: 'border-indigo-300 ring-2 ring-indigo-100 dark:ring-indigo-500/20',
+    },
+    success: {
+      icon: 'bg-success-subtle text-success-fg ring-success-line',
+      value: 'text-success-fg',
+      active: 'border-success-line ring-2 ring-success-subtle',
+    },
+    muted: {
+      icon: 'bg-surface-3 text-fg-muted ring-line',
+      value: 'text-fg',
+      active: 'border-line ring-2 ring-surface-3',
+    },
+    info: {
+      icon: 'bg-info-subtle text-info-fg ring-info-line',
+      value: 'text-info-fg',
+      active: 'border-info-line ring-2 ring-info-subtle',
+    },
+  }
+  const t = tones[tone] || tones.neutral
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-xl border bg-surface px-4 py-3.5 shadow-sm flex items-start gap-3 text-left transition w-full ${
+        active ? t.active : 'border-line hover:border-indigo-200'
+      }`}
+    >
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ring-1 ${t.icon}`}>
+        {icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">{label}</p>
+        {loading ? (
+          <Skeleton className="h-7 w-12 mt-1.5" />
+        ) : (
+          <p className={`mt-1 text-2xl font-semibold tabular-nums tracking-tight ${t.value}`}>{value}</p>
+        )}
+        {hint ? <p className="mt-0.5 text-[11px] text-fg-muted truncate">{hint}</p> : null}
+      </div>
+    </button>
+  )
+}
+
+function IconUsers(props) {
+  return (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.5 20.25a7.5 7.5 0 0115 0" />
+    </svg>
+  )
+}
+function IconActive(props) {
+  return (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  )
+}
+function IconInactive(props) {
+  return (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+    </svg>
+  )
+}
+function IconAdmin(props) {
+  return (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+    </svg>
+  )
+}
+
 // ---------- bulk import dialog ------------------------------------------
 
 const REQUIRED_COLUMNS = ['name', 'email', 'department', 'role']
 
 function ImportUsersDialog({ roles, onClose, onImported }) {
+  const departments = useDepartmentNames()
   const [rows, setRows] = useState([])
   const [fileName, setFileName] = useState('')
   const [parseError, setParseError] = useState('')
@@ -991,7 +1318,7 @@ function ImportUsersDialog({ roles, onClose, onImported }) {
     () => new Set((roles || []).map((r) => r.name.toLowerCase())),
     [roles]
   )
-  const deptSet = useMemo(() => new Set(DEPARTMENTS.map((d) => d.toLowerCase())), [])
+  const deptSet = useMemo(() => new Set(departments.map((d) => d.toLowerCase())), [departments])
 
   // Client-side row validity hint (server re-validates authoritatively).
   const rowIssue = (r) => {
@@ -1033,7 +1360,7 @@ function ImportUsersDialog({ roles, onClose, onImported }) {
   }
 
   const downloadTemplate = () => {
-    const blob = new Blob([buildTemplate()], { type: 'text/csv;charset=utf-8' })
+    const blob = new Blob([buildTemplate(departments)], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -1050,44 +1377,47 @@ function ImportUsersDialog({ roles, onClose, onImported }) {
       setResult(data)
       onImported?.()
     } catch (err) {
-      setParseError(err.message || 'Import failed')
+      setParseError(errorText(err, 'Import failed'))
     } finally {
       setSubmitting(false)
     }
   }
 
   const badgeFor = (status) =>
-    status === 'created' ? 'bg-emerald-100 text-emerald-700'
-      : status === 'skipped' ? 'bg-amber-100 text-amber-700'
-        : 'bg-red-100 text-red-700'
+    status === 'created' ? 'bg-success-subtle text-success-fg'
+      : status === 'skipped' ? 'bg-warning-subtle text-warning-fg'
+        : 'bg-danger-subtle text-danger-fg'
 
   return (
-    <div
-      className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center px-4"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-2xl bg-surface rounded-xl shadow-xl border border-line flex flex-col max-h-[90vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-5 py-4 border-b border-line flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-fg">Import users from CSV</h2>
-            <p className="text-[11px] text-fg-muted mt-0.5">
-              Upload a CSV to invite many users at once. Each gets a temporary password by email.
-            </p>
-          </div>
+    <Modal
+      onClose={onClose}
+      size="xl"
+      title="Import users from CSV"
+      description="Upload a CSV to invite many users at once. Each gets a temporary password by email."
+      bodyClass="overflow-y-auto"
+      footer={
+        <>
           <button
             type="button"
             onClick={onClose}
-            className="w-7 h-7 rounded-md hover:bg-surface-3 text-fg-subtle flex items-center justify-center transition"
-            aria-label="Close"
+            className="px-3 py-2 rounded-md border border-line hover:bg-surface-2 text-sm font-medium text-fg transition"
           >
-            ×
+            {result ? 'Close' : 'Cancel'}
           </button>
-        </div>
-
-        <div className="px-5 py-4 overflow-y-auto space-y-4">
+          {!result && (
+            <button
+              type="button"
+              onClick={submit}
+              disabled={submitting || rows.length === 0 || validCount === 0}
+              className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-semibold shadow-sm transition"
+            >
+              {submitting ? 'Importing…' : `Import ${validCount} user${validCount === 1 ? '' : 's'}`}
+            </button>
+          )}
+        </>
+      }
+    >
+        <div className="px-5 py-4 space-y-4">
           <input
             ref={fileRef}
             type="file"
@@ -1117,7 +1447,7 @@ function ImportUsersDialog({ roles, onClose, onImported }) {
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
-                className="w-full flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-line px-4 py-7 text-center hover:border-indigo-300 hover:bg-indigo-50/40 transition"
+                className="w-full flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-line px-4 py-7 text-center hover:border-info-line hover:bg-info-subtle/50 transition"
               >
                 <svg className="w-6 h-6 text-fg-subtle" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M17 8l-5-5-5 5" /><path d="M12 3v12" />
@@ -1133,7 +1463,7 @@ function ImportUsersDialog({ roles, onClose, onImported }) {
 
 
           {parseError && (
-            <div className="p-2 rounded-md bg-red-50 border border-red-200 text-xs text-red-700">{parseError}</div>
+            <div className="p-2 rounded-md bg-danger-subtle border border-danger-line text-xs text-danger-fg">{parseError}</div>
           )}
 
           {rows.length > 0 && !result && (
@@ -1141,9 +1471,9 @@ function ImportUsersDialog({ roles, onClose, onImported }) {
               <div className="flex items-center justify-between text-[11px]">
                 <span className="text-fg-muted">{rows.length} row{rows.length === 1 ? '' : 's'} found</span>
                 <span className="text-fg-muted">
-                  <span className="font-medium text-emerald-600">{validCount} valid</span>
+                  <span className="font-medium text-success-fg">{validCount} valid</span>
                   {rows.length - validCount > 0 && (
-                    <span className="text-red-500"> · {rows.length - validCount} with issues</span>
+                    <span className="text-danger-fg"> · {rows.length - validCount} with issues</span>
                   )}
                 </span>
               </div>
@@ -1151,23 +1481,23 @@ function ImportUsersDialog({ roles, onClose, onImported }) {
                 <table className="w-full text-xs">
                   <thead className="bg-surface-2 text-[10px] uppercase tracking-wide text-fg-subtle">
                     <tr>
-                      <th className="text-left px-3 py-2 font-medium">Name</th>
-                      <th className="text-left px-3 py-2 font-medium">Email</th>
-                      <th className="text-left px-3 py-2 font-medium">Dept</th>
-                      <th className="text-left px-3 py-2 font-medium">Role</th>
-                      <th className="text-left px-3 py-2 font-medium">Issue</th>
+                      <th scope="col" className="text-left px-3 py-2 font-medium">Name</th>
+                      <th scope="col" className="text-left px-3 py-2 font-medium">Email</th>
+                      <th scope="col" className="text-left px-3 py-2 font-medium">Dept</th>
+                      <th scope="col" className="text-left px-3 py-2 font-medium">Role</th>
+                      <th scope="col" className="text-left px-3 py-2 font-medium">Issue</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-line">
                     {rows.slice(0, 20).map((r, i) => {
                       const issue = rowIssue(r)
                       return (
-                        <tr key={i} className={issue ? 'bg-red-50/60' : ''}>
+                        <tr key={i} className={issue ? 'bg-danger-subtle/60' : ''}>
                           <td className="px-3 py-2 text-fg">{r.name}</td>
                           <td className="px-3 py-2 text-fg">{r.email}</td>
                           <td className="px-3 py-2 text-fg-muted">{r.department}</td>
                           <td className="px-3 py-2 text-fg-muted">{r.role}</td>
-                          <td className="px-3 py-2 text-red-600">{issue}</td>
+                          <td className="px-3 py-2 text-danger-fg">{issue}</td>
                         </tr>
                       )
                     })}
@@ -1183,9 +1513,9 @@ function ImportUsersDialog({ roles, onClose, onImported }) {
           {result && (
             <div className="space-y-3">
               <div className="flex flex-wrap gap-2 text-xs font-medium">
-                <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">{result.created} created</span>
-                <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-700">{result.skipped} skipped</span>
-                <span className="px-2.5 py-1 rounded-full bg-red-100 text-red-700">{result.failed} failed</span>
+                <span className="px-2.5 py-1 rounded-full bg-success-subtle text-success-fg">{result.created} created</span>
+                <span className="px-2.5 py-1 rounded-full bg-warning-subtle text-warning-fg">{result.skipped} skipped</span>
+                <span className="px-2.5 py-1 rounded-full bg-danger-subtle text-danger-fg">{result.failed} failed</span>
               </div>
               {(result.results || []).some((r) => r.status !== 'created' || r.reason) && (
                 <div className="border border-line rounded-lg max-h-60 overflow-y-auto">
@@ -1208,28 +1538,7 @@ function ImportUsersDialog({ roles, onClose, onImported }) {
             </div>
           )}
         </div>
-
-        <div className="px-5 py-4 border-t border-line flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-3 py-2 rounded-md border border-line hover:bg-surface-2 text-sm font-medium text-fg transition"
-          >
-            {result ? 'Close' : 'Cancel'}
-          </button>
-          {!result && (
-            <button
-              type="button"
-              onClick={submit}
-              disabled={submitting || rows.length === 0 || validCount === 0}
-              className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-semibold shadow-sm transition"
-            >
-              {submitting ? 'Importing…' : `Import ${validCount} user${validCount === 1 ? '' : 's'}`}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }
 

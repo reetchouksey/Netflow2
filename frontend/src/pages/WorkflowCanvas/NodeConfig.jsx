@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { NODE_STYLES } from "./nodeStyles";
+import NodeTypeIcon from "../../components/NodeTypeIcon";
 import { FORM_FIELD_TYPES, newFieldId, PATTERN_PRESETS } from "../../components/FormFields";
 import { api } from "../../utils/api";
+import { fetchAllUsers } from "../../utils/users";
 
 const SLA_UNITS = ["Minutes", "Hours", "Days"];
 const BREACH_ACTIONS = [
@@ -43,8 +45,7 @@ function useActiveUsers() {
   useEffect(() => {
     if (_activeUsersCache) return;
     let cancelled = false;
-    api
-      .get("/api/users?isActive=true&limit=100")
+    fetchAllUsers({ isActive: true })
       .then((d) => {
         _activeUsersCache = d.users || [];
         if (!cancelled) setUsers(_activeUsersCache);
@@ -66,12 +67,14 @@ export default function NodeConfig({
 }) {
   if (!node) {
     return (
-      <aside className="w-80 shrink-0 border-l border-line bg-surface px-5 py-6">
-        <div className="text-[11px] font-semibold tracking-wider text-fg-muted mb-3">
-          NODE CONFIG
+      <aside className="w-64 xl:w-80 shrink-0 border-l border-line bg-surface flex flex-col min-h-0">
+        <div className="px-4 xl:px-5 pt-4 pb-3 border-b border-line">
+          <div className="text-[11px] font-semibold tracking-wider text-fg-muted">
+            NODE CONFIG
+          </div>
         </div>
-        <div className="text-sm text-fg-subtle mt-10 text-center">
-          Select a node on the canvas to configure it.
+        <div className="flex-1 flex flex-col items-center justify-center px-6 py-10 text-center">
+          <p className="text-sm text-fg-muted">Select a node</p>
         </div>
       </aside>
     );
@@ -81,14 +84,22 @@ export default function NodeConfig({
   const update = (patch) => onChange({ ...node, ...patch });
 
   return (
-    <aside className="w-80 shrink-0 border-l border-line bg-surface px-5 py-6 overflow-y-auto">
-      <div className="text-[11px] font-semibold tracking-wider text-fg-muted mb-3">
-        NODE CONFIG
+    <aside className="w-64 xl:w-80 shrink-0 border-l border-line bg-surface flex flex-col min-h-0">
+      <div className="px-4 xl:px-5 pt-4 pb-3 border-b border-line shrink-0">
+        <div className="text-[11px] font-semibold tracking-wider text-fg-muted">
+          NODE CONFIG
+        </div>
       </div>
 
-      <div className={`rounded-lg border px-4 py-3 mb-5 ${s.card}`}>
-        <div className={`text-sm font-semibold ${s.title}`}>{node.title}</div>
-        <div className={`text-xs mt-0.5 ${s.subtitle}`}>{s.label} node</div>
+      <div className="flex-1 overflow-y-auto px-4 xl:px-5 py-5">
+      <div className={`rounded-xl border px-4 py-3 mb-5 flex items-start gap-3 ${s.card}`}>
+        <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${s.tile}`}>
+          <NodeTypeIcon name={s.icon} />
+        </span>
+        <div className="min-w-0">
+          <div className={`text-sm font-semibold truncate ${s.title}`}>{node.title}</div>
+          <div className={`text-xs mt-0.5 ${s.subtitle}`}>{s.label}</div>
+        </div>
       </div>
 
       <Field label="Title">
@@ -199,6 +210,7 @@ export default function NodeConfig({
           </p>
         </div>
       )}
+      </div>
     </aside>
   );
 }
@@ -258,7 +270,7 @@ function DecisionConfig({ node, nodes, connections, onConnectionsChange }) {
       <Field label="If approved →">
         {branchSelect("approve", approveEdge)}
         {approveEdge && (
-          <p className="mt-1 text-[11px] text-emerald-700">
+          <p className="mt-1 text-[11px] text-success-fg">
             Approve path wired.
           </p>
         )}
@@ -267,14 +279,14 @@ function DecisionConfig({ node, nodes, connections, onConnectionsChange }) {
       <Field label="If rejected →">
         {branchSelect("reject", rejectEdge)}
         {rejectEdge && (
-          <p className="mt-1 text-[11px] text-rose-700">
+          <p className="mt-1 text-[11px] text-danger-fg">
             Reject path wired.
           </p>
         )}
       </Field>
 
       {targets.length === 0 && (
-        <p className="text-[11px] text-amber-700">
+        <p className="text-[11px] text-warning-fg">
           Add more nodes to the canvas first, then pick where each branch goes.
         </p>
       )}
@@ -453,7 +465,7 @@ function MultiApprovalConfig({ node, update }) {
             return (
               <label
                 key={u._id}
-                className="flex items-center gap-2 px-3 py-2 text-sm text-fg cursor-pointer hover:bg-indigo-50/50"
+                className="flex items-center gap-2 px-3 py-2 text-sm text-fg cursor-pointer hover:bg-info-subtle/60"
               >
                 <input
                   type="checkbox"
@@ -648,7 +660,7 @@ function FieldConditionEditor({ field, earlier, onChange }) {
 
       {enabled && (
         (earlier || []).length === 0 ? (
-          <p className="mt-1.5 text-[11px] text-amber-700">Add a field above this one to use as the trigger.</p>
+          <p className="mt-1.5 text-[11px] text-warning-fg">Add a field above this one to use as the trigger.</p>
         ) : (
           <div className="mt-2 space-y-1.5">
             <select
@@ -859,7 +871,7 @@ function SubmitFormBuilder({ fields, onChange }) {
               <button
                 type="button"
                 onClick={() => removeField(i)}
-                className="px-1.5 py-1 text-red-500 hover:text-red-700"
+                className="px-1.5 py-1 text-danger-fg hover:text-danger-fg"
                 title="Remove field"
               >
                 ✕
@@ -913,7 +925,7 @@ function SubmitFormBuilder({ fields, onChange }) {
       <button
         type="button"
         onClick={addField}
-        className="mt-2 w-full px-3 py-2 text-sm rounded-md border border-dashed border-line text-fg-muted hover:border-teal-300 hover:text-teal-700 transition"
+        className="mt-2 w-full px-3 py-2 text-sm rounded-md border border-dashed border-line text-fg-muted hover:border-teal-300 hover:text-teal-700 dark:hover:border-teal-500/40 dark:hover:text-teal-300 transition"
       >
         + Add field
       </button>
@@ -999,21 +1011,21 @@ function ReviewConfig({ node, update, nodes, connections, onConnectionsChange })
       <Field label="If no changes → (forward)">
         {branchSelect("approve", forwardEdge)}
         {forwardEdge && (
-          <p className="mt-1 text-[11px] text-emerald-700">Forward path wired.</p>
+          <p className="mt-1 text-[11px] text-success-fg">Forward path wired.</p>
         )}
       </Field>
 
       <Field label="If changes required →">
         {branchSelect("reject", changesEdge)}
         {changesEdge && (
-          <p className="mt-1 text-[11px] text-rose-700">
+          <p className="mt-1 text-[11px] text-danger-fg">
             Changes path wired (usually loops back to the submit step).
           </p>
         )}
       </Field>
 
       {targets.length === 0 && (
-        <p className="text-[11px] text-amber-700">
+        <p className="text-[11px] text-warning-fg">
           Add more nodes to the canvas first, then pick where each outcome goes.
         </p>
       )}
@@ -1085,7 +1097,7 @@ function ApiConfig({ node, update }) {
               <button
                 type="button"
                 onClick={() => removeHeader(i)}
-                className="px-2 text-fg-subtle hover:text-red-600"
+                className="px-2 text-fg-subtle hover:text-danger-fg"
                 aria-label="Remove header"
               >
                 ×
@@ -1095,7 +1107,7 @@ function ApiConfig({ node, update }) {
           <button
             type="button"
             onClick={addHeader}
-            className="text-xs font-medium text-blue-600 hover:text-blue-700"
+            className="text-xs font-medium text-info-fg hover:brightness-110"
           >
             + Add header
           </button>
@@ -1126,12 +1138,17 @@ function ApiConfig({ node, update }) {
           <option value="basic">Basic auth</option>
         </select>
         {auth.mode === "bearer" && (
-          <input
-            value={auth.token || ""}
-            onChange={(e) => setAuth({ token: e.target.value })}
-            placeholder="Token"
-            className={`${inputCls} mt-2`}
-          />
+          <>
+            <input
+              value={auth.token || ""}
+              onChange={(e) => setAuth({ token: e.target.value })}
+              placeholder="Token or env:MY_SECRET"
+              className={`${inputCls} mt-2`}
+            />
+            <p className="mt-1 text-[11px] text-fg-subtle">
+              Use <code className="text-[10px]">env:VAR_NAME</code> to read from server environment (vault-style).
+            </p>
+          </>
         )}
         {auth.mode === "basic" && (
           <div className="mt-2 flex gap-2">
@@ -1179,14 +1196,18 @@ function ApiConfig({ node, update }) {
 }
 
 const inputCls =
-  "w-full px-3 py-2 text-sm bg-surface border border-line rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500";
+  "w-full px-3 py-2 text-sm bg-surface text-fg placeholder:text-fg-subtle border border-line rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500";
 
+// Some fields hold a single input, others a checkbox list or a repeater with its
+// own buttons, so a wrapping <label> would be wrong (and nest labels). Naming a
+// group covers both without every caller wiring up an id.
 function Field({ label, children }) {
+  const captionId = useId();
   return (
-    <div className="mb-4">
-      <label className="block text-xs font-medium text-fg mb-1.5">
+    <div className="mb-4" role="group" aria-labelledby={captionId}>
+      <span id={captionId} className="block text-xs font-medium text-fg mb-1.5">
         {label}
-      </label>
+      </span>
       {children}
     </div>
   );

@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { authStore, useUser } from './utils/auth'
 import { getToken } from './utils/api'
-import { canCreateWorkflow, canViewReports, canEditWorkflow, canEditForm, canCreateForm, isSuperAdmin } from './utils/permissions'
+import { canCreateWorkflow, canViewReports, canEditWorkflow, canEditForm, canCreateForm, canManageUsers, isSuperAdmin, isTenantShell, isOrgAdmin, canViewTeam } from './utils/permissions'
 
 // Self-registration disabled — admins create users via the Admin Panel.
 // import Register from './pages/Register'
@@ -13,6 +13,10 @@ import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import Dashboard from './pages/Dashboard'
 import AdminPanel from './pages/AdminPanel'
+import Team from './pages/Team'
+import Departments from './pages/Departments'
+import RolesPermissions from './pages/RolesPermissions'
+import OrgSettings from './pages/OrgSettings'
 import Workflows from './pages/Workflows'
 import NewWorkflow from './pages/NewWorkflow'
 import Forms from './pages/Forms'
@@ -25,13 +29,18 @@ import TaskInbox from './pages/TaskInbox'
 import TaskDetail from './pages/TaskDetail'
 import Analytics from './pages/Analytics'
 import AuditLog from './pages/AuditLog'
-import ApprovalRouting from './pages/ApprovalRouting'
 import Notifications from './pages/Notifications'
 import Profile from './pages/Profile'
 import PlatformPanel from './pages/PlatformPanel'
+import PlatformActivity from './pages/PlatformActivity'
+import PlatformHealth from './pages/PlatformHealth'
+import PlatformUsage from './pages/PlatformUsage'
+import PlatformPlans from './pages/PlatformPlans'
+import PlatformAdmins from './pages/PlatformAdmins'
 import ChangePassword from './pages/ChangePassword'
 import Toaster from './components/Toaster'
 import ConfirmDialog from './components/ConfirmDialog'
+import UserGuideHost from './components/UserGuideHost'
 
 // Users flagged mustChangePassword (e.g. a freshly provisioned org admin) are
 // held on /change-password until they set a real password.
@@ -71,6 +80,13 @@ function RequireRole({ can, children }) {
   return children
 }
 
+// Workspace pages (forms, requests, reports, user admin) belong to a tenant.
+// Platform staff have no workspace, so they land back on the platform console
+// instead of an empty or borrowed org. The API refuses the same calls.
+function RequireTenant({ children }) {
+  return <RequireRole can={isTenantShell}>{children}</RequireRole>
+}
+
 function PublicOnly({ children }) {
   const user = useUser()
   const token = getToken()
@@ -78,6 +94,26 @@ function PublicOnly({ children }) {
     return <Navigate to="/dashboard" replace />
   }
   return children
+}
+
+function AuthenticatedTourHost() {
+  const user = useUser()
+  const location = useLocation()
+  const token = getToken()
+  if (!token || !user) return null
+  if (user.mustChangePassword) return null
+  // Public / auth screens never show the application demo overlay.
+  if (
+    location.pathname.startsWith('/login') ||
+    location.pathname.startsWith('/forgot-password') ||
+    location.pathname.startsWith('/reset-password') ||
+    location.pathname.startsWith('/change-password') ||
+    location.pathname.startsWith('/f/') ||
+    location.pathname.startsWith('/oauth/')
+  ) {
+    return null
+  }
+  return <UserGuideHost />
 }
 
 function App() {
@@ -106,6 +142,8 @@ function App() {
     <BrowserRouter>
       <Toaster />
       <ConfirmDialog />
+      {/* Tour lives at app root so it survives Form/Workflow builders (no AppShell). */}
+      <AuthenticatedTourHost />
       <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         {/* Self-registration disabled — only admins create users via the Admin Panel.
@@ -120,14 +158,14 @@ function App() {
         <Route path="/oauth/callback" element={<OAuthCallback />} />
 
         <Route path="/dashboard"     element={<RequireAuth><Dashboard /></RequireAuth>} />
-        <Route path="/forms"          element={<RequireAuth><Forms /></RequireAuth>} />
-        <Route path="/forms/new"      element={<RequireAuth><NewForm /></RequireAuth>} />
-        <Route path="/forms/:id/fill" element={<RequireAuth><FillForm /></RequireAuth>} />
+        <Route path="/forms"          element={<RequireTenant><Forms /></RequireTenant>} />
+        <Route path="/forms/new"      element={<RequireRole can={canCreateForm}><NewForm /></RequireRole>} />
+        <Route path="/forms/:id/fill" element={<RequireTenant><FillForm /></RequireTenant>} />
         <Route path="/forms/:id/responses" element={<RequireRole can={canCreateForm}><FormResponses /></RequireRole>} />
-        <Route path="/tasks"         element={<RequireAuth><TaskInbox /></RequireAuth>} />
-        <Route path="/tasks/:id"     element={<RequireAuth><TaskDetail /></RequireAuth>} />
-        <Route path="/analytics"     element={<RequireAuth><Analytics /></RequireAuth>} />
-        <Route path="/audit-log"     element={<RequireAuth><AuditLog /></RequireAuth>} />
+        <Route path="/tasks"         element={<RequireTenant><TaskInbox /></RequireTenant>} />
+        <Route path="/tasks/:id"     element={<RequireTenant><TaskDetail /></RequireTenant>} />
+        <Route path="/analytics"     element={<RequireRole can={canViewReports}><Analytics /></RequireRole>} />
+        <Route path="/audit-log"     element={<RequireRole can={canViewReports}><AuditLog /></RequireRole>} />
         <Route path="/notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
         <Route path="/profile"       element={<RequireAuth><Profile /></RequireAuth>} />
         <Route path="/change-password" element={<RequireAuth><ChangePassword /></RequireAuth>} />
@@ -135,9 +173,19 @@ function App() {
         <Route path="/workflows/new"      element={<RequireRole can={canCreateWorkflow}><NewWorkflow /></RequireRole>} />
         <Route path="/workflows/:id/edit" element={<RequireRole can={canEditWorkflow}><NewWorkflow /></RequireRole>} />
         <Route path="/forms/:id/edit"     element={<RequireRole can={canEditForm}><NewForm /></RequireRole>} />
-        <Route path="/approval-routing" element={<RequireRole can={canViewReports}><ApprovalRouting /></RequireRole>} />
-        <Route path="/admin"         element={<RequireAuth><AdminPanel /></RequireAuth>} />
+        <Route path="/admin"         element={<RequireRole can={canManageUsers}><AdminPanel /></RequireRole>} />
+        {/* Shell 3 — a leader operating: the people they answer for */}
+        <Route path="/team"          element={<RequireRole can={canViewTeam}><Team /></RequireRole>} />
+        {/* Shell 2 — configuring the workspace itself, Org Admin only */}
+        <Route path="/departments"   element={<RequireRole can={isOrgAdmin}><Departments /></RequireRole>} />
+        <Route path="/roles"         element={<RequireRole can={isOrgAdmin}><RolesPermissions /></RequireRole>} />
+        <Route path="/settings"      element={<RequireRole can={isOrgAdmin}><OrgSettings /></RequireRole>} />
         <Route path="/platform"      element={<RequireRole can={isSuperAdmin}><PlatformPanel /></RequireRole>} />
+        <Route path="/usage"         element={<RequireRole can={isSuperAdmin}><PlatformUsage /></RequireRole>} />
+        <Route path="/activity"      element={<RequireRole can={isSuperAdmin}><PlatformActivity /></RequireRole>} />
+        <Route path="/health"        element={<RequireRole can={isSuperAdmin}><PlatformHealth /></RequireRole>} />
+        <Route path="/plans"         element={<RequireRole can={isSuperAdmin}><PlatformPlans /></RequireRole>} />
+        <Route path="/admins"        element={<RequireRole can={isSuperAdmin}><PlatformAdmins /></RequireRole>} />
 
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>

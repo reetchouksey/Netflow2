@@ -1,25 +1,17 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import NewFormModal from '../components/NewFormModal'
-import { TableRowSkeleton } from '../components/Skeleton'
+import EmptyState from '../components/EmptyState'
+import { Skeleton } from '../components/Skeleton'
 import { useForms, formsStore, FORM_CATEGORIES } from '../lib/formsStore'
 import { useUser } from '../utils/auth'
 import { canCreateForm, canSubmitForms, canEditForm } from '../utils/permissions'
 import { toast } from '../lib/toastStore'
 import { confirm } from '../lib/confirmStore'
-
-const categoryStyles = {
-  'Company-wide': 'bg-sky-50 text-sky-700',
-  HR: 'bg-pink-50 text-pink-700',
-  Finance: 'bg-amber-50 text-amber-700',
-  Procurement: 'bg-blue-50 text-blue-700',
-  IT: 'bg-indigo-50 text-indigo-700',
-  Operations: 'bg-emerald-50 text-emerald-700',
-  Marketing: 'bg-purple-50 text-purple-700',
-  Sales: 'bg-rose-50 text-rose-700',
-  Legal: 'bg-slate-100 text-slate-700',
-}
+import { categoryBadge } from '../utils/badges'
+import { useReadOnly } from '../lib/usageStore'
+import { useOutsideDismiss } from '../utils/a11y'
 
 const formatDate = (iso) => {
   try {
@@ -33,13 +25,293 @@ const formatDate = (iso) => {
   }
 }
 
-function Forms() {
+const fieldCls =
+  'w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-line bg-surface-2 text-fg placeholder:text-fg-subtle focus:bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition'
+const selectCls =
+  'px-3 py-2 text-sm rounded-lg border border-line bg-surface text-fg focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition'
+
+function StatCard({ label, value, hint }) {
+  return (
+    <div className="rounded-xl border border-line bg-surface px-4 py-3.5 shadow-sm">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">{label}</p>
+      <p className="mt-1.5 text-2xl font-semibold tabular-nums tracking-tight text-fg">{value}</p>
+      {hint ? <p className="mt-0.5 text-[11px] text-fg-muted">{hint}</p> : null}
+    </div>
+  )
+}
+
+function SearchIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-fg-subtle absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
+    </svg>
+  )
+}
+
+function FormGlyph({ className = 'w-4 h-4' }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 4H7a2 2 0 01-2-2V5a2 2 0 012-2h7l4 4v11a2 2 0 01-2 2z" />
+    </svg>
+  )
+}
+
+function IconForm(props) {
+  return (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 4H7a2 2 0 01-2-2V5a2 2 0 012-2h7l4 4v11a2 2 0 01-2 2z" />
+    </svg>
+  )
+}
+
+function StatusBadge({ status, onClick, interactive }) {
+  const published = status === 'Published'
+  const cls = published
+    ? 'bg-success-subtle text-success-fg'
+    : 'bg-surface-3 text-fg-muted'
+  const base = `inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${cls}`
+  if (!interactive) {
+    return (
+      <span className={base}>
+        <span className={`w-1.5 h-1.5 rounded-full ${published ? 'bg-success-fg' : 'bg-fg-subtle'}`} />
+        {status}
+      </span>
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Toggle status"
+      className={`${base} hover:brightness-95 transition`}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full ${published ? 'bg-success-fg' : 'bg-fg-subtle'}`} />
+      {status}
+    </button>
+  )
+}
+
+function RowMenu({ form, canCreate, canEdit, canSubmit, readOnly, onFill, onResponses, onShare, onCopyLink, onStopSharing, onEdit, onDelete }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  useOutsideDismiss(open, ref, () => setOpen(false))
+
+  const item =
+    'w-full text-left px-3 py-2 text-sm text-fg hover:bg-surface-2 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2'
+  const danger = 'w-full text-left px-3 py-2 text-sm text-danger-fg hover:bg-danger-subtle flex items-center gap-2'
+  const close = (fn) => () => { setOpen(false); fn?.() }
+
+  const canFill = canSubmit && form.status === 'Published' && form.fields > 0
+  const showShare = canCreate && form.status === 'Published'
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Actions for ${form.name}`}
+        className="w-8 h-8 rounded-lg border border-line text-fg-muted hover:text-fg hover:bg-surface-2 flex items-center justify-center transition"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 mt-1 w-48 bg-surface border border-line rounded-xl shadow-lg z-30 py-1 overflow-hidden"
+        >
+          {canFill && (
+            <button type="button" role="menuitem" className={item} disabled={readOnly} onClick={close(onFill)}>
+              Fill form
+            </button>
+          )}
+          {canCreate && (
+            <button type="button" role="menuitem" className={item} onClick={close(onResponses)}>
+              View responses
+            </button>
+          )}
+          {showShare && !form.isPublic && (
+            <button type="button" role="menuitem" className={item} onClick={close(onShare)}>
+              Share public link
+            </button>
+          )}
+          {showShare && form.isPublic && (
+            <>
+              <button type="button" role="menuitem" className={item} onClick={close(onCopyLink)}>
+                Copy public link
+              </button>
+              <button type="button" role="menuitem" className={item} onClick={close(onStopSharing)}>
+                Stop sharing
+              </button>
+            </>
+          )}
+          {canEdit && (
+            <button type="button" role="menuitem" className={item} onClick={close(onEdit)}>
+              Edit form
+            </button>
+          )}
+          {canCreate && (
+            <>
+              <div className="my-1 border-t border-line" />
+              <button type="button" role="menuitem" className={danger} onClick={close(onDelete)}>
+                Delete
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Shell 4 — what Forms means to someone who only ever starts requests.
+function RequestCatalogue() {
+  const navigate = useNavigate()
+  const forms = useForms()
+  const readOnly = useReadOnly()
+  const [search, setSearch] = useState('')
+  const [category, setCategory] = useState('')
+  const [booting, setBooting] = useState(true)
+  useEffect(() => { formsStore.refresh().finally(() => setBooting(false)) }, [])
+
+  const startable = useMemo(
+    () => forms.filter((f) => f.status === 'Published' && f.fields > 0),
+    [forms]
+  )
+
+  const categories = useMemo(
+    () => [...new Set(startable.map((f) => f.category).filter(Boolean))].sort(),
+    [startable]
+  )
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return startable.filter((f) => {
+      const matchesSearch = !q
+        || f.name.toLowerCase().includes(q)
+        || (f.description || '').toLowerCase().includes(q)
+      return matchesSearch && (!category || f.category === category)
+    })
+  }, [startable, search, category])
+
+  const subtitle = booting
+    ? 'Loading…'
+    : `${startable.length} available to start`
+
+  return (
+    <AppShell
+      title="Forms"
+      subtitle={subtitle}
+      mainClass="flex-1 min-h-0 flex flex-col p-4 md:p-6 pb-24 md:pb-6 overflow-hidden"
+    >
+      <div className="flex-1 min-h-0 flex flex-col w-full">
+        <div data-tour="forms-list" className="flex-1 min-h-0 flex flex-col bg-surface border border-line rounded-xl shadow-sm overflow-hidden">
+          <div className="shrink-0 px-5 py-4 flex flex-col md:flex-row gap-3 md:items-center border-b border-line bg-surface-2/40">
+            <div className="relative flex-1 min-w-0">
+              <SearchIcon />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search requests…"
+                aria-label="Search requests"
+                className={fieldCls}
+              />
+            </div>
+            {categories.length > 1 && (
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                aria-label="Filter by category"
+                className={`${selectCls} shrink-0`}
+              >
+                <option value="">All categories</option>
+                {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            )}
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {booting && !startable.length ? (
+              <div className="p-5 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="border border-line rounded-xl p-4 space-y-3">
+                    <Skeleton className="h-4 w-2/3" />
+                    <Skeleton className="h-3 w-full" />
+                    <Skeleton className="h-7 w-28" />
+                  </div>
+                ))}
+              </div>
+            ) : !filtered.length ? (
+              <div className="h-full min-h-[16rem] flex items-center justify-center">
+                <EmptyState
+                  title={startable.length ? 'Nothing matches that' : 'No requests available yet'}
+                  description={startable.length
+                    ? 'Try a different word, or clear the category filter.'
+                    : 'When an admin publishes a form for your team, it shows up here.'}
+                  icon={<IconForm className="w-5 h-5" />}
+                />
+              </div>
+            ) : (
+              <div className="p-5 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {filtered.map((f) => (
+                  <div
+                    key={f.id}
+                    className="group border border-line rounded-xl p-4 flex flex-col bg-surface hover:border-indigo-200 hover:shadow-md transition"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300 flex items-center justify-center shrink-0">
+                        <FormGlyph />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="font-semibold text-fg leading-snug truncate">{f.name}</p>
+                          {f.category && (
+                            <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium ${categoryBadge(f.category)}`}>
+                              {f.category}
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 text-xs text-fg-muted line-clamp-2 min-h-[2rem]">
+                          {f.description || 'No description.'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-line flex items-center justify-between">
+                      <span className="text-[11px] text-fg-subtle">
+                        {f.fields} {f.fields === 1 ? 'question' : 'questions'}
+                      </span>
+                      <button
+                        onClick={() => navigate(`/forms/${f.id}/fill`)}
+                        disabled={readOnly}
+                        title={readOnly ? 'The workspace licence has expired — new requests are paused.' : undefined}
+                        className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold transition"
+                      >
+                        Start request
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </AppShell>
+  )
+}
+
+function FormsLibrary() {
   const navigate = useNavigate()
   const forms = useForms()
   const me = useUser()
   const canCreate = canCreateForm(me)
   const canSubmit = canSubmitForms(me)
   const canEdit = canEditForm(me)
+  const readOnly = useReadOnly()
   const [search, setSearch] = useState('')
   const [newOpen, setNewOpen] = useState(false)
   const [booting, setBooting] = useState(true)
@@ -97,38 +369,58 @@ function Forms() {
   }, [forms, search, categoryFilter, statusFilter])
 
   const published = forms.filter((f) => f.status === 'Published').length
+  const drafts = forms.filter((f) => f.status === 'Draft').length
   const totalSubmissions = forms.reduce((sum, f) => sum + (f.submissions || 0), 0)
 
-  const subtitle = `${forms.length} total · ${published} published · ${totalSubmissions} submissions`
   const actions = canCreate ? (
     <button
+      data-tour="forms-create"
       onClick={() => setNewOpen(true)}
-      className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium shadow-sm transition"
+      disabled={readOnly}
+      title={readOnly ? 'The workspace licence has expired — new forms are paused.' : undefined}
+      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold shadow-sm transition"
     >
+      <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+      </svg>
       New form
     </button>
   ) : null
 
   return (
-    <AppShell title="Forms" subtitle={subtitle} actions={actions}>
-      <div className="bg-surface border border-line rounded-lg">
-            <div className="px-5 py-4 flex flex-col md:flex-row gap-3 md:items-center border-b border-line">
-              <div className="relative flex-1 max-w-xs">
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-fg-subtle absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search forms..."
-                  className="w-full pl-9 pr-3 py-2 text-sm rounded-md border border-line bg-surface-2 focus:bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition"
-                />
-              </div>
+    <AppShell
+      title="Forms"
+      subtitle="Build, publish, and collect responses"
+      actions={actions}
+      mainClass="flex-1 min-h-0 flex flex-col p-4 md:p-6 pb-24 md:pb-6 overflow-hidden"
+    >
+      <div className="flex-1 min-h-0 flex flex-col gap-4 w-full">
+        <div className="shrink-0 grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatCard label="Total forms" value={booting && !forms.length ? '—' : forms.length} hint="In this workspace" />
+          <StatCard label="Published" value={booting && !forms.length ? '—' : published} hint="Ready to collect responses" />
+          <StatCard label="Drafts" value={booting && !forms.length ? '—' : drafts} hint="Not published yet" />
+          <StatCard label="Submissions" value={booting && !forms.length ? '—' : totalSubmissions} hint="All time" />
+        </div>
+
+        <div data-tour="forms-list" className="flex-1 min-h-0 flex flex-col bg-surface border border-line rounded-xl shadow-sm overflow-hidden">
+          <div className="shrink-0 px-5 py-4 flex flex-col sm:flex-row gap-3 sm:items-center border-b border-line bg-surface-2/40">
+            <div className="relative flex-1 min-w-0">
+              <SearchIcon />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by name or description…"
+                aria-label="Search forms"
+                className={fieldCls}
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
               <select
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition"
+                aria-label="Filter by category"
+                className={selectCls}
               >
                 <option>All categories</option>
                 {FORM_CATEGORIES.map((c) => (
@@ -138,197 +430,275 @@ function Forms() {
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-2 text-sm rounded-md border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition"
+                aria-label="Filter by status"
+                className={selectCls}
               >
                 <option>All status</option>
                 <option>Published</option>
                 <option>Draft</option>
               </select>
             </div>
+          </div>
 
+          <div className="flex-1 min-h-0 overflow-auto">
             {booting && forms.length === 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <tbody className="divide-y divide-line">
-                    {Array.from({ length: 6 }).map((_, i) => <TableRowSkeleton key={i} cols={7} />)}
-                  </tbody>
-                </table>
+              <div className="divide-y divide-line">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="px-5 py-4 flex items-center gap-4">
+                    <Skeleton className="w-10 h-10 rounded-xl shrink-0" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-4 w-48" />
+                      <Skeleton className="h-3 w-72 max-w-full" />
+                    </div>
+                    <Skeleton className="h-6 w-16 rounded-full hidden sm:block" />
+                    <Skeleton className="h-8 w-8 rounded-lg" />
+                  </div>
+                ))}
               </div>
             ) : filtered.length === 0 ? (
-              <div className="px-5 py-16 text-center">
-                <p className="text-sm text-fg-muted">
-                  {forms.length === 0
-                    ? canCreate
-                      ? 'No forms yet. Create your first one to get started.'
-                      : 'No forms have been published yet. Ask an Admin or Manager to create one.'
-                    : 'No forms match your filters.'}
-                </p>
-                {forms.length === 0 && canCreate && (
-                  <button
-                    onClick={() => setNewOpen(true)}
-                    className="mt-4 px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium shadow-sm transition"
-                  >
-                    Create form
-                  </button>
-                )}
+              <div className="h-full min-h-[16rem] flex items-center justify-center">
+                <EmptyState
+                  icon={<IconForm className="w-5 h-5" />}
+                  title={forms.length === 0 ? 'No forms yet' : 'No forms match'}
+                  description={
+                    forms.length === 0
+                      ? canCreate
+                        ? 'Create a form to start collecting requests and routing approvals.'
+                        : 'No forms have been published yet. Ask an Admin or Manager to create one.'
+                      : 'Try a different search or clear the filters.'
+                  }
+                  action={
+                    forms.length === 0 && canCreate ? (
+                      <button
+                        onClick={() => setNewOpen(true)}
+                        className="mt-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-sm transition"
+                      >
+                        Create form
+                      </button>
+                    ) : null
+                  }
+                />
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-[11px] font-semibold tracking-wider text-fg-subtle uppercase border-b border-line">
-                      <th className="px-5 py-3">Form</th>
-                      <th className="px-5 py-3">Category</th>
-                      <th className="px-5 py-3">Fields</th>
-                      <th className="px-5 py-3">Submissions</th>
-                      <th className="px-5 py-3">Status</th>
-                      <th className="px-5 py-3">Created</th>
-                      <th className="px-5 py-3">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-line">
-                    {filtered.map((f) => (
-                      <tr key={f.id} className="hover:bg-surface-2/60 transition">
-                        <td className="px-5 py-4">
-                          <p className="font-medium text-fg flex items-center gap-1.5">
-                            {f.name}
-                            {f.isPublic && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700">
-                                Public
+              <>
+                <div className="hidden md:block w-full">
+                  <table className="w-full table-fixed text-sm">
+                    <colgroup>
+                      <col />
+                      <col className="w-[7.5rem]" />
+                      <col className="w-[5.5rem]" />
+                      <col className="w-[7.5rem]" />
+                      <col className="w-[7.5rem]" />
+                      <col className="w-[6.5rem]" />
+                      <col className="w-[12.5rem]" />
+                    </colgroup>
+                    <thead className="sticky top-0 z-10">
+                      <tr className="text-left text-[11px] font-semibold tracking-wider text-fg-subtle uppercase border-b border-line bg-surface-2/95 backdrop-blur-sm">
+                        <th scope="col" className="px-5 py-3 font-semibold">Form</th>
+                        <th scope="col" className="px-4 py-3 font-semibold">Category</th>
+                        <th scope="col" className="px-4 py-3 font-semibold text-right">Fields</th>
+                        <th scope="col" className="px-4 py-3 font-semibold text-right">Submissions</th>
+                        <th scope="col" className="px-4 py-3 font-semibold">Status</th>
+                        <th scope="col" className="px-4 py-3 font-semibold">Created</th>
+                        <th scope="col" className="px-5 py-3 font-semibold text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-line">
+                      {filtered.map((f) => {
+                        const primaryHref = canEdit
+                          ? `/forms/${f.id}/edit`
+                          : canCreate
+                            ? `/forms/${f.id}/responses`
+                            : canSubmit && f.status === 'Published' && f.fields > 0
+                              ? `/forms/${f.id}/fill`
+                              : null
+                        return (
+                          <tr key={f.id} className="group hover:bg-surface-2/50 transition">
+                            <td className="px-5 py-3.5">
+                              <div className="flex items-start gap-3 min-w-0">
+                                <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300 flex items-center justify-center shrink-0 ring-1 ring-indigo-100 dark:ring-indigo-500/20">
+                                  <FormGlyph className="w-[18px] h-[18px]" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <button
+                                    type="button"
+                                    disabled={!primaryHref}
+                                    onClick={() => primaryHref && navigate(primaryHref)}
+                                    className="text-left font-semibold text-fg hover:text-indigo-600 disabled:hover:text-fg transition truncate w-full block"
+                                  >
+                                    {f.name}
+                                  </button>
+                                  <div className="mt-0.5 flex items-center gap-2 min-w-0">
+                                    {f.description ? (
+                                      <p className="text-xs text-fg-muted truncate min-w-0">{f.description}</p>
+                                    ) : (
+                                      <p className="text-xs text-fg-subtle">No description</p>
+                                    )}
+                                    {f.isPublic && (
+                                      <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-success-subtle text-success-fg">
+                                        Public
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${categoryBadge(f.category)}`}>
+                                {f.category || '—'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5 text-right tabular-nums text-fg font-medium">{f.fields}</td>
+                            <td className="px-4 py-3.5 text-right tabular-nums text-fg font-medium">{f.submissions ?? 0}</td>
+                            <td className="px-4 py-3.5">
+                              <StatusBadge
+                                status={f.status}
+                                interactive={canCreate}
+                                onClick={() => formsStore.togglePublished(f.id)}
+                              />
+                            </td>
+                            <td className="px-4 py-3.5 text-xs text-fg-muted whitespace-nowrap">{formatDate(f.createdAt)}</td>
+                            <td className="px-5 py-3.5">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {canEdit && (
+                                  <button
+                                    type="button"
+                                    onClick={() => navigate(`/forms/${f.id}/edit`)}
+                                    className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition"
+                                  >
+                                    Edit
+                                  </button>
+                                )}
+                                {canCreate && (
+                                  <button
+                                    type="button"
+                                    onClick={() => navigate(`/forms/${f.id}/responses`)}
+                                    title="View responses"
+                                    className="px-2.5 py-1.5 rounded-lg text-xs font-medium border border-line text-fg-muted hover:text-fg hover:bg-surface-2 transition"
+                                  >
+                                    Responses
+                                  </button>
+                                )}
+                                <RowMenu
+                                  form={f}
+                                  canCreate={canCreate}
+                                  canEdit={canEdit}
+                                  canSubmit={canSubmit}
+                                  readOnly={readOnly}
+                                  onFill={() => navigate(`/forms/${f.id}/fill`)}
+                                  onResponses={() => navigate(`/forms/${f.id}/responses`)}
+                                  onShare={() => shareForm(f)}
+                                  onCopyLink={() => copyLink(f)}
+                                  onStopSharing={() => stopSharing(f)}
+                                  onEdit={() => navigate(`/forms/${f.id}/edit`)}
+                                  onDelete={async () => {
+                                    if (await confirm({
+                                      title: 'Delete form?',
+                                      message: 'This permanently deletes the form and all its submissions. This cannot be undone.',
+                                      confirmLabel: 'Delete',
+                                      danger: true,
+                                    })) formsStore.remove(f.id)
+                                  }}
+                                />
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <ul className="md:hidden divide-y divide-line">
+                  {filtered.map((f) => (
+                    <li key={f.id} className="px-4 py-4">
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300 flex items-center justify-center shrink-0">
+                          <FormGlyph className="w-[18px] h-[18px]" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-fg truncate">{f.name}</p>
+                              <p className="text-xs text-fg-muted line-clamp-2 mt-0.5">
+                                {f.description || 'No description'}
+                              </p>
+                            </div>
+                            <RowMenu
+                              form={f}
+                              canCreate={canCreate}
+                              canEdit={canEdit}
+                              canSubmit={canSubmit}
+                              readOnly={readOnly}
+                              onFill={() => navigate(`/forms/${f.id}/fill`)}
+                              onResponses={() => navigate(`/forms/${f.id}/responses`)}
+                              onShare={() => shareForm(f)}
+                              onCopyLink={() => copyLink(f)}
+                              onStopSharing={() => stopSharing(f)}
+                              onEdit={() => navigate(`/forms/${f.id}/edit`)}
+                              onDelete={async () => {
+                                if (await confirm({
+                                  title: 'Delete form?',
+                                  message: 'This permanently deletes the form and all its submissions. This cannot be undone.',
+                                  confirmLabel: 'Delete',
+                                  danger: true,
+                                })) formsStore.remove(f.id)
+                              }}
+                            />
+                          </div>
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            {f.category && (
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium ${categoryBadge(f.category)}`}>
+                                {f.category}
                               </span>
                             )}
-                          </p>
-                          {f.description && (
-                            <p className="text-xs text-fg-muted mt-0.5">{f.description}</p>
-                          )}
-                        </td>
-                        <td className="px-5 py-4">
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                              categoryStyles[f.category] || 'bg-surface-3 text-fg-muted'
-                            }`}
-                          >
-                            {f.category}
-                          </span>
-                        </td>
-                        <td className="px-5 py-4 text-fg">{f.fields}</td>
-                        <td className="px-5 py-4 text-fg">{f.submissions ?? 0}</td>
-                        <td className="px-5 py-4">
-                          {canCreate ? (
-                            <button
+                            <StatusBadge
+                              status={f.status}
+                              interactive={canCreate}
                               onClick={() => formsStore.togglePublished(f.id)}
-                              title="Toggle status"
-                              className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium transition ${
-                                f.status === 'Published'
-                                  ? 'bg-green-50 text-green-600 hover:bg-green-100'
-                                  : 'bg-surface-3 text-fg-muted hover:bg-line'
-                              }`}
-                            >
-                              {f.status}
-                            </button>
-                          ) : (
-                            <span
-                              className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
-                                f.status === 'Published'
-                                  ? 'bg-green-50 text-green-600'
-                                  : 'bg-surface-3 text-fg-muted'
-                              }`}
-                            >
-                              {f.status}
+                            />
+                            <span className="text-[11px] text-fg-subtle">
+                              {f.fields} fields · {f.submissions ?? 0} submissions
                             </span>
-                          )}
-                        </td>
-                        <td className="px-5 py-4 text-xs text-fg-muted">{formatDate(f.createdAt)}</td>
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-2">
-                            {canSubmit && f.status === 'Published' && f.fields > 0 && (
+                          </div>
+                          <div className="mt-3 flex items-center gap-2">
+                            {canEdit && (
                               <button
-                                onClick={() => navigate(`/forms/${f.id}/fill`)}
-                                title="Fill this form"
-                                className="px-2.5 py-1 rounded-md text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition"
+                                type="button"
+                                onClick={() => navigate(`/forms/${f.id}/edit`)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white"
                               >
-                                Fill
+                                Edit
                               </button>
-                            )}
-                            {canSubmit && f.status === 'Published' && f.fields === 0 && (
-                              <span
-                                title="Form has no fields"
-                                className="px-2.5 py-1 rounded-md text-xs font-medium bg-surface-3 text-fg-subtle cursor-not-allowed"
-                              >
-                                Fill
-                              </span>
                             )}
                             {canCreate && (
                               <button
+                                type="button"
                                 onClick={() => navigate(`/forms/${f.id}/responses`)}
-                                title="View collected responses"
-                                className="px-2.5 py-1 rounded-md text-xs font-medium border border-line text-fg-muted hover:bg-surface-2 transition"
+                                className="px-3 py-1.5 rounded-lg text-xs font-medium border border-line"
                               >
                                 Responses
                               </button>
                             )}
-                            {canCreate && f.status === 'Published' && (
-                              f.isPublic ? (
-                                <>
-                                  <button
-                                    onClick={() => copyLink(f)}
-                                    title="Copy the public link"
-                                    className="px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition"
-                                  >
-                                    Copy link
-                                  </button>
-                                  <button
-                                    onClick={() => stopSharing(f)}
-                                    title="Stop sharing"
-                                    className="px-2 py-1 rounded-md text-xs font-medium text-fg-subtle hover:text-red-600 hover:bg-red-50 transition"
-                                  >
-                                    Stop
-                                  </button>
-                                </>
-                              ) : (
-                                <button
-                                  onClick={() => shareForm(f)}
-                                  title="Create a public share link"
-                                  className="px-2.5 py-1 rounded-md text-xs font-medium border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition"
-                                >
-                                  Share
-                                </button>
-                              )
-                            )}
-                            {canEdit && (
-                              <button
-                                onClick={() => navigate(`/forms/${f.id}/edit`)}
-                                title="Edit form"
-                                className="w-9 h-7 rounded-md border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 flex items-center justify-center text-indigo-500 transition"
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828a2 2 0 01-1.414.586H8v-2.414a2 2 0 01.586-1.414z" />
-                                </svg>
-                              </button>
-                            )}
-                            {canCreate && (
-                              <button
-                                onClick={async () => { if (await confirm({ title: 'Delete form?', message: 'This permanently deletes the form and all its submissions. This cannot be undone.', confirmLabel: 'Delete', danger: true })) formsStore.remove(f.id) }}
-                                title="Delete form permanently"
-                                className="w-9 h-7 rounded-md border border-red-200 bg-red-50 hover:bg-red-100 flex items-center justify-center text-red-500 transition"
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3" />
-                                </svg>
-                              </button>
-                            )}
                           </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
+          </div>
+        </div>
       </div>
       <NewFormModal open={newOpen} onClose={() => setNewOpen(false)} />
     </AppShell>
   )
+}
+
+function Forms() {
+  const me = useUser()
+  return canCreateForm(me) ? <FormsLibrary /> : <RequestCatalogue />
 }
 
 export default Forms
