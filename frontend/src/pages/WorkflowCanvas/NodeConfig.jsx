@@ -547,8 +547,13 @@ function SubmitConfig({ node, update }) {
   // The Submit node assigns a task to a person/role who must upload a file +
   // optional comment and click Submit to advance the flow (e.g. Accounts
   // generating a Costing). The assignee resolves like an approver at runtime.
-  const setRoleMode = (value) =>
-    update({ approverRole: value, approverId: null });
+  const users = useActiveUsers();
+  const [mode, setMode] = useState(node.approverId ? "person" : "role");
+
+  // Re-sync the mode when a different node is selected.
+  useEffect(() => {
+    setMode(node.approverId ? "person" : "role");
+  }, [node.id]);
 
   const legacyToken = node.approver
     ? String(node.approver).toLowerCase().replace(/\s+/g, "_")
@@ -560,31 +565,66 @@ function SubmitConfig({ node, update }) {
 
   const roleHint = roleApproverByValue(currentRoleValue)?.hint;
 
-  useEffect(() => {
-    if (node.approverId || (!node.approverRole && legacyToken)) {
-      update({ approverRole: currentRoleValue, approverId: null });
+  const onApproverChange = (value) => {
+    if (value === "__person__") {
+      setMode("person");
+    } else {
+      setMode("role");
+      update({ approverRole: value, approverId: null });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [node.id]);
+  };
+
+  const onPersonChange = (userId) =>
+    update({ approverId: userId || null, approverRole: userId ? null : currentRoleValue });
+
+  const selectedPerson = users.find((u) => String(u._id) === String(node.approverId));
 
   return (
     <>
       <Field label="Assign to">
         <select
-          value={currentRoleValue}
-          onChange={(e) => setRoleMode(e.target.value)}
+          value={mode === "person" ? "__person__" : currentRoleValue}
+          onChange={(e) => onApproverChange(e.target.value)}
           className={inputCls}
         >
-          {ROLE_APPROVERS.map((r) => (
-            <option key={r.value} value={r.value}>{r.label}</option>
-          ))}
+          <optgroup label="Auto (from org chart)">
+            {ROLE_APPROVERS.map((r) => (
+              <option key={r.value} value={r.value}>{r.label}</option>
+            ))}
+          </optgroup>
+          <optgroup label="Specific person">
+            <option value="__person__">Pick a specific person…</option>
+          </optgroup>
         </select>
-        {roleHint && (
-          <p className="mt-1 text-[11px] text-fg-muted">{roleHint}</p>
+
+        {mode === "person" ? (
+          <div className="mt-2">
+            <select
+              value={node.approverId || ""}
+              onChange={(e) => onPersonChange(e.target.value)}
+              className={inputCls}
+            >
+              <option value="">— Select a person —</option>
+              {users.map((u) => (
+                <option key={u._id} value={u._id}>
+                  {u.name}{u.department ? ` · ${u.department}` : ""}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-[11px] text-fg-muted">
+              {selectedPerson
+                ? `Always assigned to ${selectedPerson.name}. They will fill the form below.`
+                : "This exact person will be assigned every time, regardless of who submits."}
+            </p>
+          </div>
+        ) : (
+          <>
+            {roleHint && <p className="mt-1 text-[11px] text-fg-muted">{roleHint}</p>}
+            <p className="mt-1.5 text-[11px] text-fg-subtle">
+              This person fills the form below and clicks Submit to advance the workflow.
+            </p>
+          </>
         )}
-        <p className="mt-1.5 text-[11px] text-fg-subtle">
-          This person fills the form below and clicks Submit to advance the workflow.
-        </p>
       </Field>
 
       <Field label="Instructions">
