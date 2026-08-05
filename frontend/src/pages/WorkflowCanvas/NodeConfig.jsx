@@ -979,9 +979,30 @@ function ReviewConfig({ node, update, nodes, connections, onConnectionsChange })
   // chooses to forward (no changes) or send it back for changes. Routing mirrors
   // the Decision node: two outgoing edges tagged 'approve' (forward) / 'reject'
   // (changes) which the engine reads as config.forwardPath / config.changesPath.
-  const setRoleMode = (value) => update({ approverRole: value, approverId: null });
+  const users = useActiveUsers();
+  const [mode, setMode] = useState(node.approverId ? "person" : "role");
+
+  // Re-sync the mode when a different node is selected.
+  useEffect(() => {
+    setMode(node.approverId ? "person" : "role");
+  }, [node.id]);
+
   const currentRoleValue = node.approverRole || "direct_manager";
   const roleHint = roleApproverByValue(currentRoleValue)?.hint;
+
+  const onApproverChange = (value) => {
+    if (value === "__person__") {
+      setMode("person");
+    } else {
+      setMode("role");
+      update({ approverRole: value, approverId: null });
+    }
+  };
+
+  const onPersonChange = (userId) =>
+    update({ approverId: userId || null, approverRole: userId ? null : currentRoleValue });
+
+  const selectedPerson = users.find((u) => String(u._id) === String(node.approverId));
 
   const targets = nodes.filter((n) => n.id !== node.id);
   const forwardEdge = connections.find(
@@ -1021,21 +1042,49 @@ function ReviewConfig({ node, update, nodes, connections, onConnectionsChange })
     <>
       <Field label="Assign to (reviewer)">
         <select
-          value={currentRoleValue}
-          onChange={(e) => setRoleMode(e.target.value)}
+          value={mode === "person" ? "__person__" : currentRoleValue}
+          onChange={(e) => onApproverChange(e.target.value)}
           className={inputCls}
         >
-          {ROLE_APPROVERS.map((r) => (
-            <option key={r.value} value={r.value}>{r.label}</option>
-          ))}
+          <optgroup label="Auto (from org chart)">
+            {ROLE_APPROVERS.map((r) => (
+              <option key={r.value} value={r.value}>{r.label}</option>
+            ))}
+          </optgroup>
+          <optgroup label="Specific person">
+            <option value="__person__">Pick a specific person…</option>
+          </optgroup>
         </select>
-        {roleHint && (
-          <p className="mt-1 text-[11px] text-fg-muted">{roleHint}</p>
+
+        {mode === "person" ? (
+          <div className="mt-2">
+            <select
+              value={node.approverId || ""}
+              onChange={(e) => onPersonChange(e.target.value)}
+              className={inputCls}
+            >
+              <option value="">— Select a person —</option>
+              {users.map((u) => (
+                <option key={u._id} value={u._id}>
+                  {u.name}{u.department ? ` · ${u.department}` : ""}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-[11px] text-fg-muted">
+              {selectedPerson
+                ? `Always assigned to ${selectedPerson.name} for review.`
+                : "This exact person will review every time, regardless of who submits."}
+            </p>
+          </div>
+        ) : (
+          <>
+            {roleHint && <p className="mt-1 text-[11px] text-fg-muted">{roleHint}</p>}
+            <p className="mt-1.5 text-[11px] text-fg-subtle">
+              The reviewer sees the submission + all earlier documents, then forwards
+              it or sends it back — no approve/reject.
+            </p>
+          </>
         )}
-        <p className="mt-1.5 text-[11px] text-fg-subtle">
-          The reviewer sees the submission + all earlier documents, then forwards
-          it or sends it back — no approve/reject.
-        </p>
       </Field>
 
       <Field label="Instructions">
