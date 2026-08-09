@@ -26,6 +26,12 @@ const {
   sendApprovalEmail,
   sendRejectionEmail
 } = require('../utils/emailService')
+const {
+  refreshTaskAttachments,
+  refreshFormDataUrls,
+  refreshFileObject,
+  emitForTask,
+} = require('../utils/dmsAttachments')
 
 const router = express.Router()
 
@@ -356,7 +362,24 @@ router.get('/:id', protect, async (req, res, next) => {
       task.integrationEvents = []
     }
 
-    return sendSuccess(res, { task })
+    const ctx = { org: req.organization, user: req.user }
+    let out = await refreshTaskAttachments(task, ctx)
+    if (out.formResponseId?.formData) {
+      out = {
+        ...out,
+        formResponseId: {
+          ...out.formResponseId,
+          formData: await refreshFormDataUrls(out.formResponseId.formData, ctx),
+        },
+      }
+    }
+    if (Array.isArray(out.priorDocuments) && out.priorDocuments.length) {
+      out.priorDocuments = await Promise.all(
+        out.priorDocuments.map((d) => (d?.dmsDocId ? refreshFileObject(d, ctx) : d))
+      )
+    }
+
+    return sendSuccess(res, { task: out })
   } catch (err) {
     next(err)
   }
@@ -445,15 +468,20 @@ const requireApprover = async (task, user) => {
 const isValidSignature = (s) =>
   !!s && (
     (s.kind === 'typed' && typeof s.text === 'string' && s.text.trim()) ||
-    (s.kind === 'uploaded' && typeof s.url === 'string' && s.url)
+    ((s.kind === 'uploaded' || s.kind === 'drawn') && (s.url || s.dmsDocId))
   )
 
 // Normalise a signature payload to the shape we persist (drop anything extra).
 const cleanSignature = (s) => {
   if (!isValidSignature(s)) return undefined
-  return s.kind === 'typed'
-    ? { kind: 'typed', text: String(s.text).trim(), font: s.font || 'cursive' }
-    : { kind: 'uploaded', url: s.url }
+  if (s.kind === 'typed') {
+    return { kind: 'typed', text: String(s.text).trim(), font: s.font || 'cursive' }
+  }
+  return {
+    kind: s.kind === 'drawn' ? 'drawn' : 'uploaded',
+    url: s.url || undefined,
+    ...(s.dmsDocId ? { dmsDocId: String(s.dmsDocId) } : {}),
+  }
 }
 
 // Internal helper: is a Submit-node form-field value empty? (for required checks)
@@ -464,7 +492,7 @@ const isFieldEmpty = (field, v) => {
     if (typeof v === 'string') return !v.trim()
     return !(v && (v.text || v.url))
   }
-  if (field.type === 'file') return !(v && typeof v === 'object' && v.url)
+  if (field.type === 'file') return !(v && typeof v === 'object' && (v.url || v.dmsDocId))
   return false
 }
 
@@ -585,6 +613,14 @@ router.post('/:id/approve', protect, async (req, res, next) => {
     task.status = 'approved'
     await task.save()
 
+    emitForTask(task, {
+      type: 'workflow.approved',
+      actor: req.user,
+      detail: comment || `Approved by ${req.user.name}`,
+      meta: { taskId: task._id, workflowId: task.workflowId, comment: comment || null },
+      org: req.organization,
+    }).catch(() => {})
+
     tryAdvanceWorkflow(task._id, 'approved')
 
     writeAuditLog({
@@ -666,8 +702,15 @@ router.post('/:id/submit', protect, async (req, res, next) => {
     const files = fields
       .filter((f) => f.type === 'file')
       .map((f) => data[f.id])
-      .filter((v) => v && typeof v === 'object' && v.url)
-      .map((v) => ({ name: v.name, url: v.url, mime: v.mime, size: v.size }))
+      .filter((v) => v && typeof v === 'object' && (v.url || v.dmsDocId))
+      .map((v) => ({
+        name: v.name,
+        url: v.url,
+        mime: v.mime,
+        size: v.size,
+        ...(v.dmsDocId ? { dmsDocId: String(v.dmsDocId) } : {}),
+        ...(v.provisionalId ? { provisionalId: String(v.provisionalId) } : {}),
+      }))
 
     task.formData = data
     task.markModified('formData')
@@ -680,6 +723,14 @@ router.post('/:id/submit', protect, async (req, res, next) => {
     })
     task.status = 'completed'
     await task.save()
+
+    emitForTask(task, {
+      type: 'workflow.submitted',
+      actor: req.user,
+      detail: comment || `Submitted by ${req.user.name}`,
+      meta: { taskId: task._id, workflowId: task.workflowId },
+      org: req.organization,
+    }).catch(() => {})
 
     tryAdvanceWorkflow(task._id, 'submitted')
 
@@ -846,6 +897,14 @@ router.post('/:id/reject', protect, async (req, res, next) => {
 
     task.status = 'rejected'
     await task.save()
+
+    emitForTask(task, {
+      type: 'workflow.rejected',
+      actor: req.user,
+      detail: comment || `Rejected by ${req.user.name}`,
+      meta: { taskId: task._id, workflowId: task.workflowId, comment },
+      org: req.organization,
+    }).catch(() => {})
 
     tryAdvanceWorkflow(task._id, 'rejected')
 

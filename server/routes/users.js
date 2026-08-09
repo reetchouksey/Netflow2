@@ -523,7 +523,7 @@ router.put('/:id', protect, roleGuard('Admin'), async (req, res, next) => {
     const { password, _id, role, name, email, ...rest } = req.body
     const updates = { ...rest }
 
-    const target = await User.findById(req.params.id).select('name email isProtected isActive canBuild avatar').lean()
+    const target = await User.findById(req.params.id).select('name email isProtected isActive canBuild countsTowardSeats avatar').lean()
     if (!target) return sendError(res, 'User not found', 'USER_NOT_FOUND', 404)
     if (target.isProtected) {
       return sendError(res, 'This account is protected and cannot be modified', 'USER_PROTECTED', 403)
@@ -533,14 +533,19 @@ router.put('/:id', protect, roleGuard('Admin'), async (req, res, next) => {
     // as claiming a seat.
     if ('canBuild' in updates) updates.canBuild = updates.canBuild === true || updates.canBuild === 'true'
     if ('isActive' in updates) updates.isActive = updates.isActive === true || updates.isActive === 'true'
+    // Org Admins must not flip seat billing from the tenant Admin Panel — only
+    // Platform Super Admin sets this at provisioning time.
+    delete updates.countsTowardSeats
 
     // Both of these hand out a licensed seat, so they go through the same gate as
     // creating a user would — otherwise "edit" is a way around the plan.
-    if (updates.canBuild === true && target.canBuild !== true) {
+    // Complimentary accounts (countsTowardSeats === false) never consume seats.
+    const billsSeats = target.countsTowardSeats !== false
+    if (billsSeats && updates.canBuild === true && target.canBuild !== true) {
       const err = await checkQuota(req.organization, 'builders')
       if (err) return respond(res, err)
     }
-    if (updates.isActive === true && target.isActive === false) {
+    if (billsSeats && updates.isActive === true && target.isActive === false) {
       const err = await checkQuota(req.organization, 'users')
       if (err) return respond(res, err)
     }

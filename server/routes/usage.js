@@ -15,6 +15,7 @@
 const express = require('express')
 
 const Organization = require('../models/Organization')
+const FormResponse = require('../models/FormResponse')
 const { protect } = require('../middleware/auth')
 const { roleGuard } = require('../middleware/roleGuard')
 const { sendSuccess, sendError } = require('../utils/apiResponse')
@@ -60,8 +61,41 @@ router.get('/', roleGuard('Admin'), async (req, res, next) => {
     if (!org) return sendError(res, 'Workspace not found', 'ORG_NOT_FOUND', 404)
 
     const counts = await countsFor(org._id)
+    
+    // Calculate last 7 days submissions trend
+    const sevenDaysAgo = new Date()
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6)
+    sevenDaysAgo.setHours(0,0,0,0)
+    
+    const trendAgg = await FormResponse.aggregate([
+      { $match: { orgId: org._id, createdAt: { $gte: sevenDaysAgo } } },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$createdAt' },
+            month: { $month: '$createdAt' },
+            day: { $dayOfMonth: '$createdAt' }
+          },
+          count: { $sum: 1 }
+        }
+      }
+    ])
+    
+    const trend = []
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(sevenDaysAgo)
+      d.setDate(d.getDate() + i)
+      const match = trendAgg.find(t => t._id.year === d.getFullYear() && t._id.month === d.getMonth() + 1 && t._id.day === d.getDate())
+      trend.push({
+        name: days[d.getDay()],
+        submissions: match ? match.count : 0
+      })
+    }
+
     return sendSuccess(res, {
       usage: usageSnapshot(org, counts),
+      trend: trend,
       enforced: enforcementEnabled()
     })
   } catch (err) {

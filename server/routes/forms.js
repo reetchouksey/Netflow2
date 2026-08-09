@@ -260,11 +260,24 @@ router.post('/ai-draft', protect, roleGuard(...DESIGNER_ROLES), requireCanBuild,
   }
 })
 
-// System prompt for the inline autocomplete of the AI-form prompt box.
-const AI_SUGGEST_SYSTEM = `You autocomplete a short, one-line description of a form a user is about to build.
-Given the partial text the user has typed, reply with ONLY the continuation that should follow it — do NOT repeat what they already typed, do not add quotes, labels or explanations.
-Keep it to at most ~8 words, a single line. If the text already reads as a complete phrase, reply with an empty string.
-Example: input "Leave request form with" → output " dates, reason and manager approval".`
+// IDE-style ghost text (VS Code / Cursor): next few tokens only, not a sentence.
+const AI_SUGGEST_SYSTEM = `You are inline autocomplete for a form-builder prompt (same feel as VS Code / Cursor ghost text).
+
+The user is typing what form to generate. Reply with ONLY the suffix they would type next.
+
+Hard rules:
+- Output ONLY the continuation. Never repeat their text. No quotes, labels, markdown, or explanations.
+- Prefer 1–4 words (hard max 5). Never a full sentence. Never end with . ! ?
+- If they are mid-word, finish THAT word first (e.g. "employ" → "ee", "reimbur" → "sement").
+- Continue the current phrase. Do not invent a long field list unless they already asked for fields.
+- Prefer form-building words: request, dates, reason, amount, attachment, signature, approval.
+- If the phrase already feels complete, return an empty string.
+
+Examples (input → output):
+- "Leave request form with" → " dates and reason"
+- "expense reimb" → "ursement with receipts"
+- "employee onboarding" → " checklist"
+- "IT access request form" → ""`
 
 // Remove any leading overlap so we never repeat words the user already typed
 // (models sometimes echo the tail of the prompt).
@@ -278,6 +291,32 @@ const trimOverlap = (typed, completion) => {
   return c
 }
 
+// Clamp model output to IDE-like ghost text: short, mid-word aware.
+const normalizeSuggest = (typed, raw) => {
+  let completion = String(raw || '')
+    .replace(/^["'`\s]+|["'`]+$/g, '')
+    .replace(/\s*\n[\s\S]*$/, '')
+    .replace(/\s+/g, ' ')
+  completion = trimOverlap(typed, completion)
+  completion = completion.replace(/[.!?…]+$/g, '').replace(/^[:\-~]+\s*/, '')
+
+  const midWord = typed.length > 0 && !/\s$/.test(typed)
+  if (midWord) {
+    completion = completion.replace(/^\s+/, '')
+    const partial = (typed.match(/[A-Za-z0-9'_-]+$/) || [''])[0]
+    if (partial && completion.toLowerCase().startsWith(partial.toLowerCase())) {
+      completion = completion.slice(partial.length)
+    }
+  } else if (completion && !completion.startsWith(' ')) {
+    completion = ' ' + completion
+  }
+
+  const lead = completion.startsWith(' ') ? ' ' : ''
+  const words = completion.trim().split(/\s+/).filter(Boolean).slice(0, 4)
+  if (!words.length) return ''
+  return (lead + words.join(' ')).slice(0, 42).trimEnd()
+}
+
 // POST /api/forms/ai-suggest — ghost-text autocomplete for the AI prompt box.
 // Builder-only. Returns only the suffix to append. Never throws to the client:
 // on any failure it returns an empty suggestion so typing is never disrupted.
@@ -288,22 +327,20 @@ router.post('/ai-suggest', protect, roleGuard(...DESIGNER_ROLES), requireCanBuil
 
     let raw = ''
     try {
-      raw = await generateText(`Partial: "${prompt}"\nContinuation:`, {
-        system: AI_SUGGEST_SYSTEM,
-        temperature: 0.2,
-        maxTokens: 24,
-        timeoutMs: 4000
-      })
+      raw = await generateText(
+        `Typed so far:\n${prompt}\n\nGhost continuation (next 1-4 words only):`,
+        {
+          system: AI_SUGGEST_SYSTEM,
+          temperature: 0.1,
+          maxTokens: 16,
+          timeoutMs: 4000
+        }
+      )
     } catch (err) {
       return sendSuccess(res, { completion: '' })
     }
 
-    // Strip surrounding quotes/newlines the model may add, then de-dupe overlap.
-    let completion = String(raw || '').replace(/^["'\s]+|["'\s]+$/g, ' ').replace(/\s*\n.*$/s, '')
-    completion = trimOverlap(prompt, completion).replace(/\s+/g, ' ').slice(0, 80)
-    if (completion && !prompt.endsWith(' ') && !completion.startsWith(' ')) completion = ' ' + completion
-
-    return sendSuccess(res, { completion: completion.trimEnd() })
+    return sendSuccess(res, { completion: normalizeSuggest(prompt, raw) })
   } catch (err) {
     return sendSuccess(res, { completion: '' })
   }
@@ -607,12 +644,49 @@ router.post('/:id/submit', protect, roleGuard(...SUBMITTER_ROLES), requireQuota(
       if (err) return sendError(res, err, 'FIELD_INVALID', 400)
     }
 
+    // Persist DMS ids from file/signature field values onto response.attachments.
+    const attachmentRows = []
+    for (const f of form.fields || []) {
+      if (f.type !== 'file') continue
+      const v = formData[f.id]
+      if (v && typeof v === 'object' && (v.dmsDocId || v.url)) {
+        attachmentRows.push({
+          filename: v.name || f.label || 'file',
+          path: v.url || '',
+          mimetype: v.mime || '',
+          size: v.size || 0,
+          dmsDocId: v.dmsDocId ? String(v.dmsDocId) : null,
+          provisionalId: v.provisionalId ? String(v.provisionalId) : null,
+        })
+      }
+    }
+
     const formResponse = await FormResponse.create({
       formId: form._id,
       submittedBy: req.user._id,
       formData,
-      status: 'submitted'
+      status: 'submitted',
+      attachments: attachmentRows,
     })
+
+    // Best-effort DMS audit — never block submit.
+    try {
+      const { emitWorkflowEvents } = require('../utils/dmsAttachments')
+      const ids = attachmentRows.map((a) => a.dmsDocId).filter(Boolean)
+      await emitWorkflowEvents(ids, {
+        type: 'workflow.submitted',
+        actor: req.user,
+        detail: `Submitted "${form.title}"`,
+        meta: {
+          formResponseId: formResponse._id,
+          formId: form._id,
+          workflowId: linkedWorkflow?._id,
+        },
+        org: req.organization,
+      })
+    } catch (err) {
+      console.warn('[dms] submit events failed', err.message)
+    }
 
     // Metered after the response exists so a failed create is never billed.
     // Await it: the count has to be visible to the next quota check.

@@ -36,6 +36,32 @@ const organizationSchema = new mongoose.Schema({
     externalUsers: { type: Boolean, default: false }
   },
 
+  // Optional per-tenant BaseLayer DMS service key (Administration → API Keys).
+  // When empty, server falls back to env DMS_API_KEY. Do not expose in public APIs.
+  // All DMS config is set by the Platform Super Admin only — Org Admins get a
+  // read-only status view (GET /api/organization/dms-status).
+  integrations: {
+    // Org-level fallback key — used when a department has no key of its own.
+    dmsApiKey:  { type: String, default: '' },
+    dmsEnabled: { type: Boolean, default: false },
+    // Root folder in DMS (e.g. "acme"). Falls back to org.subdomain when empty.
+    dmsOrgSlug: { type: String, default: '' },
+
+    // Per-department DMS configuration. Each entry overrides the org-level key
+    // for uploads originating from that department. Resolution order:
+    //   1. department entry with apiKey set
+    //   2. org-level dmsApiKey
+    //   3. platform env DMS_API_KEY
+    departmentDms: [{
+      _id: false,
+      department: { type: String, required: true }, // matches org.departments list
+      apiKey:     { type: String, default: '' },     // dept-specific DMS API key
+      baseUrl:    { type: String, default: '' },     // optional: dept-specific DMS server URL
+      folder:     { type: String, default: '' },     // optional folder override (default: orgSlug/dept)
+      enabled:    { type: Boolean, default: true }
+    }]
+  },
+
   // Subscription tier. 'custom' is what an org becomes once any single limit is
   // hand-edited away from its preset, so the UI never shows "Basic" next to
   // numbers that are not Basic. Pre-licensing orgs are 'custom' + all-zero

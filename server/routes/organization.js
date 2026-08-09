@@ -1,7 +1,8 @@
 // Shell 2 (Org Admin) - routes/organization.js
 // What a tenant may see and change about itself.
-//   GET /api/organization   Admin — profile, policy and plan in one read
-//   PUT /api/organization   Admin — display name and billing contact only
+//   GET /api/organization          Admin — profile, policy and plan in one read
+//   PUT /api/organization          Admin — display name and billing contact only
+//   GET /api/organization/dms-storage  Admin — live DMS storage usage for this org
 //
 // Everything that decides what the tenant is allowed to do — subdomain, plan,
 // limits, licence dates, email-domain policy, feature flags — stays with the
@@ -17,6 +18,8 @@ const { sendSuccess, sendError } = require('../utils/apiResponse')
 const { writeAuditLog } = require('../utils/writeAuditLog')
 const { licenceState } = require('../utils/licensing')
 const { listFor } = require('../utils/departments')
+const { limitsForPlan } = require('../config/plans')
+const dms = require('../services/dmsClient')
 
 const router = express.Router()
 
@@ -113,6 +116,127 @@ router.put('/', async (req, res, next) => {
 
     return sendSuccess(res, { organization: publicShape(org) })
   } catch (err) {
+    next(err)
+  }
+})
+
+// GET /api/organization/dms-storage
+// Returns live DMS storage usage for this org. Uses the org's own dmsApiKey
+// when configured; falls back to the global DMS_API_KEY env var.
+router.get('/dms-storage', async (req, res, next) => {
+  try {
+    if (!dms.isEnabled()) {
+      return sendSuccess(res, {
+        enabled: false,
+        source: null,
+        usedBytes: 0,
+        usedMb: 0,
+        limitBytes: null,
+        limitMb: null,
+        documentCount: 0,
+        organizationId: null,
+        message: 'DMS is not enabled on this platform'
+      })
+    }
+
+    const org = req.organization
+    const usage = await dms.getStorageUsage({ org, user: req.user })
+    return sendSuccess(res, usage || {
+      enabled: true,
+      source: null,
+      usedBytes: 0,
+      usedMb: 0,
+      limitBytes: null,
+      limitMb: null,
+      documentCount: 0,
+      organizationId: null
+    })
+  } catch (err) {
+    if (err instanceof dms.DmsError) {
+      return sendError(res, err.message || 'DMS storage lookup failed', err.code || 'DMS_ERROR', err.status || 502, { dms: err.body || null })
+    }
+    next(err)
+  }
+})
+
+// GET /api/organization/dms-status
+// Read-only DMS connection status for Org Admins.
+// Includes: platform/org enabled flags, live connectivity ping, storage usage,
+// and the expected DMS folder structure for this org's departments.
+// Config (API key, slug, enabled flag) is set by the Platform Super Admin only.
+router.get('/dms-status', async (req, res, next) => {
+  try {
+    const org = await loadOrg(req, res)
+    if (!org) return undefined
+
+    const platformDmsEnabled = dms.isEnabled()
+    const orgDmsEnabled = Boolean(org.integrations?.dmsEnabled)
+    const effectiveDmsEnabled = platformDmsEnabled || orgDmsEnabled
+
+    // DMS connection ping (only when at least one enabled flag is on)
+    let connected = false
+    if (effectiveDmsEnabled) {
+      connected = await dms.ping({ org }).catch(() => false)
+    }
+
+    // Storage usage (best-effort, skip when not connected)
+    let storage = null
+    if (connected) {
+      try {
+        storage = await dms.getStorageUsage({ org, user: req.user })
+      } catch {
+        storage = null
+      }
+    }
+
+    // The expected DMS folder structure based on this org's departments.
+    // e.g. ["acme/hr", "acme/finance", "acme/admin"]
+    const orgSlug = org.integrations?.dmsOrgSlug || org.subdomain || ''
+    const departments = listFor(org)
+    const expectedFolders = orgSlug
+      ? departments.map((d) => `${orgSlug}/${d.toLowerCase().replace(/[^a-z0-9-]/g, '-')}`)
+      : []
+
+    // Per-department DMS status — shows which departments have their own DMS key
+    // vs. using the shared org/platform key.
+    const departmentDmsStatus = departments.map((dept) => {
+      const deptCfg = dms.resolveDeptConfig(org, dept)
+      const deptFolder = deptCfg?.folder || (orgSlug
+        ? `${orgSlug}/${dept.toLowerCase().replace(/[^a-z0-9-]/g, '-')}`
+        : null)
+      return {
+        department: dept,
+        enabled: deptCfg ? deptCfg.enabled !== false : true,
+        hasOwnKey: Boolean(deptCfg?.apiKey?.trim()),
+        hasOwnBaseUrl: Boolean(deptCfg?.baseUrl?.trim()),
+        folder: deptFolder
+      }
+    })
+
+    const planLimits = limitsForPlan(org.plan)
+    const fallbackLimitMb = planLimits?.maxStorageMb || null
+
+    return sendSuccess(res, {
+      platformDmsEnabled,
+      orgDmsEnabled,
+      effectiveDmsEnabled,
+      connected,
+      orgSlug,
+      expectedFolders,
+      departmentDmsStatus,
+      storage: storage
+        ? {
+            usedBytes: storage.usedBytes || 0,
+            usedMb: storage.usedMb || 0,
+            documentCount: storage.documentCount || 0,
+            limitMb: storage.limitMb || fallbackLimitMb
+          }
+        : null
+    })
+  } catch (err) {
+    if (err instanceof dms.DmsError) {
+      return sendError(res, err.message || 'DMS status check failed', err.code || 'DMS_ERROR', err.status || 502, { dms: err.body || null })
+    }
     next(err)
   }
 })

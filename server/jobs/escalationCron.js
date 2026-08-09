@@ -114,6 +114,22 @@ const escalateTask = async (task, startedAt) => {
     }
   })
 
+  try {
+    const { emitForTask } = require('../utils/dmsAttachments')
+    await emitForTask(updated, {
+      type: 'workflow.escalated',
+      actor: { name: 'System', email: null },
+      detail: `Auto-escalated after ${hoursOverdue} hours overdue`,
+      meta: {
+        taskId: task._id,
+        workflowId: task.workflowId?._id || task.workflowId,
+        escalatedTo: target._id,
+      },
+    })
+  } catch (err) {
+    console.warn('[dms] escalate event failed', err.message)
+  }
+
   // Workflow-level "Notify admin on SLA breach" oversight ping.
   //   Always            → notify an admin on every breach
   //   After first breach → only from the 2nd escalation onward

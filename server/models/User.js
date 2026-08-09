@@ -48,6 +48,10 @@ const userSchema = new mongoose.Schema({
   // while roles are global and shared across tenants. The Org Admin decides
   // who holds the seats; role still governs everything else.
   canBuild: { type: Boolean, default: false },
+  // When false, this account does not consume user/builder plan seats (used for
+  // a complimentary bootstrap Org Admin). Default true so normal users bill.
+  // Existing documents without the field still count (query uses $ne: false).
+  countsTowardSeats: { type: Boolean, default: true },
   // Protected (system-seeded) accounts — e.g. the permanent CEO — cannot be
   // edited, re-roled, or deactivated from the Admin Panel. Only a seed can.
   isProtected: { type: Boolean, default: false },

@@ -27,7 +27,10 @@ const formResponseSchema = new mongoose.Schema({
     mimetype: String,
     // Bytes. Needed to decrement the org's storage meter when a response is
     // deleted; legacy rows have none, so the reconciliation job stats the file.
-    size: Number
+    size: Number,
+    // BaseLayer DMS document id when uploads are ingested externally.
+    dmsDocId: { type: String, default: null },
+    provisionalId: { type: String, default: null },
   }]
 }, { timestamps: true })
 

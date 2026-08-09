@@ -261,7 +261,12 @@ router.post('/login', authLimiter, async (req, res, next) => {
     await user.save({ validateBeforeSave: false })
 
     const token = signToken(user)
-    return sendSuccess(res, { token, user: user.toJSON() })
+    const userPayload = user.toJSON()
+    if (user.orgId) {
+      const orgDoc = await Organization.findById(user.orgId).select('name').lean()
+      if (orgDoc) userPayload.tenantName = orgDoc.name
+    }
+    return sendSuccess(res, { token, user: userPayload })
   } catch (err) {
     next(err)
   }
@@ -508,7 +513,11 @@ router.get('/reset-password/validate', async (req, res, next) => {
 
 // GET /api/auth/me
 router.get('/me', protect, async (req, res) => {
-  return sendSuccess(res, { user: req.user })
+  const userPayload = { ...req.user }
+  if (req.organization) {
+    userPayload.tenantName = req.organization.name
+  }
+  return sendSuccess(res, { user: userPayload })
 })
 
 // POST /api/auth/product-tour/complete

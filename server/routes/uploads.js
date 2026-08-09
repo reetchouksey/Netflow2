@@ -1,21 +1,11 @@
 // Phase 2 - routes/uploads.js
-// Authenticated file upload. Files are written to server/uploads/<orgId>/ and
-// served back through routes/files.js, which enforces that the caller belongs to
-// the owning organization (see utils/fileStore for why the layout matters).
-//
-// Licensing: every byte counts against the tenant's storage allowance, and the
-// file count against maxFiles — "whichever comes first". Two subtleties:
-//
-//   * multer writes to disk before we can weigh the request, so an upload that
-//     turns out to be over quota is deleted again. Refusing without deleting
-//     would let a tenant fill the disk with bytes it was never licensed for.
-//   * an upload carrying `taskId` may dip into the small completion buffer above
-//     the storage limit. That exists so a pending approval which *requires* an
-//     attachment can still be finished when the tenant is full or read-only —
-//     stranding live approvals is a business outage, not a billing signal.
+// Authenticated file upload. When DMS_ENABLED=true, bytes are ingested into
+// BaseLayer DMS and the temp local file is deleted; NetFlow only keeps dmsDocId.
+// When DMS is off, files stay under server/uploads/<orgId>/ (legacy).
 
 const express = require('express')
 const fs = require('fs')
+const crypto = require('crypto')
 const multer = require('multer')
 
 const Task = require('../models/Task')
@@ -25,6 +15,7 @@ const { checkStorage, respond } = require('../middleware/quota')
 const { isReadOnly } = require('../middleware/licence')
 const { addStorage } = require('../utils/usageMeter')
 const { dirForOrg, safeFilename, urlFor } = require('../utils/fileStore')
+const dms = require('../services/dmsClient')
 
 const router = express.Router()
 
@@ -39,13 +30,8 @@ const storage = multer.diskStorage({
   filename: (req, file, cb) => cb(null, safeFilename(file.originalname))
 })
 
-// Global hard ceiling. A form field may request a smaller per-field limit via
-// ?maxMb=, but never more than this, so this single endpoint stays safe no
-// matter what the client sends.
 const MAX_CEILING_MB = 50
 
-// Is this upload attached to a decision the caller still owes? Only then may it
-// use the completion buffer. Anything else is ordinary new work.
 const isForOpenTask = async (req) => {
   const taskId = String(req.query.taskId || req.body?.taskId || '').trim()
   if (!/^[0-9a-fA-F]{24}$/.test(taskId)) return false
@@ -55,16 +41,10 @@ const isForOpenTask = async (req) => {
 }
 
 // POST /api/uploads  (multipart/form-data, field name "file")
-// Optional ?maxMb=N applies the form field's per-field size limit, clamped to
-// [1, MAX_CEILING_MB]. multer is built per-request so oversize uploads are
-// rejected mid-stream rather than after fully buffering to disk.
-// Optional ?taskId=<id> marks the upload as required by a pending approval.
 router.post('/', protect, async (req, res, next) => {
   try {
     const forTask = await isForOpenTask(req)
 
-    // An expired licence still lets an in-flight approval be completed, so a
-    // task-scoped attachment is allowed. A general upload is new work.
     if (isReadOnly(req.organization) && !forTask) {
       return sendError(
         res,
@@ -92,6 +72,77 @@ router.post('/', protect, async (req, res, next) => {
         }
         if (!req.file) return sendError(res, 'No file provided', 'NO_FILE', 400)
 
+        // ── DMS path ──────────────────────────────────────────────────────
+        if (dms.isEnabled()) {
+          const provisionalId = crypto.randomBytes(12).toString('hex')
+          const taskId = String(req.query.taskId || '').trim() || undefined
+          const formResponseId = String(req.query.formResponseId || '').trim() || undefined
+          const workflowId = String(req.query.workflowId || '').trim() || undefined
+
+          try {
+            const doc = await dms.uploadFile({
+              filePath: req.file.path,
+              filename: req.file.originalname,
+              mime: req.file.mimetype,
+              user: req.user,
+              org: req.organization,
+              // Department-based folder routing: route the file into the user's
+              // department sub-folder inside the org's DMS root, e.g. "acme/hr".
+              department: req.user.department || null,
+              orgSubdomain: req.organization?.subdomain || null,
+              ref: {
+                id: provisionalId,
+                ...(taskId ? { taskId } : {}),
+                ...(formResponseId ? { formResponseId } : {}),
+                ...(workflowId ? { workflowId } : {}),
+              },
+            })
+
+            await fs.promises.unlink(req.file.path).catch(() => {})
+
+            return sendSuccess(res, {
+              file: {
+                name: req.file.originalname,
+                url: doc.url || null,
+                mime: req.file.mimetype,
+                size: req.file.size,
+                dmsDocId: doc.id,
+                dmsFolder: doc.folder || null,  // department-based folder path
+                provisionalId,
+              },
+            }, 201)
+          } catch (dmsErr) {
+            await fs.promises.unlink(req.file.path).catch(() => {})
+            const status = dmsErr.status || 502
+            const code = dmsErr.code || 'DMS_ERROR'
+            if (code === 'LICENCE_READ_ONLY' || status === 403 && String(dmsErr.message || '').includes('read-only')) {
+              return sendError(
+                res,
+                dmsErr.message || 'DMS organisation is read-only. Uploads are blocked.',
+                'LICENCE_READ_ONLY',
+                403,
+                dmsErr.body || { resource: 'storage' }
+              )
+            }
+            if (code === 'QUOTA_EXCEEDED' || status === 413) {
+              return sendError(
+                res,
+                dmsErr.message || 'DMS storage quota exceeded.',
+                'QUOTA_EXCEEDED',
+                status === 413 ? 413 : 403,
+                dmsErr.body || { resource: 'storage' }
+              )
+            }
+            return sendError(
+              res,
+              dmsErr.message || 'Document service failed to accept the file.',
+              code,
+              status >= 400 && status < 600 ? status : 502
+            )
+          }
+        }
+
+        // ── Legacy local disk path ────────────────────────────────────────
         const room = await checkStorage(req.organization, req.file.size, { allowBuffer: forTask })
         if (!room.ok) {
           await fs.promises.unlink(req.file.path).catch(() => {})
@@ -107,7 +158,6 @@ router.post('/', protect, async (req, res, next) => {
             mime: req.file.mimetype,
             size: req.file.size
           },
-          // Surfaced so the client can warn that emergency space is being used.
           ...(room.bufferBytes > 0 ? { usedStorageBuffer: true } : {})
         }, 201)
       } catch (inner) {
@@ -116,6 +166,58 @@ router.post('/', protect, async (req, res, next) => {
     })
   } catch (e) {
     next(e)
+  }
+})
+
+// POST /api/uploads/link — NetFlow-only helper: optional submitted event with ids
+router.post('/link', protect, async (req, res, next) => {
+  try {
+    if (!dms.isEnabled()) {
+      return sendError(res, 'Document service is not enabled.', 'DMS_DISABLED', 503)
+    }
+    const { dmsDocId, taskId, formResponseId, workflowId } = req.body || {}
+    if (!dmsDocId) return sendError(res, 'dmsDocId is required', 'MISSING_FIELDS', 400)
+
+    try {
+      await dms.postEvent(dmsDocId, {
+        type: 'workflow.submitted',
+        actor: req.user,
+        detail: 'Linked from NetFlow',
+        meta: {
+          ...(taskId ? { taskId } : {}),
+          ...(formResponseId ? { formResponseId } : {}),
+          ...(workflowId ? { workflowId } : {}),
+        },
+      }, { org: req.organization })
+    } catch (err) {
+      console.warn('[dms] link postEvent failed', err.message)
+    }
+
+    return sendSuccess(res, { dmsDocId, linked: true })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// GET /api/uploads/:dmsDocId/url — fresh signed view/download URL via DMS
+router.get('/:dmsDocId/url', protect, async (req, res, next) => {
+  try {
+    if (!dms.isEnabled()) {
+      return sendError(res, 'Document service is not enabled.', 'DMS_DISABLED', 503)
+    }
+    const mode = req.query.mode === 'download' ? 'download' : 'view'
+    const url = await dms.signedUrl(req.params.dmsDocId, {
+      mode,
+      org: req.organization,
+      user: req.user,
+    })
+    if (!url) return sendError(res, 'Could not resolve document URL', 'DMS_URL_FAILED', 502)
+    return sendSuccess(res, { url, mode, dmsDocId: req.params.dmsDocId })
+  } catch (err) {
+    if (err.name === 'DmsError') {
+      return sendError(res, err.message, err.code || 'DMS_ERROR', err.status || 502, err.body)
+    }
+    next(err)
   }
 })
 

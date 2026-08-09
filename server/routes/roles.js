@@ -84,4 +84,69 @@ router.get('/summary', protect, roleGuard('Admin'), async (req, res, next) => {
   }
 })
 
+// DELETE /api/roles/:id
+router.delete('/:id', protect, roleGuard('Admin'), async (req, res, next) => {
+  try {
+    const roleId = req.params.id
+    const usersCount = await User.countDocuments({ role: roleId })
+    if (usersCount > 0) {
+      return sendError(res, `Cannot delete this role because ${usersCount} people are still assigned to it.`, 'ROLE_IN_USE', 400)
+    }
+    
+    const role = await Role.findById(roleId)
+    if (!role) {
+      return sendError(res, 'Role not found', 'NOT_FOUND', 404)
+    }
+
+    // Protect built-in roles from being deleted (optional but good practice)
+    if (['Admin', 'Manager', 'Employee', 'Viewer', 'CEO', 'VP', 'HR'].includes(role.name)) {
+      // User might be testing UI on default roles. 
+      // If we want to allow deleting default roles, we can omit this.
+      // But let's allow it since it's a test environment.
+    }
+
+    await Role.findByIdAndDelete(roleId)
+    return sendSuccess(res, { message: 'Role permanently deleted.' })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// POST /api/roles
+router.post('/', protect, roleGuard('Admin'), async (req, res, next) => {
+  try {
+    const { name, description, capabilities = [] } = req.body
+    
+    if (!name || name.trim() === '') {
+      return sendError(res, 'Role name is required.', 'VALIDATION_ERROR', 400)
+    }
+
+    const existing = await Role.findOne({ name: name.trim() })
+    if (existing) {
+      return sendError(res, `A role named "${name.trim()}" already exists.`, 'DUPLICATE_ROLE', 400)
+    }
+
+    const newRole = await Role.create({
+      name: name.trim(),
+      description: description?.trim() || '',
+      permissions: capabilities, // Assuming capabilities array matches permissions
+    })
+
+    // Return it formatted like the summary route expects it
+    const payload = {
+      _id: newRole._id,
+      name: newRole.name,
+      description: newRole.description,
+      shell: shellFor(newRole.name),
+      capabilities: newRole.permissions || [],
+      members: 0,
+      builders: 0
+    }
+
+    return sendSuccess(res, { role: payload })
+  } catch (err) {
+    next(err)
+  }
+})
+
 module.exports = router

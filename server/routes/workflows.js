@@ -21,6 +21,7 @@ const { meterSubmission } = require('../utils/usageMeter')
 const { releaseFor } = require('../utils/fileGc')
 const { DESIGNER_ROLES, isDesigner } = require('../utils/roles')
 const { normalizeLinkedForms, claimLinkedForms } = require('../utils/linkedForms')
+const { isConfigured: llmConfigured, getModel: llmModel, generateJSON, generateText } = require('../utils/llm')
 
 const router = express.Router()
 
@@ -28,6 +29,416 @@ const isElevated = isDesigner
 const isBuilder = isDesigner
 
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const asStr = (v, max = 200) => String(v ?? '').trim().slice(0, max)
+const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null }
+
+// ---------- AI Workflow Builder helpers ----------
+const AI_WORKFLOW_SYSTEM = `You are a workflow-design assistant for NetFlow, an approval automation app.
+Given a plain-English description, output a JSON object ONLY (no prose, no markdown):
+{
+  "title": string,
+  "description": string,
+  "category": "HR" | "Finance" | "IT" | "Operations" | "General",
+  "nodes": Node[],
+  "connections": Connection[]
+}
+
+Node = {
+  "id": string,           // unique short ids like "n1", "n2"
+  "type": "start" | "approval" | "multiApproval" | "condition" | "notify" | "timer" | "review" | "end",
+  "title": string,
+  "subtitle"?: string,
+  "x": number,            // main path x ≈ 300; reject side-path x ≈ 110
+  "y": number,            // start near 20, space ~110 apart downward
+  "approverRole"?: "direct_manager" | "hr_admin" | "hr_manager" | "finance_manager" | "it_manager" | "ceo",
+  "slaValue"?: number,
+  "slaUnit"?: "Hours" | "Days",
+  "branches"?: ["Approved", "Rejected"],
+  "channels"?: ("Email"|"In-app")[],
+  "waitValue"?: number,
+  "waitUnit"?: "Hours" | "Days"
+}
+
+Connection = { "from": string, "to": string, "branch"?: "approve" | "reject" }
+- From a "condition" or "review" node you MUST emit EXACTLY two connections:
+  one with "branch":"approve" (main path, solid) and one with "branch":"reject" (side path).
+- Never mark both branches as reject. Never omit branch on those two edges.
+- From every other non-end node, emit exactly one outgoing connection (no branch needed).
+- Notify / approval / timer nodes MUST continue to another node or End — never leave them as a dead end.
+- Prefer: reject path → notify (optional) → end. Approve path → next approval(s) → end.
+
+Rules:
+- Exactly one "start" and at least one "end".
+- Prefer a simple linear chain (start → approvals → end). Add "condition" ONLY when approve/reject is essential.
+- At most 8 nodes. Short titles.
+- Every node except end must have an outgoing edge; every node except start must be reachable from start.
+- Return JSON only.`
+
+const AI_NODE_TYPES = new Set([
+  'start', 'approval', 'multiApproval', 'condition', 'notify', 'timer', 'review', 'end'
+])
+const APPROVER_ROLES = new Set([
+  'direct_manager', 'hr_admin', 'hr_manager', 'finance_manager', 'it_manager', 'ceo'
+])
+const SLA_UNITS = new Set(['Hours', 'Days'])
+const WAIT_UNITS = new Set(['Hours', 'Days'])
+const NOTIFY_CHANNELS = new Set(['Email', 'In-app'])
+
+// Fix common LLM graph mistakes so the canvas validator stays green:
+// - Decision/Review need one approve + one reject edge (not two dashed rejects)
+// - Notify/approval/etc. must not be dead-ends
+// - Orphans get wired into a simple chain when needed
+function repairAiGraph(nodes, connections) {
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  let conns = connections.filter((c) => byId.has(c.from) && byId.has(c.to) && c.from !== c.to)
+  const nextId = () => {
+    let i = nodes.length + 1
+    while (byId.has(`n${i}`)) i += 1
+    return `n${i}`
+  }
+
+  const ensureEnd = () => {
+    let end = nodes.find((n) => n.type === 'end')
+    if (end) return end
+    const lastY = nodes.reduce((m, n) => Math.max(m, n.y || 0), 20)
+    end = {
+      id: nextId(),
+      type: 'end',
+      title: 'Completed',
+      subtitle: 'Finish',
+      x: 300,
+      y: lastY + 110,
+    }
+    nodes.push(end)
+    byId.set(end.id, end)
+    return end
+  }
+
+  const end = ensureEnd()
+  const outsOf = (id) => conns.filter((c) => c.from === id)
+  const edgeKey = (c) => `${c.from}>${c.to}`
+
+  // Decision / Review: exactly one approve + one reject.
+  for (const n of nodes) {
+    if (n.type !== 'condition' && n.type !== 'review') continue
+    let outs = outsOf(n.id)
+
+    // Drop extras beyond 2 (keep distinct targets closest to a sensible layout).
+    if (outs.length > 2) {
+      outs = [...outs].sort((a, b) => {
+        const na = byId.get(a.to)
+        const nb = byId.get(b.to)
+        return Math.abs((na?.x || 300) - 300) - Math.abs((nb?.x || 300) - 300)
+      }).slice(0, 2)
+      const keep = new Set(outs.map(edgeKey))
+      conns = conns.filter((c) => c.from !== n.id || keep.has(edgeKey(c)))
+    }
+
+    outs = outsOf(n.id)
+
+    // Prefer explicit branch tags; otherwise prefer non-dashed / nearer-to-main-x as approve.
+    const scoreApprove = (c) => {
+      if (c.branch === 'approve') return 0
+      if (c.branch === 'reject' || c.dashed) return 2
+      const t = byId.get(c.to)
+      return Math.abs((t?.x || 300) - 300) * 0.01
+    }
+
+    if (outs.length >= 2) {
+      const sorted = [...outs].sort((a, b) => scoreApprove(a) - scoreApprove(b))
+      const approve = sorted[0]
+      const reject = sorted.find((c) => c.to !== approve.to) || sorted[1]
+      for (const c of outs) {
+        delete c.branch
+        delete c.dashed
+      }
+      approve.branch = 'approve'
+      approve.dashed = false
+      reject.branch = 'reject'
+      reject.dashed = true
+      // Drop any third+ from this node
+      conns = conns.filter((c) => c.from !== n.id || c === approve || c === reject)
+    } else if (outs.length === 1) {
+      const only = outs[0]
+      only.branch = 'approve'
+      only.dashed = false
+      if (only.to !== end.id) {
+        conns.push({ from: n.id, to: end.id, branch: 'reject', dashed: true })
+      } else {
+        // Only edge already goes to end — add a side notify→end reject path.
+        const rejectId = nextId()
+        const rejectNode = {
+          id: rejectId,
+          type: 'notify',
+          title: 'Notify on reject',
+          subtitle: 'Email + In-app',
+          channels: ['Email', 'In-app'],
+          x: 110,
+          y: (n.y || 200) + 110,
+        }
+        nodes.push(rejectNode)
+        byId.set(rejectId, rejectNode)
+        conns.push({ from: n.id, to: rejectId, branch: 'reject', dashed: true })
+        conns.push({ from: rejectId, to: end.id })
+      }
+    } else {
+      // No outs — pick a forward target (next by y) for approve, end for reject.
+      const forward = nodes
+        .filter((x) => x.id !== n.id && x.type !== 'start' && x.y >= (n.y || 0))
+        .sort((a, b) => a.y - b.y)[0] || end
+      const approveTo = forward.id === end.id ? end.id : forward.id
+      conns.push({ from: n.id, to: approveTo, branch: 'approve', dashed: false })
+      if (approveTo !== end.id) {
+        conns.push({ from: n.id, to: end.id, branch: 'reject', dashed: true })
+      } else {
+        const rejectId = nextId()
+        const rejectNode = {
+          id: rejectId,
+          type: 'notify',
+          title: 'Notify on reject',
+          subtitle: 'Email + In-app',
+          channels: ['Email', 'In-app'],
+          x: 110,
+          y: (n.y || 200) + 110,
+        }
+        nodes.push(rejectNode)
+        byId.set(rejectId, rejectNode)
+        conns.push({ from: n.id, to: rejectId, branch: 'reject', dashed: true })
+        conns.push({ from: rejectId, to: end.id })
+      }
+    }
+  }
+
+  // Dead-ends: every non-end / non-branching node needs an outgoing edge.
+  for (const n of nodes) {
+    if (n.type === 'end' || n.type === 'condition' || n.type === 'review') continue
+    if (outsOf(n.id).length > 0) continue
+    // Prefer next node below on main column, else End.
+    const next = nodes
+      .filter((x) => x.id !== n.id && x.type !== 'start' && (x.y || 0) > (n.y || 0))
+      .sort((a, b) => (a.y - b.y) || Math.abs((a.x || 300) - 300) - Math.abs((b.x || 300) - 300))[0]
+    conns.push({ from: n.id, to: (next || end).id })
+  }
+
+  // If almost nothing connects, rebuild a simple vertical chain (skip condition branches).
+  const start = nodes.find((n) => n.type === 'start')
+  if (start && outsOf(start.id).length === 0) {
+    const ordered = [...nodes].sort((a, b) => (a.y - b.y) || (a.x - b.x))
+    conns = []
+    for (let i = 0; i < ordered.length - 1; i++) {
+      const from = ordered[i]
+      const to = ordered[i + 1]
+      if (from.type === 'end') continue
+      if (from.type === 'condition' || from.type === 'review') {
+        conns.push({ from: from.id, to: to.id, branch: 'approve', dashed: false })
+        if (to.id !== end.id) conns.push({ from: from.id, to: end.id, branch: 'reject', dashed: true })
+      } else {
+        conns.push({ from: from.id, to: to.id })
+      }
+    }
+  }
+
+  // De-dupe
+  const seen = new Set()
+  conns = conns.filter((c) => {
+    const k = edgeKey(c)
+    if (seen.has(k)) return false
+    seen.add(k)
+    return true
+  })
+
+  return { nodes, connections: conns }
+}
+
+function sanitizeAiWorkflow(raw) {
+  const title = asStr(raw?.title, 120) || 'AI workflow'
+  const description = asStr(raw?.description, 500)
+  let category = asStr(raw?.category, 40) || 'General'
+
+  const rawNodes = Array.isArray(raw?.nodes) ? raw.nodes : []
+  const nodes = []
+  const idMap = new Map()
+  let seq = 1
+  let hasStart = false
+  let hasEnd = false
+
+  for (const n of rawNodes) {
+    if (!n || typeof n !== 'object') continue
+    let type = asStr(n.type, 30)
+    if (type === 'decision' || type === 'branch') type = 'condition'
+    if (type === 'notification' || type === 'email') type = 'notify'
+    if (type === 'delay' || type === 'wait') type = 'timer'
+    if (type === 'finish' || type === 'complete') type = 'end'
+    if (type === 'trigger') type = 'start'
+    if (!AI_NODE_TYPES.has(type)) continue
+    if (type === 'start' && hasStart) continue
+    if (type === 'start') hasStart = true
+    if (type === 'end') hasEnd = true
+
+    const oldId = asStr(n.id, 40) || `raw${seq}`
+    const id = `n${seq++}`
+    idMap.set(oldId, id)
+
+    const node = {
+      id,
+      type,
+      title: asStr(n.title, 80) || type.charAt(0).toUpperCase() + type.slice(1),
+      subtitle: asStr(n.subtitle, 120),
+      x: Math.max(40, Math.min(num(n.x) ?? 300, 900)),
+      y: Math.max(20, Math.min(num(n.y) ?? (20 + (seq - 2) * 110), 3900)),
+    }
+
+    if (type === 'approval' || type === 'review') {
+      const role = asStr(n.approverRole, 40)
+      node.approverRole = APPROVER_ROLES.has(role) ? role : 'direct_manager'
+      const sla = num(n.slaValue)
+      node.slaValue = sla && sla > 0 ? Math.min(sla, 720) : 24
+      const unit = asStr(n.slaUnit, 20)
+      node.slaUnit = SLA_UNITS.has(unit) ? unit : 'Hours'
+      if (!node.subtitle) node.subtitle = `Approval node · ${node.slaValue}${node.slaUnit === 'Hours' ? 'h' : 'd'} SLA`
+    } else if (type === 'multiApproval') {
+      const sla = num(n.slaValue)
+      node.slaValue = sla && sla > 0 ? Math.min(sla, 720) : 24
+      const unit = asStr(n.slaUnit, 20)
+      node.slaUnit = SLA_UNITS.has(unit) ? unit : 'Hours'
+      node.requiredApprovals = Math.max(1, Math.min(num(n.requiredApprovals) || 1, 10))
+      node.approverIds = []
+      if (!node.subtitle) node.subtitle = 'N of M approvers'
+    } else if (type === 'condition') {
+      node.branches = ['Approved', 'Rejected']
+      if (!node.subtitle) node.subtitle = 'Approved / Rejected'
+    } else if (type === 'notify') {
+      const channels = Array.isArray(n.channels)
+        ? n.channels.map((c) => asStr(c, 20)).filter((c) => NOTIFY_CHANNELS.has(c))
+        : []
+      node.channels = channels.length ? [...new Set(channels)] : ['Email', 'In-app']
+      if (!node.subtitle) node.subtitle = node.channels.join(' + ')
+    } else if (type === 'timer') {
+      const wv = num(n.waitValue)
+      node.waitValue = wv && wv > 0 ? Math.min(wv, 720) : 24
+      const unit = asStr(n.waitUnit, 20)
+      node.waitUnit = WAIT_UNITS.has(unit) ? unit : 'Hours'
+      if (!node.subtitle) node.subtitle = 'Delay'
+    } else if (type === 'start') {
+      if (!node.subtitle) node.subtitle = 'Start trigger'
+      if (!node.title || node.title === 'Start') node.title = 'Form submitted'
+    } else if (type === 'end') {
+      if (!node.subtitle) node.subtitle = 'Finish'
+    }
+
+    nodes.push(node)
+    if (nodes.length >= 12) break
+  }
+
+  // Guarantee a minimal start → end if the model returned junk.
+  if (!hasStart) {
+    const id = `n${seq++}`
+    nodes.unshift({ id, type: 'start', title: 'Form submitted', subtitle: 'Start trigger', x: 300, y: 20 })
+    idMap.set('__start__', id)
+    hasStart = true
+  }
+  if (!hasEnd) {
+    const id = `n${seq++}`
+    const lastY = nodes.reduce((m, n) => Math.max(m, n.y), 20)
+    nodes.push({ id, type: 'end', title: 'Completed', subtitle: 'Finish', x: 300, y: lastY + 110 })
+    idMap.set('__end__', id)
+    hasEnd = true
+  }
+
+  const rawConns = Array.isArray(raw?.connections) ? raw.connections : []
+  const connections = []
+  const seen = new Set()
+  for (const c of rawConns) {
+    if (!c || typeof c !== 'object') continue
+    const from = idMap.get(asStr(c.from, 40))
+    const to = idMap.get(asStr(c.to, 40))
+    if (!from || !to || from === to) continue
+    const key = `${from}>${to}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    const branch = asStr(c.branch, 20).toLowerCase()
+    const conn = { from, to }
+    if (branch === 'approve' || branch === 'approved' || branch === 'yes' || branch === 'true') {
+      conn.branch = 'approve'
+    } else if (
+      branch === 'reject' || branch === 'rejected' || branch === 'no' || branch === 'false' ||
+      c.dashed === true
+    ) {
+      conn.branch = 'reject'
+      conn.dashed = true
+    }
+    connections.push(conn)
+    if (connections.length >= 20) break
+  }
+
+  // If no usable edges, wire a simple top-to-bottom chain.
+  if (connections.length === 0 && nodes.length >= 2) {
+    const ordered = [...nodes].sort((a, b) => a.y - b.y || a.x - b.x)
+    for (let i = 0; i < ordered.length - 1; i++) {
+      connections.push({ from: ordered[i].id, to: ordered[i + 1].id })
+    }
+  }
+
+  const repaired = repairAiGraph(nodes, connections)
+  return { title, description, category, nodes: repaired.nodes, connections: repaired.connections }
+}
+
+// IDE-style ghost text (VS Code / Cursor): next few tokens only, not a sentence.
+const AI_WF_SUGGEST_SYSTEM = `You are inline autocomplete for a workflow-builder prompt (same feel as VS Code / Cursor ghost text).
+
+The user is typing what workflow to generate. Reply with ONLY the suffix they would type next.
+
+Hard rules:
+- Output ONLY the continuation. Never repeat their text. No quotes, labels, markdown, or explanations.
+- Prefer 1–4 words (hard max 5). Never a full sentence. Never end with . ! ?
+- If they are mid-word, finish THAT word first (e.g. "approv" → "al", "recieve" → "iving").
+- Continue the current phrase. Do not jump ahead with "then …" unless their last words already invite the next step (e.g. ends with "manager", "approval", "then").
+- Use business-process words: leave, expense, purchase, onboarding, manager, HR, finance, IT, notify, escalate.
+- If the phrase already feels complete, return an empty string.
+
+Examples (input → output):
+- "create a workflow for leave" → " request with manager"
+- "create a workflow for good recieve" → "iving with finance"
+- "expense reimb" → "ursement manager approval"
+- "IT access with" → " manager and IT"
+- "Leave request with manager approval" → ""`
+
+const trimOverlap = (typed, completion) => {
+  let c = completion
+  const tail = typed.slice(-40).toLowerCase()
+  const cl = c.toLowerCase()
+  for (let n = Math.min(tail.length, cl.length); n > 0; n--) {
+    if (tail.slice(-n) === cl.slice(0, n)) { c = c.slice(n); break }
+  }
+  return c
+}
+
+// Clamp model output to IDE-like ghost text: short, mid-word aware.
+const normalizeSuggest = (typed, raw) => {
+  let completion = String(raw || '')
+    .replace(/^["'`\s]+|["'`]+$/g, '')
+    .replace(/\s*\n[\s\S]*$/, '')
+    .replace(/\s+/g, ' ')
+  completion = trimOverlap(typed, completion)
+  completion = completion.replace(/[.!?…]+$/g, '').replace(/^[:\-~]+\s*/, '')
+
+  const midWord = typed.length > 0 && !/\s$/.test(typed)
+  if (midWord) {
+    completion = completion.replace(/^\s+/, '')
+    // If the model restarted the whole word, keep only the extending suffix.
+    const partial = (typed.match(/[A-Za-z0-9'_-]+$/) || [''])[0]
+    if (partial && completion.toLowerCase().startsWith(partial.toLowerCase())) {
+      completion = completion.slice(partial.length)
+    }
+  } else if (completion && !completion.startsWith(' ')) {
+    completion = ' ' + completion
+  }
+
+  const lead = completion.startsWith(' ') ? ' ' : ''
+  const words = completion.trim().split(/\s+/).filter(Boolean).slice(0, 4)
+  if (!words.length) return ''
+  return (lead + words.join(' ')).slice(0, 42).trimEnd()
+}
 
 // ---------- collection routes ----------
 
@@ -94,6 +505,70 @@ router.post('/', protect, roleGuard(...DESIGNER_ROLES), requireCanBuild, require
     return sendSuccess(res, { workflow: workflow.toObject() }, 201)
   } catch (err) {
     next(err)
+  }
+})
+
+// GET /api/workflows/ai-status — is an LLM key configured? (drives UI visibility)
+// MUST be registered before GET /:id so it isn't captured as an id.
+router.get('/ai-status', protect, (req, res) => {
+  return sendSuccess(res, { aiConfigured: llmConfigured(), model: llmModel() })
+})
+
+// POST /api/workflows/ai-draft — turn a plain-English description into a canvas draft.
+// Builder-only. Returns { title, description, category, nodes, connections }; does NOT persist.
+router.post('/ai-draft', protect, roleGuard(...DESIGNER_ROLES), requireCanBuild, async (req, res, next) => {
+  try {
+    const prompt = asStr(req.body?.prompt, 2000)
+    if (!prompt) return sendError(res, 'Describe the workflow you want to generate.', 'MISSING_PROMPT', 400)
+    if (!llmConfigured()) return sendError(res, 'AI is not configured on the server.', 'AI_DISABLED', 503)
+
+    let out
+    try {
+      out = await generateJSON(`Design a workflow for this request: ${prompt}`, {
+        system: AI_WORKFLOW_SYSTEM,
+        temperature: 0.3,
+        timeoutMs: 45000
+      })
+    } catch (err) {
+      console.error('workflow ai-draft LLM error:', err.message)
+      return sendError(res, 'The AI service failed to respond. Please try again.', 'AI_ERROR', 502)
+    }
+
+    const draft = sanitizeAiWorkflow(out)
+    if (!draft.nodes.some((n) => n.type === 'start') || !draft.nodes.some((n) => n.type === 'end')) {
+      return sendError(res, 'The AI did not return a usable workflow. Try rephrasing your description.', 'AI_EMPTY', 422)
+    }
+
+    return sendSuccess(res, { ...draft, model: llmModel() })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// POST /api/workflows/ai-suggest — ghost-text autocomplete for the AI prompt box.
+router.post('/ai-suggest', protect, roleGuard(...DESIGNER_ROLES), requireCanBuild, async (req, res) => {
+  try {
+    const prompt = asStr(req.body?.prompt, 300)
+    if (!llmConfigured() || prompt.length < 3) return sendSuccess(res, { completion: '' })
+
+    let raw = ''
+    try {
+      raw = await generateText(
+        `Typed so far:\n${prompt}\n\nGhost continuation (next 1-4 words only):`,
+        {
+          system: AI_WF_SUGGEST_SYSTEM,
+          temperature: 0.1,
+          maxTokens: 16,
+          timeoutMs: 4000
+        }
+      )
+    } catch {
+      return sendSuccess(res, { completion: '' })
+    }
+
+    return sendSuccess(res, { completion: normalizeSuggest(prompt, raw) })
+  } catch {
+    return sendSuccess(res, { completion: '' })
   }
 })
 

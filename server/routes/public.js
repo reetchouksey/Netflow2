@@ -12,6 +12,7 @@ const FormResponse = require('../models/FormResponse')
 const Organization = require('../models/Organization')
 const { sendSuccess, sendError } = require('../utils/apiResponse')
 const { isFieldVisible } = require('../utils/conditionalLogic')
+const dms = require('../services/dmsClient')
 const { validateField } = require('../utils/validation')
 const { checkQuota, checkStorage } = require('../middleware/quota')
 const { writeBlockFor } = require('../middleware/licence')
@@ -96,6 +97,16 @@ const findPublicForm = (token) => {
 const fieldEmpty = (field, v) => {
   if (field.type === 'checkbox') return !v
   if (field.type === 'grid') return !Array.isArray(v) || v.length === 0
+  if (field.type === 'signature') {
+    if (v === undefined || v === null || v === '') return true
+    if (typeof v === 'object') return !(v.text || v.url)
+    return !String(v).trim()
+  }
+  if (field.type === 'file') {
+    if (v === undefined || v === null || v === '') return true
+    if (typeof v === 'object') return !v.url
+    return false
+  }
   return v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0)
 }
 
@@ -166,6 +177,23 @@ router.post('/forms/:token/submit', rateLimit, async (req, res, next) => {
 
     await meterSubmission(form.orgId)
 
+    // Best-effort DMS audit/link - never block submit.
+    try {
+      const { collectDmsDocIds, emitWorkflowEvents } = require('../utils/dmsAttachments')
+      const dmsDocIds = collectDmsDocIds(null, formResponse)
+      if (dmsDocIds.length > 0) {
+        await emitWorkflowEvents(dmsDocIds, {
+          type: 'workflow.submitted',
+          actor: { name: submitter?.name || 'Public User', email: submitter?.email },
+          detail: `Public submission of "${form.title}"`,
+          meta: { formResponseId: String(formResponse._id) },
+          org
+        })
+      }
+    } catch (err) {
+      console.warn('[public.js] dms link failed:', err.message)
+    }
+
     // No workflow trigger by design — this is pure data collection.
     return sendSuccess(res, { formResponseId: formResponse._id }, 201)
   } catch (err) {
@@ -226,6 +254,37 @@ router.post('/forms/:token/upload', rateLimit, async (req, res, next) => {
         return sendError(res, 'This form is not accepting attachments right now. Please contact the form owner.',
           'LIMIT_REACHED', 403, { resource: room.extra?.resource || 'storage' })
       }
+
+      if (dms.isEnabled()) {
+        const provisionalId = require('crypto').randomBytes(12).toString('hex')
+        try {
+          const doc = await dms.uploadFile({
+            filePath: req.file.path,
+            filename: req.file.originalname,
+            mime: req.file.mimetype,
+            org: org,
+            ref: { id: provisionalId }
+          })
+
+          await fs.promises.unlink(req.file.path).catch(() => {})
+          await addStorage(form.orgId, req.file.size)
+
+          return sendSuccess(res, {
+            file: {
+              name: req.file.originalname,
+              url: doc.url || null,
+              mime: req.file.mimetype,
+              size: req.file.size,
+              dmsDocId: doc.id,
+              provisionalId,
+            }
+          }, 201)
+        } catch (dmsErr) {
+          await fs.promises.unlink(req.file.path).catch(() => {})
+          return sendError(res, 'Document service failed to accept the file.', 'DMS_ERROR', 502)
+        }
+      }
+
       await addStorage(form.orgId, req.file.size)
 
       return sendSuccess(res, {

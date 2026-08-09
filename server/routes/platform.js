@@ -18,6 +18,7 @@
 //   POST   /api/platform/admins/:id/deactivate
 //   POST   /api/platform/admins/:id/activate
 //   GET    /api/platform/health                   system status for SuperAdmin
+//   GET    /api/platform/dms-storage              live BaseLayer DMS storage usage
 //
 // All tenant queries here name orgId explicitly (or use skipOrgScope), so the
 // org-scope plugin never silently narrows a Super Admin's cross-tenant view to
@@ -48,6 +49,7 @@ const { generatePassword } = require('../utils/password')
 const { writeAuditLog } = require('../utils/writeAuditLog')
 const { applyLicensingPayload, usageSnapshot, freshPeriod, resetNotified } = require('../utils/licensing')
 const { countsFor } = require('../utils/usage')
+const dms = require('../services/dmsClient')
 const { ensurePeriod } = require('../utils/usageMeter')
 const { purgeOrgFiles } = require('../utils/fileGc')
 const { measureOrg } = require('../utils/fileStore')
@@ -205,13 +207,22 @@ router.get('/orgs', async (req, res, next) => {
 // first login (models/User.mustChangePassword).
 router.post('/orgs', async (req, res, next) => {
   try {
-    const { name, subdomain, allowedDomains, features, adminEmail, adminName } = req.body || {}
+    const {
+      name, subdomain, allowedDomains, features, adminEmail, adminName,
+      // Platform Super Admin options for the bootstrap Org Admin (default on):
+      //   adminCanBuild           — grant form/workflow builder access
+      //   countAdminTowardSeats — bill this admin against user + builder limits
+      adminCanBuild,
+      countAdminTowardSeats
+    } = req.body || {}
     if (!name || !subdomain) {
       return sendError(res, 'name and subdomain are required', 'MISSING_FIELDS', 400)
     }
     const email = String(adminEmail || '').toLowerCase().trim()
     if (!email) return sendError(res, 'Admin email is required', 'MISSING_ADMIN_EMAIL', 400)
     if (!EMAIL_RE.test(email)) return sendError(res, 'Enter a valid admin email', 'INVALID_ADMIN_EMAIL', 400)
+    const grantBuild = adminCanBuild !== false && adminCanBuild !== 'false'
+    const billSeats = countAdminTowardSeats !== false && countAdminTowardSeats !== 'false'
 
     const sub = String(subdomain).toLowerCase().trim()
     const taken = await Organization.findOne({ subdomain: sub }).lean()
@@ -231,11 +242,34 @@ router.post('/orgs', async (req, res, next) => {
 
     // Build the org in memory so a bad plan/limit payload is rejected before we
     // write anything (and before a temp password is generated).
+    
+    // Parse DMS Integrations for creation time
+    const integrationsDoc = {}
+    if (req.body?.integrations) {
+      const integrations = req.body.integrations
+      if (integrations.dmsApiKey !== undefined) integrationsDoc.dmsApiKey = String(integrations.dmsApiKey || '').trim()
+      if (integrations.dmsEnabled !== undefined) integrationsDoc.dmsEnabled = Boolean(integrations.dmsEnabled)
+      if (integrations.dmsOrgSlug !== undefined) integrationsDoc.dmsOrgSlug = String(integrations.dmsOrgSlug || '').toLowerCase().trim().replace(/[^a-z0-9-]/g, '-')
+      
+      if (Array.isArray(integrations.departmentDms)) {
+        integrationsDoc.departmentDms = integrations.departmentDms
+          .filter((d) => d && String(d.department || '').trim())
+          .map((d) => ({
+            department: String(d.department).trim(),
+            apiKey:  String(d.apiKey  || '').trim(),
+            baseUrl: String(d.baseUrl || '').trim(),
+            folder:  String(d.folder  || '').trim(),
+            enabled: d.enabled !== false
+          }))
+      }
+    }
+
     const org = new Organization({
       name: String(name).trim(),
       subdomain: sub,
       allowedDomains: parsedDomains,
-      features: parsedFeatures
+      features: parsedFeatures,
+      ...(Object.keys(integrationsDoc).length ? { integrations: integrationsDoc } : {})
     })
 
     const licensingErrors = applyLicensingPayload(org, req.body || {})
@@ -260,9 +294,10 @@ router.post('/orgs', async (req, res, next) => {
         role: adminRole._id,
         mustChangePassword: true,
         needsProductTour: true,
-        // The bootstrap admin holds the first builder seat — a tenant whose only
-        // user cannot create a form has nothing to log in for.
-        canBuild: true
+        // Defaults keep today’s behaviour: first admin can build and bills a seat.
+        // Platform Super Admin may opt out of either via the create-org form.
+        canBuild: grantBuild,
+        countsTowardSeats: billSeats
       })
     } catch (adminErr) {
       // Never leave an org with no admin — roll the org back.
@@ -277,7 +312,9 @@ router.post('/orgs', async (req, res, next) => {
     await org.save()
 
     auditPlatform(req, 'org_created', org, `Created organization "${org.name}" (${org.subdomain}) with admin ${admin.email}`, {
-      adminEmail: admin.email
+      adminEmail: admin.email,
+      adminCanBuild: grantBuild,
+      countAdminTowardSeats: billSeats
     })
 
     return sendSuccess(res, {
@@ -285,7 +322,14 @@ router.post('/orgs', async (req, res, next) => {
         admin: { _id: admin._id, email: admin.email, name: admin.name }
       }),
       // Shown to the Super Admin exactly once — the password is hashed at rest.
-      admin: { email: admin.email, name: admin.name, tempPassword, warning: policy.warning || null }
+      admin: {
+        email: admin.email,
+        name: admin.name,
+        tempPassword,
+        warning: policy.warning || null,
+        canBuild: grantBuild,
+        countsTowardSeats: billSeats
+      }
     }, 201)
   } catch (err) {
     if (err.name === 'ValidationError') {
@@ -301,11 +345,68 @@ router.put('/orgs/:id', async (req, res, next) => {
     const org = await Organization.findById(req.params.id)
     if (!org) return sendError(res, 'Organization not found', 'ORG_NOT_FOUND', 404)
 
-    const { name, allowedDomains, features } = req.body || {}
+    const { name, allowedDomains, features, integrations } = req.body || {}
     if (name !== undefined) org.name = String(name).trim()
     if (allowedDomains !== undefined) org.allowedDomains = parseDomains(allowedDomains)
     if (features !== undefined) {
       if (features.externalUsers !== undefined) org.features.externalUsers = Boolean(features.externalUsers)
+    }
+
+    // DMS integration settings — SuperAdmin only. dmsApiKey is write-once from
+    // this endpoint (pass empty string '' to clear it).
+    const dmsChanges = []
+    if (integrations !== undefined) {
+      if (integrations.dmsApiKey !== undefined) {
+        const newKey = String(integrations.dmsApiKey || '').trim()
+        if (newKey !== (org.integrations?.dmsApiKey || '')) {
+          org.integrations.dmsApiKey = newKey
+          dmsChanges.push('dmsApiKey')
+        }
+      }
+      if (integrations.dmsEnabled !== undefined) {
+        const newVal = Boolean(integrations.dmsEnabled)
+        if (newVal !== Boolean(org.integrations?.dmsEnabled)) {
+          org.integrations.dmsEnabled = newVal
+          dmsChanges.push(`dmsEnabled=${newVal}`)
+        }
+      }
+      if (integrations.dmsOrgSlug !== undefined) {
+        const newSlug = String(integrations.dmsOrgSlug || '').toLowerCase().trim()
+          .replace(/[^a-z0-9-]/g, '-')
+        if (newSlug !== (org.integrations?.dmsOrgSlug || '')) {
+          org.integrations.dmsOrgSlug = newSlug
+          dmsChanges.push(`dmsOrgSlug=${newSlug || '(subdomain)'}`)
+        }
+      }
+      // Per-department DMS configs — full replace (send the whole array to update)
+      if (Array.isArray(integrations.departmentDms)) {
+        org.integrations.departmentDms = integrations.departmentDms
+          .filter((d) => d && String(d.department || '').trim())
+          .map((d) => {
+            const deptName = String(d.department).trim()
+            let apiKey = String(d.apiKey || '').trim()
+            // Preserve existing key if masked or missing
+            if (apiKey === '••••••••' || !apiKey) {
+              const existing = org.integrations.departmentDms?.find(
+                (e) => String(e.department).toLowerCase() === deptName.toLowerCase()
+              )
+              // Only fallback to existing if we didn't explicitly send an empty string
+              // Wait, if !apiKey, how do we clear it? We can allow frontend to send
+              // a special flag or we just let it keep existing if it's strictly '••••••••'
+              if (apiKey === '••••••••') {
+                apiKey = existing?.apiKey || ''
+              }
+            }
+            return {
+              department: deptName,
+              apiKey,
+              baseUrl: String(d.baseUrl || '').trim(),
+              folder:  String(d.folder  || '').trim(),
+              enabled: d.enabled !== false
+            }
+          })
+        dmsChanges.push(`departmentDms[${org.integrations.departmentDms.length}]`)
+      }
     }
 
     const before = { plan: org.plan, limits: org.limits.toObject ? org.limits.toObject() : { ...org.limits } }
@@ -331,14 +432,20 @@ router.put('/orgs/:id', async (req, res, next) => {
     await org.save()
 
     const planChanged = org.plan !== before.plan
+    const detail = [
+      planChanged ? `plan ${before.plan} → ${org.plan}` : null,
+      dmsChanges.length ? `DMS: ${dmsChanges.join(', ')}` : null
+    ].filter(Boolean).join('; ')
+
     auditPlatform(
       req,
       'org_updated',
       org,
-      planChanged
-        ? `Updated organization "${org.name}" (${org.subdomain}) — plan ${before.plan} → ${org.plan}`
-        : `Updated organization "${org.name}" (${org.subdomain})`,
-      planChanged ? { planFrom: before.plan, planTo: org.plan } : {}
+      `Updated organization "${org.name}" (${org.subdomain})${detail ? ` — ${detail}` : ''}`,
+      {
+        ...(planChanged ? { planFrom: before.plan, planTo: org.plan } : {}),
+        ...(dmsChanges.length ? { dmsChanges } : {})
+      }
     )
     return sendSuccess(res, { org: await withLicensing(org) })
   } catch (err) {
@@ -678,6 +785,94 @@ router.get('/plans', async (req, res, next) => {
   }
 })
 
+// POST /api/platform/plans — create a new subscription plan dynamically.
+router.post('/plans', async (req, res, next) => {
+  try {
+    const Plan = require('../models/Plan')
+    const { reloadPlans } = require('../config/plans')
+    
+    const { key, label, trialDays, limits } = req.body
+    if (!key || !label) {
+      return sendError(res, 'Key and label are required', 'MISSING_FIELDS', 400)
+    }
+    
+    const existing = await Plan.findOne({ key })
+    if (existing) {
+      return sendError(res, `Plan key "${key}" already exists`, 'PLAN_EXISTS', 400)
+    }
+
+    const plan = await Plan.create({
+      key,
+      label,
+      trialDays: trialDays ? Number(trialDays) : null,
+      limits: limits || {},
+      isCustom: false
+    })
+
+    await reloadPlans()
+    
+    auditPlatform(req, 'plan_created', null, `Created subscription plan "${label}" (${key})`, { key, label })
+    return sendSuccess(res, { plan }, 201)
+  } catch (err) {
+    if (err.name === 'ValidationError') return sendError(res, err.message, 'VALIDATION_ERROR', 400)
+    next(err)
+  }
+})
+
+// PUT /api/platform/plans/:key — update an existing subscription plan.
+router.put('/plans/:key', async (req, res, next) => {
+  try {
+    const Plan = require('../models/Plan')
+    const { reloadPlans } = require('../config/plans')
+    
+    const plan = await Plan.findOne({ key: req.params.key })
+    if (!plan) return sendError(res, 'Plan not found', 'PLAN_NOT_FOUND', 404)
+    if (plan.isCustom) return sendError(res, 'Cannot edit the custom plan preset', 'INVALID_OPERATION', 400)
+
+    const { label, trialDays, limits } = req.body
+    if (label !== undefined) plan.label = label
+    if (trialDays !== undefined) plan.trialDays = trialDays === null ? null : Number(trialDays)
+    if (limits !== undefined) {
+      plan.limits = { ...plan.limits, ...limits }
+    }
+
+    await plan.save()
+    await reloadPlans()
+    
+    auditPlatform(req, 'plan_updated', null, `Updated subscription plan "${plan.label}" (${plan.key})`, { key: plan.key })
+    return sendSuccess(res, { plan })
+  } catch (err) {
+    if (err.name === 'ValidationError') return sendError(res, err.message, 'VALIDATION_ERROR', 400)
+    next(err)
+  }
+})
+
+// DELETE /api/platform/plans/:key — delete a subscription plan.
+router.delete('/plans/:key', async (req, res, next) => {
+  try {
+    const Plan = require('../models/Plan')
+    const { reloadPlans } = require('../config/plans')
+    
+    const key = req.params.key
+    const plan = await Plan.findOne({ key })
+    if (!plan) return sendError(res, 'Plan not found', 'PLAN_NOT_FOUND', 404)
+    if (plan.isCustom) return sendError(res, 'Cannot delete the custom plan preset', 'INVALID_OPERATION', 400)
+
+    const inUse = await Organization.exists({ plan: key })
+    if (inUse) {
+      return sendError(res, 'Cannot delete plan because organizations are actively using it', 'PLAN_IN_USE', 400)
+    }
+
+    await Plan.deleteOne({ key })
+    await reloadPlans()
+    
+    auditPlatform(req, 'plan_deleted', null, `Deleted subscription plan "${plan.label}" (${key})`, { key })
+    return sendSuccess(res, { deleted: true })
+  } catch (err) {
+    next(err)
+  }
+})
+
 // GET /api/platform/admins — every SuperAdmin account on this deployment.
 router.get('/admins', async (req, res, next) => {
   try {
@@ -884,4 +1079,85 @@ router.get('/health', async (req, res, next) => {
   }
 })
 
+// GET /api/platform/dms-storage — live bytes in BaseLayer DMS (API key org).
+router.get('/dms-storage', async (req, res, next) => {
+  try {
+    if (!dms.isEnabled()) {
+      return sendSuccess(res, {
+        enabled: false,
+        source: null,
+        usedBytes: 0,
+        usedMb: 0,
+        limitBytes: null,
+        limitMb: null,
+        documentCount: 0,
+        organizationId: null,
+        message: 'DMS is not enabled'
+      })
+    }
+
+    const usage = await dms.getStorageUsage({ user: req.user })
+    return sendSuccess(res, usage || {
+      enabled: true,
+      source: null,
+      usedBytes: 0,
+      usedMb: 0,
+      limitBytes: null,
+      limitMb: null,
+      documentCount: 0,
+      organizationId: null
+    })
+  } catch (err) {
+    if (err instanceof dms.DmsError) {
+      return sendError(res, err.message || 'DMS storage lookup failed', err.code || 'DMS_ERROR', err.status || 502, {
+        dms: err.body || null
+      })
+    }
+    next(err)
+  }
+})
+
+// GET /api/platform/dms-documents — paginated DMS document list with folder grouping
+// Supports ?limit=&offset= query params. Groups docs by sourceRef type
+// (tasks, forms, workflows, other) so the UI can render a simulated folder tree.
+router.get('/dms-documents', async (req, res, next) => {
+  try {
+    if (!dms.isEnabled()) {
+      return sendSuccess(res, {
+        enabled: false,
+        documents: [],
+        total: 0,
+        groups: { tasks: 0, forms: 0, workflows: 0, other: 0 },
+        message: 'DMS is not enabled'
+      })
+    }
+
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200)
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0)
+
+    const result = await dms.listDocuments({ user: req.user, limit, offset })
+    const docs = result?.documents || []
+    const total = result?.total ?? null
+
+    // Build folder groups based on sourceRef metadata
+    const groups = { tasks: 0, forms: 0, workflows: 0, other: 0 }
+    for (const doc of docs) {
+      const ref = doc.sourceRef || doc.externalRef || {}
+      if (ref.taskId) groups.tasks += 1
+      else if (ref.formResponseId) groups.forms += 1
+      else if (ref.workflowId) groups.workflows += 1
+      else groups.other += 1
+    }
+
+    return sendSuccess(res, { enabled: true, documents: docs, total, groups })
+  } catch (err) {
+    if (err instanceof dms.DmsError) {
+      return sendError(res, err.message || 'DMS document listing failed', err.code || 'DMS_ERROR', err.status || 502, { dms: err.body || null })
+    }
+    next(err)
+  }
+})
+
 module.exports = router
+
+

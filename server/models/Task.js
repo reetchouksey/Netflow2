@@ -45,7 +45,9 @@ const taskSchema = new mongoose.Schema({
     name: { type: String },
     url: { type: String },
     mime: { type: String },
-    size: { type: Number }
+    size: { type: Number },
+    dmsDocId: { type: String, default: null },
+    provisionalId: { type: String, default: null },
   }],
   approvalType: { type: String, enum: ['sequential', 'parallel'], default: 'sequential' },
   // Multi/committee approval: how many of parallelApprovers must approve for the
@@ -61,10 +63,11 @@ const taskSchema = new mongoose.Schema({
     comment: { type: String },
     // Optional e-signature captured at decision time (when the node requires it).
     signature: {
-      kind: { type: String, enum: ['uploaded', 'typed'] },
+      kind: { type: String, enum: ['uploaded', 'typed', 'drawn'] },
       url: { type: String },
       text: { type: String },
-      font: { type: String }
+      font: { type: String },
+      dmsDocId: { type: String, default: null },
     }
   }],
   parallelApprovers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
