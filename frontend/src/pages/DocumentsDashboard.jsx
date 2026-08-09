@@ -57,8 +57,8 @@ const FileIcon = ({ type, className = "w-6 h-6" }) => {
 
 // ── Header Actions ─────────────────────────────────────────────────────
 
-function DmsHeaderActions({ loading, error, onSync }) {
-  const isError = !loading && !!error;
+function DmsHeaderActions({ loading, error, needsLogin, onSync }) {
+  const isError = !loading && (!!error || needsLogin);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = React.useRef(null);
 
@@ -91,7 +91,7 @@ function DmsHeaderActions({ loading, error, onSync }) {
         <span className="text-[10px] font-medium text-fg-subtle">DMS Connection</span>
         <div className={`w-2 h-2 rounded-full ${loading ? 'bg-amber-400 animate-pulse' : isError ? 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]' : 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]'}`}></div>
         <span className={`text-xs font-bold ml-1 ${loading ? 'text-amber-500' : isError ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'}`}>
-          {loading ? 'Checking...' : isError ? 'Disconnected' : 'Connected'}
+          {loading ? 'Checking...' : isError ? (needsLogin ? 'Auth Required' : 'Disconnected') : 'Connected'}
         </span>
       </div>
 
@@ -384,7 +384,7 @@ export default function DocumentsDashboard() {
     <AppShell
       title="Document Management System"
       subtitle="Manage, organize and access all your documents securely."
-      actions={<DmsHeaderActions loading={loading} error={error} onSync={loadData} />}
+      actions={<DmsHeaderActions loading={loading} error={error} needsLogin={needsLogin} onSync={loadData} />}
       // Provide a rigid flex container that fills the viewport minus the AppShell padding.
       mainClass="flex-1 flex flex-col p-4 md:p-6 pb-24 md:pb-6 h-screen min-h-0 overflow-hidden bg-[#FAFBFF] dark:bg-surface-1"
     >
