@@ -117,7 +117,7 @@ const run = async () => {
     console.log(`Notifications removed:   ${notifications.deletedCount}`)
     console.log(`Audit logs removed:      ${auditLogs.deletedCount}`)
     console.log('')
-    console.log('Done. Roles and the DoA matrix are preserved. Register an account')
+    console.log('Done. Roles are preserved. Register an account')
     console.log('at /register — the first sign-up is promoted to Admin.')
   } catch (err) {
     console.error('clean-demo failed:', err.message || err)

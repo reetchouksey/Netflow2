@@ -13,13 +13,30 @@ dotenv.config()
 const connectDB = require('./config/db')
 const errorHandler = require('./middleware/errorHandler')
 
+if (String(process.env.DMS_ENABLED || '').toLowerCase() !== 'true') {
+  console.warn('[dms] DMS_ENABLED is not true — uploads stay on local disk. Set DMS_ENABLED=true + DMS_API_URL + DMS_API_KEY to use BaseLayer DMS.')
+} else if (!process.env.DMS_API_URL || !process.env.DMS_API_KEY) {
+  console.warn('[dms] DMS_ENABLED=true but DMS_API_URL or DMS_API_KEY is missing — uploads will fail until configured.')
+} else {
+  console.log('[dms] BaseLayer DMS integration enabled →', String(process.env.DMS_API_URL).replace(/\/$/, ''))
+}
+
 const app = express()
 
 // Trust the first proxy hop so rate-limiting sees the real client IP
 // (needed when deployed behind Nginx / a platform load balancer).
 app.set('trust proxy', 1)
 
-connectDB().then(() => {
+connectDB().then(async () => {
+  // Load subscription plans from DB to memory
+  const { reloadPlans } = require('./config/plans')
+  try {
+    await reloadPlans()
+    console.log('Plans loaded from DB')
+  } catch (err) {
+    console.error('Failed to load plans from DB', err)
+  }
+
   // DISABLE_CRON=1 skips the hourly escalation sweep — used by the automated
   // test server so a shared/production database is never swept during a run.
   if (process.env.DISABLE_CRON === '1') {
@@ -116,6 +133,7 @@ app.use('/api/departments', require('./routes/departments'))
 app.use('/api/organization', require('./routes/organization'))
 app.use('/api/forms', require('./routes/forms'))
 app.use('/api/uploads', require('./routes/uploads'))
+app.use('/api/dms', require('./routes/dms'))
 
 // Public (unauthenticated) form links — collect data from non-users.
 app.use('/api/public', require('./routes/public'))

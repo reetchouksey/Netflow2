@@ -15,7 +15,7 @@ const DEFAULT_ORG = {
   name: 'Default Organization',
   subdomain: 'default',
   allowedDomains: [],
-  features: { aiRouting: true, externalUsers: true },
+  features: { externalUsers: true },
   limits: { maxUsers: 0, maxWorkflows: 0 },
   status: 'active',
   isDefault: true

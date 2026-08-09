@@ -214,6 +214,37 @@ const generateApprovalPdf = async (execution, workflow) => {
           doc.moveDown(0.4)
         } else if (f.type === 'file') {
           labelValue(f.label, formatScalar(value))
+        } else if (f.type === 'signature' && value && (value.text || value.url || typeof value === 'string')) {
+          doc.font('Helvetica-Bold').fontSize(10).fillColor('#374151').text(f.label)
+          doc.fillColor('#000')
+          const sig = typeof value === 'string'
+            ? { kind: 'typed', text: value }
+            : value
+          if (sig.kind === 'typed' && sig.text) {
+            if (sigFontReady) {
+              doc.font('Signature').fontSize(22).fillColor('#111').text(sig.text, { indent: 4 })
+            } else {
+              doc.font('Helvetica-Oblique').fontSize(14).fillColor('#111').text(sig.text, { indent: 4 })
+            }
+            doc.font('Helvetica').fontSize(8).fillColor('#9ca3af')
+              .text(`e-signature · ${signatureFontLabel(sig.font)}`, { indent: 4 })
+            doc.fillColor('#000')
+          } else if (sig.url) {
+            const buf = signatureBuffer(sig.url)
+            if (buf) {
+              try {
+                doc.image(buf, doc.x + 4, doc.y + 2, { fit: [160, 50] })
+                doc.moveDown(3)
+              } catch {
+                doc.font('Helvetica-Oblique').fontSize(8).fillColor('#9ca3af')
+                  .text('[signature image attached]', { indent: 4 }).fillColor('#000')
+              }
+            } else {
+              doc.font('Helvetica-Oblique').fontSize(8).fillColor('#9ca3af')
+                .text('[signature image attached]', { indent: 4 }).fillColor('#000')
+            }
+          }
+          doc.moveDown(0.4)
         } else {
           labelValue(f.label, formatScalar(value))
         }

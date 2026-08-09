@@ -14,10 +14,13 @@ const Form = require('../models/Form')
 const Workflow = require('../models/Workflow')
 
 const ACTIVE_USER = { isActive: true }
+// Complimentary accounts (e.g. bootstrap admin opted out of seats) must not
+// bill against maxUsers / maxBuilders. Missing field = counts (legacy docs).
+const SEATED_USER = { countsTowardSeats: { $ne: false } }
 const LIVE = { status: { $ne: 'archived' } }
 
-const countUsers = (orgId) => User.countDocuments({ orgId, ...ACTIVE_USER }).setOptions({ skipOrgScope: true })
-const countBuilders = (orgId) => User.countDocuments({ orgId, ...ACTIVE_USER, canBuild: true }).setOptions({ skipOrgScope: true })
+const countUsers = (orgId) => User.countDocuments({ orgId, ...ACTIVE_USER, ...SEATED_USER }).setOptions({ skipOrgScope: true })
+const countBuilders = (orgId) => User.countDocuments({ orgId, ...ACTIVE_USER, ...SEATED_USER, canBuild: true }).setOptions({ skipOrgScope: true })
 const countForms = (orgId) => Form.countDocuments({ orgId, ...LIVE }).setOptions({ skipOrgScope: true })
 const countWorkflows = (orgId) => Workflow.countDocuments({ orgId, ...LIVE }).setOptions({ skipOrgScope: true })
 

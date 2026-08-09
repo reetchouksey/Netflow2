@@ -1,7 +1,8 @@
 // Shared - seeds/seed.js
-// Roles-only bootstrap. Safe + idempotent: re-running never deletes anything
-// and never creates users, forms, or workflows. Those are entered by real
-// people through the app's Admin Panel / Form Designer / Workflow Builder.
+// Roles-only bootstrap. Safe + idempotent: re-running never touches users,
+// forms or workflows — those are entered by real people through the app's Admin
+// Panel / Form Designer / Workflow Builder. The one thing it does remove is a
+// retired role that nobody holds (see RETIRED below).
 //
 // Run with:  npm run seed   (from /server)
 //
@@ -13,6 +14,7 @@ require('dotenv').config()
 const mongoose = require('mongoose')
 
 const Role = require('../models/Role')
+const User = require('../models/User')
 
 const ROLES = [
   {
@@ -22,20 +24,20 @@ const ROLES = [
   },
   {
     name: 'Manager',
-    description: 'Builds forms and workflows; approves tasks for their team.',
+    description: 'Approves requests from their team and reads reports. Does not build forms or workflows.',
     permissions: [
-      'forms:read', 'forms:write',
-      'workflows:read', 'workflows:write',
+      'forms:read', 'forms:submit',
+      'workflows:read',
       'tasks:read', 'tasks:approve',
       'analytics:read'
     ]
   },
   {
     name: 'HR',
-    description: 'Owns people processes. Builds HR forms/workflows and approves people-related tasks.',
+    description: 'Owns people processes: approves people-related requests and reads reports.',
     permissions: [
-      'forms:read', 'forms:write',
-      'workflows:read', 'workflows:write',
+      'forms:read', 'forms:submit',
+      'workflows:read',
       'tasks:read', 'tasks:approve',
       'users:read',
       'analytics:read'
@@ -45,8 +47,8 @@ const ROLES = [
     name: 'CEO',
     description: 'Chief Executive Officer. Top of the approval hierarchy — VPs, AVPs and managers report up to this role. Final sign-off on high-value requests.',
     permissions: [
-      'forms:read', 'forms:write',
-      'workflows:read', 'workflows:write',
+      'forms:read', 'forms:submit',
+      'workflows:read',
       'tasks:read', 'tasks:approve',
       'users:read',
       'analytics:read'
@@ -56,8 +58,8 @@ const ROLES = [
     name: 'VP',
     description: 'Senior approver. Reviews high-impact requests and sees org-wide analytics.',
     permissions: [
-      'forms:read', 'forms:write',
-      'workflows:read', 'workflows:write',
+      'forms:read', 'forms:submit',
+      'workflows:read',
       'tasks:read', 'tasks:approve',
       'analytics:read'
     ]
@@ -70,36 +72,17 @@ const ROLES = [
       'tasks:read', 'tasks:act'
     ]
   },
-  {
-    name: 'Viewer',
-    description: 'Read-only access to forms and own tasks.',
-    permissions: ['forms:read', 'tasks:read']
-  },
-  {
-    name: 'Receiving Staff',
-    description: 'Logs incoming goods and fills the costing form.',
-    permissions: ['forms:read', 'forms:submit', 'tasks:read', 'tasks:act']
-  },
-  {
-    name: 'Warehouse Manager',
-    description: 'Reviews and approves costing entries from floor staff.',
-    permissions: ['forms:read', 'tasks:read', 'tasks:approve']
-  },
-  {
-    name: 'Accounts Officer',
-    description: 'Validates cost figures and attaches invoice proof.',
-    permissions: ['forms:read', 'tasks:read', 'tasks:approve']
-  },
-  {
-    name: 'Brand Rep',
-    description: 'Confirms brand-level pricing and authorises spend.',
-    permissions: ['forms:read', 'tasks:read', 'tasks:approve']
-  },
-  {
-    name: 'Finance Approver',
-    description: 'Final financial sign-off on costing submissions.',
-    permissions: ['forms:read', 'tasks:read', 'tasks:approve', 'analytics:read']
-  }
+]
+
+// Roles this catalogue used to carry. Every one of them promised something the
+// API never honoured — Viewer had no shell of its own, and the pilot roles were
+// written for one customer's costing flow with permissions no guard reads, so
+// "Receiving Staff" could not actually submit the form it existed for. They are
+// swept below rather than silently left behind in the catalogue.
+const RETIRED = [
+  'Viewer',
+  'Receiving Staff', 'Warehouse Manager', 'Accounts Officer',
+  'Brand Rep', 'Finance Approver'
 ]
 
 const upsertRoles = async () => {
@@ -117,6 +100,24 @@ const upsertRoles = async () => {
   console.log(`Roles ready: ${created} created, ${updated} updated.`)
 }
 
+// Removes a retired role only once nobody holds it. A role with people in it is
+// left alone and reported: reassigning somebody is a decision for the admin who
+// knows what they do, not for a seed script.
+const sweepRetiredRoles = async () => {
+  const stale = await Role.find({ name: { $in: RETIRED } }).select('name').lean()
+  if (!stale.length) return
+
+  for (const role of stale) {
+    const holders = await User.countDocuments({ role: role._id }).setOptions({ skipOrgScope: true })
+    if (holders) {
+      console.log(`Kept "${role.name}": still assigned to ${holders} ${holders === 1 ? 'person' : 'people'} — move them to Employee first.`)
+      continue
+    }
+    await Role.deleteOne({ _id: role._id })
+    console.log(`Retired "${role.name}".`)
+  }
+}
+
 const run = async () => {
   if (!process.env.MONGODB_URI) {
     console.error('MONGODB_URI is not set. Create server/.env first.')
@@ -131,6 +132,7 @@ const run = async () => {
     console.log(`Connected: ${mongoose.connection.host}/${mongoose.connection.name}`)
 
     await upsertRoles()
+    await sweepRetiredRoles()
 
     console.log('')
     console.log('Done. The first user to sign up at /register will be promoted to Admin.')

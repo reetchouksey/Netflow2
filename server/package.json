@@ -13,6 +13,8 @@
     "migrate:org": "node scripts/migrateOrgId.js",
     "migrate:licensing": "node scripts/migrateLicensing.js",
     "migrate:uploads": "node scripts/migrateUploads.js",
+    "migrate:uploads-to-dms": "node scripts/migrateUploadsToDms.js",
+    "smoke:dms": "node scripts/smokeTestDmsIntegration.js",
     "backfill:storage": "node scripts/backfillStorage.js",
     "seed:ceo": "node seeds/seedCeo.js",
     "clean-demo": "node seeds/cleanDemo.js",

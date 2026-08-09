@@ -44,6 +44,34 @@ h.runSuite('platform_orgs', async () => {
   const created = await h.api('POST', '/platform/orgs', saTok, { name: 'QA Plat Main', subdomain: sub1, adminEmail: admEmail1, adminName: 'Plat Admin One' })
   const org1Id = created.body?.org?._id
   h.check('PLAT-009', 'Create org + admin returns 201 with one-time password', created.status === 201 && !!org1Id && !!created.body?.admin?.tempPassword, `status ${created.status}, temp ${!!created.body?.admin?.tempPassword}`)
+  h.check('PLAT-009b', 'Default bootstrap admin bills seats and can build',
+    created.body?.admin?.canBuild === true && created.body?.admin?.countsTowardSeats === true,
+    `canBuild=${created.body?.admin?.canBuild} seats=${created.body?.admin?.countsTowardSeats}`)
+
+  // Complimentary bootstrap admin: can build but does not consume plan seats.
+  const freeSub = qaSub('freeadmin')
+  const freeEmail = `plat-free-admin@${h.QA_EMAIL_DOMAIN}`
+  const freeOrg = await h.api('POST', '/platform/orgs', saTok, {
+    name: 'QA Plat Free Admin',
+    subdomain: freeSub,
+    adminEmail: freeEmail,
+    adminName: 'Free Admin',
+    plan: 'trial',
+    adminCanBuild: true,
+    countAdminTowardSeats: false
+  })
+  const freeOrgId = freeOrg.body?.org?._id
+  h.check('PLAT-009c', 'Create org with complimentary admin returns 201',
+    freeOrg.status === 201 && !!freeOrgId && freeOrg.body?.admin?.countsTowardSeats === false,
+    `status ${freeOrg.status}, seats=${freeOrg.body?.admin?.countsTowardSeats}`)
+  if (freeOrgId) {
+    const { countUsers, countBuilders } = require('../utils/usage')
+    const seatedUsers = await countUsers(freeOrgId)
+    const seatedBuilders = await countBuilders(freeOrgId)
+    h.check('PLAT-009d', 'Complimentary admin is excluded from user/builder meters',
+      seatedUsers === 0 && seatedBuilders === 0,
+      `users=${seatedUsers} builders=${seatedBuilders}`)
+  }
 
   // PLAT-006 admin email is shown per org.
   const listAfter = await h.api('GET', '/platform/orgs', saTok)
@@ -57,7 +85,8 @@ h.runSuite('platform_orgs', async () => {
   const empRoleId = await h.roleId('Employee')
   await runWithOrgId(org1Id, () => User.create({ orgId: org1Id, name: 'Plat U1', email: `plat-u1@${h.QA_EMAIL_DOMAIN}`, password: h.DEFAULT_PASSWORD, department: 'IT', role: empRoleId }))
   await runWithOrgId(org1Id, () => Form.create({ orgId: org1Id, title: 'Plat Form', status: 'published', createdBy: org1Id, fields: [] }))
-  const [dbUsers, dbForms] = await runWithOrgId(org1Id, () => Promise.all([User.countDocuments({}), Form.countDocuments({})]))
+  const { countUsers: countSeatedUsers, countForms } = require('../utils/usage')
+  const [dbUsers, dbForms] = await Promise.all([countSeatedUsers(org1Id), countForms(org1Id)])
   const listUsage = await h.api('GET', '/platform/orgs', saTok)
   const usageRow = (listUsage.body?.orgs || []).find((o) => String(o._id) === String(org1Id))
   h.check('PLAT-007', 'Usage counters match actual data', usageRow?.usage?.users === dbUsers && usageRow?.usage?.forms === dbForms, `usage ${usageRow?.usage?.users}/${usageRow?.usage?.forms} vs db ${dbUsers}/${dbForms}`)
