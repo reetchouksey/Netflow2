@@ -190,6 +190,11 @@ export default function DocumentsDashboard() {
   const [activeDocUrlLoading, setActiveDocUrlLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [needsLogin, setNeedsLogin] = useState(false)
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginPassword, setLoginPassword] = useState('')
+  const [loginLoading, setLoginLoading] = useState(false)
+  const [loginError, setLoginError] = useState(null)
   const [isFullscreenPreview, setIsFullscreenPreview] = useState(false)
   const [isTableMaximized, setIsTableMaximized] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -258,10 +263,29 @@ export default function DocumentsDashboard() {
 
     } catch (err) {
       console.error('Failed to load DMS data', err)
-      const msg = err.response?.data?.error || err.message || 'Failed to connect to DMS API. Please check your API key.'
-      setError(msg)
+      if (err?.code === 'DMS_UNAUTHORIZED' || err.response?.data?.code === 'DMS_UNAUTHORIZED') {
+        setNeedsLogin(true)
+      } else {
+        const msg = err.response?.data?.error || err.message || 'Failed to connect to DMS API. Please check your API key.'
+        setError(msg)
+      }
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleDmsLogin = async (e) => {
+    e.preventDefault()
+    setLoginLoading(true)
+    setLoginError(null)
+    try {
+      await api.post('/api/organization/dms-login', { email: loginEmail, password: loginPassword })
+      setNeedsLogin(false)
+      loadData()
+    } catch (err) {
+      setLoginError(err?.data?.message || err?.message || 'Login failed')
+    } finally {
+      setLoginLoading(false)
     }
   }
 
@@ -338,7 +362,12 @@ export default function DocumentsDashboard() {
       }
     } catch (err) {
       console.error("Delete failed", err)
-      toast.error(err.response?.data?.error || err.message || "Failed to delete document")
+      if (err?.code === 'DMS_UNAUTHORIZED' || err.response?.data?.code === 'DMS_UNAUTHORIZED') {
+        setNeedsLogin(true)
+      } else {
+        toast.error(err.response?.data?.error || err.message || "Failed to delete document")
+      }
+    } finally {
       setLoading(false)
     }
   }
@@ -353,7 +382,7 @@ export default function DocumentsDashboard() {
 
   return (
     <AppShell
-      title="DMS (Document Management System)"
+      title="Document Management System"
       subtitle="Manage, organize and access all your documents securely."
       actions={<DmsHeaderActions loading={loading} error={error} onSync={loadData} />}
       // Provide a rigid flex container that fills the viewport minus the AppShell padding.
@@ -651,7 +680,53 @@ export default function DocumentsDashboard() {
 
             {/* Document Table */}
             <div className="flex-1 overflow-auto">
-              {error ? (
+              {needsLogin ? (
+                <div className="flex-1 flex flex-col items-center justify-center p-8 bg-surface-1 h-full">
+                  <h3 className="text-xl font-bold text-fg mb-2">DMS Authentication Required</h3>
+        
+                  
+                  <div className="w-full max-w-sm bg-white dark:bg-surface border border-line rounded-xl p-6 shadow-sm">
+                    <form onSubmit={handleDmsLogin} className="flex flex-col gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-fg-subtle mb-1.5">Email Address</label>
+                        <input
+                          type="email"
+                          placeholder="you@organization.com"
+                          className="w-full bg-surface-2 border border-line rounded-lg px-3 py-2 text-sm text-fg placeholder-fg-muted focus:outline-none focus:ring-2 focus:ring-[#4F6BFF] focus:border-transparent transition"
+                          value={loginEmail}
+                          onChange={(e) => setLoginEmail(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-fg-subtle mb-1.5">Password</label>
+                        <input
+                          type="password"
+                          placeholder="••••••••"
+                          className="w-full bg-surface-2 border border-line rounded-lg px-3 py-2 text-sm text-fg placeholder-fg-muted focus:outline-none focus:ring-2 focus:ring-[#4F6BFF] focus:border-transparent transition"
+                          value={loginPassword}
+                          onChange={(e) => setLoginPassword(e.target.value)}
+                          required
+                        />
+                      </div>
+                      
+                      {loginError && (
+                        <div className="p-3 bg-red-50 text-red-600 border border-red-100 rounded-lg text-xs font-medium">
+                          {loginError}
+                        </div>
+                      )}
+                      
+                      <button
+                        type="submit"
+                        disabled={loginLoading}
+                        className="mt-2 w-full bg-[#4F6BFF] hover:bg-blue-600 text-white font-bold py-2.5 rounded-lg transition-colors shadow-sm disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {loginLoading ? 'Connecting...' : 'Connect to BaseLayer'}
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              ) : error ? (
                 <div className="flex-1 flex flex-col items-center justify-center p-8 bg-surface-1 h-full">
                   <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mb-4 text-red-500">
                     <IconInfo className="w-8 h-8" />

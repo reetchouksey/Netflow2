@@ -107,7 +107,7 @@ const request = async (method, endpoint, body, opts = {}) => {
     const message = data.error || `Request failed: ${response.status}`
 
     // Token expired / missing - kick to /login (unless we're already there)
-    if (response.status === 401 && code !== 'INVALID_CREDENTIALS' && !opts.skipAuthRedirect) {
+    if (response.status === 401 && code !== 'INVALID_CREDENTIALS' && code !== 'DMS_UNAUTHORIZED' && !opts.skipAuthRedirect) {
       clearToken()
       if (typeof window !== 'undefined') {
         const p = window.location.pathname

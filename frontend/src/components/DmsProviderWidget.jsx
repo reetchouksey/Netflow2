@@ -51,6 +51,11 @@ export default function DmsProviderWidget({ user }) {
   const [storage, setStorage] = useState(null)
   const [groups, setGroups] = useState(null)
   const [error, setError] = useState(null)
+  const [needsLogin, setNeedsLogin] = useState(false)
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginPassword, setLoginPassword] = useState('')
+  const [loginLoading, setLoginLoading] = useState(false)
+  const [loginError, setLoginError] = useState(null)
   const timerRef = useRef(null)
 
   const { pathname } = useLocation()
@@ -64,6 +69,7 @@ export default function DmsProviderWidget({ user }) {
     if (!isSuper && !isAdmin) return
     setLoading(true)
     setError(null)
+    setNeedsLogin(false)
     try {
       const storageEndpoint = isSuper
         ? '/api/platform/dms-storage'
@@ -92,11 +98,31 @@ export default function DmsProviderWidget({ user }) {
       }
     } catch (err) {
       console.warn('[DmsProviderWidget] fetch error', err)
-      setError(err?.data?.message || err?.message || 'Failed to load DMS info')
+      if (err?.code === 'DMS_UNAUTHORIZED') {
+        setNeedsLogin(true)
+      } else {
+        setError(err?.data?.message || err?.message || 'Failed to load DMS info')
+      }
     } finally {
       setLoading(false)
     }
   }, [isSuper, isAdmin])
+
+  const handleDmsLogin = async (e) => {
+    e.preventDefault()
+    setLoginLoading(true)
+    setLoginError(null)
+    try {
+      await api.post('/api/organization/dms-login', { email: loginEmail, password: loginPassword })
+      // Login successful, fetch data again
+      setNeedsLogin(false)
+      fetchData()
+    } catch (err) {
+      setLoginError(err?.data?.message || err?.message || 'Login failed')
+    } finally {
+      setLoginLoading(false)
+    }
+  }
 
   // Fetch only when opened (or if on the page)
   useEffect(() => {
@@ -184,8 +210,47 @@ export default function DmsProviderWidget({ user }) {
             </div>
           )}
 
+          {/* ── Login state ──────────────────────────────────── */}
+          {!loading && needsLogin && (
+            <div className="bg-surface-2 rounded-lg border border-line p-3 shadow-sm">
+              <h4 className="text-[12px] font-semibold text-fg mb-1">BaseLayer Login Required</h4>
+              <p className="text-[10px] text-fg-muted mb-3">Please authenticate to connect your DMS workspace.</p>
+              
+              <form onSubmit={handleDmsLogin} className="flex flex-col gap-2">
+                <input
+                  type="email"
+                  placeholder="Email address"
+                  className="w-full bg-surface border border-line rounded px-2.5 py-1.5 text-[11px] text-fg placeholder-fg-muted/50 focus:outline-none focus:border-indigo-500/50"
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  required
+                />
+                <input
+                  type="password"
+                  placeholder="Password"
+                  className="w-full bg-surface border border-line rounded px-2.5 py-1.5 text-[11px] text-fg placeholder-fg-muted/50 focus:outline-none focus:border-indigo-500/50"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  required
+                />
+                
+                {loginError && (
+                  <p className="text-[10px] text-danger-fg">{loginError}</p>
+                )}
+                
+                <button
+                  type="submit"
+                  disabled={loginLoading}
+                  className="mt-1 w-full bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-medium py-1.5 rounded transition-colors disabled:opacity-70"
+                >
+                  {loginLoading ? 'Connecting...' : 'Connect to BaseLayer'}
+                </button>
+              </form>
+            </div>
+          )}
+
           {/* ── Main content ─────────────────────────────────── */}
-          {storage && !error && (
+          {storage && !error && !needsLogin && (
             <>
               {/* Connected status & Provider name */}
               <div className="flex items-center gap-2">
