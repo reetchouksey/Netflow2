@@ -145,10 +145,12 @@ function StatusDonut({ active, suspended, trial }) {
   )
 }
 
-function StorageRing({ usedMb, limitMb, orgCount }) {
+function StorageRing({ usedMb, limitMb, orgCount, sourceLabel, documentCount }) {
   const pct = limitMb > 0 ? Math.min(100, (usedMb / limitMb) * 100) : 0
-  const displayPct = pct < 10 ? pct.toFixed(1) : Math.round(pct)
-  const gradient = `conic-gradient(#4f46e5 0 ${pct}%, var(--color-surface-3, #f3f4f6) 0)`
+  const displayPct = limitMb > 0 ? (pct < 10 ? pct.toFixed(1) : Math.round(pct)) : '—'
+  const gradient = limitMb > 0
+    ? `conic-gradient(#4f46e5 0 ${pct}%, var(--color-surface-3, #f3f4f6) 0)`
+    : `conic-gradient(#4f46e5 0 8%, var(--color-surface-3, #f3f4f6) 0)`
 
   return (
     <div className="flex flex-col items-center justify-center text-center px-5 py-5 min-h-[168px]">
@@ -156,17 +158,19 @@ function StorageRing({ usedMb, limitMb, orgCount }) {
         className="relative w-[7rem] h-[7rem] rounded-full flex items-center justify-center mb-3.5"
         style={{ background: gradient }}
         role="img"
-        aria-label={`${displayPct} percent storage used`}
+        aria-label={limitMb > 0 ? `${displayPct} percent storage used` : `${formatMb(usedMb)} storage used`}
       >
         <div className="absolute inset-[13px] rounded-full bg-surface border border-line/60" />
-        <span className="relative z-[1] text-xl font-bold tracking-tight text-fg tabular-nums">{displayPct}%</span>
+        <span className="relative z-[1] text-xl font-bold tracking-tight text-fg tabular-nums">{displayPct}{limitMb > 0 ? '%' : ''}</span>
       </div>
       <p className="text-sm text-fg m-0">
         <strong className="font-semibold tabular-nums">{formatMb(usedMb)}</strong>
-        <span className="text-fg-muted"> of {limitMb > 0 ? formatMb(limitMb) : 'unlimited'}</span>
+        <span className="text-fg-muted"> of {limitMb > 0 ? formatMb(limitMb) : 'licensed capacity'}</span>
       </p>
       <p className="text-xs text-fg-subtle mt-1 m-0">
-        across {orgCount} organization{orgCount === 1 ? '' : 's'}
+        {sourceLabel
+          ? `${sourceLabel}${documentCount != null ? ` · ${documentCount} document${documentCount === 1 ? '' : 's'}` : ''}`
+          : `across ${orgCount} organization${orgCount === 1 ? '' : 's'}`}
       </p>
     </div>
   )
@@ -224,6 +228,7 @@ export default function PlatformOverview() {
   const navigate = useNavigate()
   const [orgs, setOrgs] = useState([])
   const [activity, setActivity] = useState([])
+  const [dmsStorage, setDmsStorage] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [updatedAt, setUpdatedAt] = useState(null)
@@ -233,12 +238,14 @@ export default function PlatformOverview() {
     setError('')
     setLoading(true)
     try {
-      const [orgData, actData] = await Promise.all([
+      const [orgData, actData, dmsData] = await Promise.all([
         api.get('/api/platform/orgs'),
-        api.get(`/api/platform/activity${buildQuery({ page: 1, limit: 6 })}`)
+        api.get(`/api/platform/activity${buildQuery({ page: 1, limit: 6 })}`),
+        api.get('/api/platform/dms-storage').catch(() => null)
       ])
       setOrgs(orgData.orgs || [])
       setActivity(actData.logs || [])
+      setDmsStorage(dmsData?.enabled ? dmsData : null)
       setUpdatedAt(new Date())
     } catch (err) {
       setError(err.message || 'Could not load platform overview')
@@ -260,7 +267,7 @@ export default function PlatformOverview() {
     let readOnly = 0
     let expiring = 0
     let overLimit = 0
-    let storageUsedMb = 0
+    let netflowStorageUsedMb = 0
     let storageLimitMb = 0
     const planCounts = {}
 
@@ -284,12 +291,21 @@ export default function PlatformOverview() {
 
       const storage = meters.storage
       if (storage) {
-        storageUsedMb += Number(storage.used || 0)
+        netflowStorageUsedMb += Number(storage.used || 0)
         if (!storage.unlimited) storageLimitMb += Number(storage.limit || 0)
       }
 
       const plan = org.plan || 'custom'
       planCounts[plan] = (planCounts[plan] || 0) + 1
+    }
+
+    // Prefer live BaseLayer DMS bytes when the integration is on.
+    const dmsLive = dmsStorage?.enabled
+    const storageUsedMb = dmsLive
+      ? Number(dmsStorage.usedMb ?? ((dmsStorage.usedBytes || 0) / (1024 * 1024)))
+      : netflowStorageUsedMb
+    if (dmsLive && dmsStorage.limitMb != null && Number(dmsStorage.limitMb) > 0) {
+      storageLimitMb = Number(dmsStorage.limitMb)
     }
 
     const planRows = Object.entries(planCounts)
@@ -317,12 +333,14 @@ export default function PlatformOverview() {
       overLimit,
       storageUsedMb,
       storageLimitMb,
+      storageFromDms: Boolean(dmsLive),
+      dmsDocumentCount: dmsLive ? Number(dmsStorage.documentCount || 0) : null,
       planRows,
       maxPlan,
       topOrgs,
       pct
     }
-  }, [orgs])
+  }, [orgs, dmsStorage])
 
   const attention = useMemo(() => {
     const items = []
@@ -404,7 +422,7 @@ export default function PlatformOverview() {
           </AlertBanner>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3.5">
           <PlatformKpiCard
             label="Organizations"
             value={loading ? '—' : stats.total}
@@ -420,11 +438,11 @@ export default function PlatformOverview() {
             tone="success"
           />
           <PlatformKpiCard
-            label="Users"
-            value={loading ? '—' : stats.totalUsers}
-            foot={loading ? '' : 'Across every organization'}
-            icon={IconUsers}
-            tone="indigo"
+            label="Suspended"
+            value={loading ? '—' : stats.suspended}
+            foot={loading ? '' : `${stats.pct(stats.suspended)}% of the fleet`}
+            icon={IconBan}
+            tone="danger"
           />
           <PlatformKpiCard
             label="Builders"
@@ -432,6 +450,29 @@ export default function PlatformOverview() {
             foot={loading ? '' : 'Seats currently granted'}
             icon={IconWrench}
             tone="slate"
+          />
+          <PlatformKpiCard
+            label="Storage"
+            value={loading ? '—' : formatMb(stats.storageUsedMb)}
+            foot={loading ? '' : (
+              stats.storageFromDms
+                ? (
+                    stats.storageLimitMb > 0
+                      ? `BaseLayer DMS · ${formatMb(stats.storageLimitMb)} capacity · ${stats.dmsDocumentCount ?? 0} docs`
+                      : `BaseLayer DMS · ${stats.dmsDocumentCount ?? 0} document${stats.dmsDocumentCount === 1 ? '' : 's'}`
+                  )
+                : (
+                    stats.storageLimitMb > 0
+                      ? `${formatMb(stats.storageLimitMb)} licensed · ${Math.min(100, Math.round((stats.storageUsedMb / stats.storageLimitMb) * 100))}% used`
+                      : 'Across every organization'
+                  )
+            )}
+            icon={IconStorage}
+            tone={
+              !loading && stats.storageLimitMb > 0 && (stats.storageUsedMb / stats.storageLimitMb) >= 0.9
+                ? 'danger'
+                : 'slate'
+            }
           />
         </div>
 
@@ -481,7 +522,11 @@ export default function PlatformOverview() {
               )}
             </SectionCard>
 
-            <SectionCard title="Storage usage" description="Aggregate capacity across tenants" bodyClass="p-0">
+            <SectionCard
+              title="Storage usage"
+              description={stats.storageFromDms ? 'Live usage from BaseLayer DMS' : 'Aggregate capacity across tenants'}
+              bodyClass="p-0"
+            >
               {loading ? (
                 <div className="h-40 m-5 rounded-lg bg-surface-3 animate-pulse" />
               ) : (
@@ -489,6 +534,8 @@ export default function PlatformOverview() {
                   usedMb={stats.storageUsedMb}
                   limitMb={stats.storageLimitMb}
                   orgCount={stats.total}
+                  sourceLabel={stats.storageFromDms ? 'BaseLayer DMS' : null}
+                  documentCount={stats.dmsDocumentCount}
                 />
               )}
             </SectionCard>
@@ -673,6 +720,14 @@ function IconUsers(p) {
     </svg>
   )
 }
+function IconStorage(p) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" {...p}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 7a2 2 0 012-2h12a2 2 0 012 2v2H4V7zm0 4h16v6a2 2 0 01-2 2H6a2 2 0 01-2-2v-6zm4 3h.01" />
+    </svg>
+  )
+}
+
 function IconWrench(p) {
   return (
     <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">

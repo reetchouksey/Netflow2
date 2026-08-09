@@ -10,6 +10,7 @@ import { AlertBanner } from '../components/Alert'
 import { formsStore } from '../lib/formsStore'
 import { toAbsoluteUrl } from '../utils/api'
 import { useFocusTrap, useScrollLock } from '../utils/a11y'
+import { SignatureMark } from '../components/FormFields'
 
 const formatDateTime = (iso) => {
   try { return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) } catch { return '' }
@@ -32,6 +33,13 @@ function CellValue({ field, value }) {
           {value.name || 'Attachment'}
         </a>
       ) : <span className="text-fg-subtle">—</span>
+    case 'signature':
+      if (typeof value === 'object') {
+        return value.text || value.url
+          ? <SignatureMark signature={value} />
+          : <span className="text-fg-subtle">—</span>
+      }
+      return <span className="text-fg" style={{ fontFamily: 'cursive' }}>{String(value)}</span>
     case 'checkbox':
       return <span className="text-fg">{value ? 'Yes' : 'No'}</span>
     case 'grid': {
@@ -60,6 +68,11 @@ function CellValue({ field, value }) {
       )
     }
     default:
+      // Never stringify objects (signature/file leftovers) as "[object Object]".
+      if (typeof value === 'object') {
+        if (value.url || value.text) return <SignatureMark signature={value} />
+        return <span className="text-fg-subtle">—</span>
+      }
       return <span className="text-fg whitespace-pre-wrap">{String(value)}</span>
   }
 }
@@ -68,12 +81,21 @@ function CellValue({ field, value }) {
 const csvValue = (field, value) => {
   if (value === undefined || value === null) return ''
   if (field.type === 'file') return typeof value === 'object' ? `${value.name || ''} ${value.url ? toAbsoluteUrl(value.url) : ''}`.trim() : ''
+  if (field.type === 'signature') {
+    if (typeof value === 'object') {
+      if (value.text) return value.text
+      if (value.url) return toAbsoluteUrl(value.url)
+      return ''
+    }
+    return String(value)
+  }
   if (field.type === 'checkbox') return value ? 'Yes' : 'No'
   if (field.type === 'grid') {
     const rows = Array.isArray(value) ? value : []
     const cols = field.columns || []
     return rows.map((r) => cols.map((c) => `${c.label}: ${r[c.id] ?? ''}`).join('; ')).join(' | ')
   }
+  if (typeof value === 'object') return value.text || value.url || value.name || ''
   return String(value)
 }
 

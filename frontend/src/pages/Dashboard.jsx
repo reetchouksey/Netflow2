@@ -13,6 +13,7 @@ import { AlertBanner } from '../components/Alert'
 import { statusBadge } from '../utils/badges'
 import PlatformOverview from './PlatformOverview'
 import OpsDashboard from './OpsDashboard'
+import AdminDashboard from './AdminDashboard'
 
 // ---------- helpers -------------------------------------------------------
 
@@ -1157,7 +1158,7 @@ function Dashboard() {
   const user = useUser()
   if (isSuperAdmin(user)) return <PlatformOverview />
   if (isOpsLeader(user)) return <OpsDashboard />
-  return canViewReports(user) ? <BuilderDashboard /> : <EmployeeDashboard user={user} />
+  return canViewReports(user) ? <AdminDashboard /> : <EmployeeDashboard user={user} />
 }
 
 export default Dashboard

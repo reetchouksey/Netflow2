@@ -30,6 +30,8 @@ export default function WorkflowEditor({
   readOnly = false,
   // Bump when the graph is replaced (edit load / template) so we auto-fit again.
   fitKey = 0,
+  isMaximized = false,
+  onToggleMaximize = null,
   // Live structural problems from graphIssues — highlight + banner on the canvas.
   problemNodeIds = null,
   flowProblems = [],
@@ -158,11 +160,16 @@ export default function WorkflowEditor({
   // nodes — if the first fit already ran on empty/bootstrap, retry once.
   useEffect(() => {
     if (didInitialFitRef.current || !nodes.length) return;
-    const next = computeFit(containerRef.current, nodes, { maxScale: 1 });
-    if (!next) return;
-    didInitialFitRef.current = true;
-    setView(next);
-  }, [nodes]);
+    fitView();
+  }, [nodes.length]);
+
+  // Auto-fit when a node is added/removed, or when maximized state changes.
+  useEffect(() => {
+    if (didInitialFitRef.current && nodes.length > 0) {
+      // Small timeout to allow DOM layout to settle if maximized state changed
+      setTimeout(fitView, 50);
+    }
+  }, [nodes.length, isMaximized]);
 
   const zoomAtCenter = (factor) => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -243,8 +250,9 @@ export default function WorkflowEditor({
   const handleMouseMove = (e) => {
     if (dragState) {
       const w = toWorld(e.clientX, e.clientY);
-      const x = Math.max(0, Math.min(WORLD_W - NODE_W, w.x - dragState.offsetX));
-      const y = Math.max(0, Math.min(WORLD_H - NODE_H, w.y - dragState.offsetY));
+     const x = w.x - dragState.offsetX;
+const y = w.y - dragState.offsetY;
+
       onMoveNode?.(dragState.id, x, y);
       return;
     }
@@ -340,7 +348,7 @@ export default function WorkflowEditor({
           </div>
         </div>
       )}
-      <div className="flex items-center justify-end gap-3 px-4 py-2 border-b border-line bg-surface/90 backdrop-blur-sm">
+      <div className="flex items-center justify-end gap-3 px-4 border-b border-line bg-surface/90 backdrop-blur-sm">
         <div className="flex items-center gap-1.5 shrink-0 rounded-xl border border-line bg-surface-2/80 p-1">
           <button
             type="button"
@@ -376,6 +384,25 @@ export default function WorkflowEditor({
           >
             Fit
           </button>
+          {onToggleMaximize && (
+            <button
+              type="button"
+              onClick={onToggleMaximize}
+              className="ml-1 w-8 h-8 inline-flex items-center justify-center rounded-lg border border-transparent hover:border-line bg-surface text-fg-muted hover:bg-surface-2 hover:text-fg text-sm font-semibold transition"
+              title={isMaximized ? "Restore view" : "Maximize view"}
+              aria-label={isMaximized ? "Restore view" : "Maximize view"}
+            >
+              {isMaximized ? (
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9V4.5M15 9h4.5M15 9l5.25-5.25M15 15v4.5M15 15h4.5M15 15l5.25 5.25" />
+                </svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75v4.5m0-4.5h-4.5m4.5 0L15 9m5.25 11.25v-4.5m0 4.5h-4.5m4.5 0L15 15" />
+                </svg>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
@@ -422,7 +449,7 @@ export default function WorkflowEditor({
             className="absolute inset-0"
             width={WORLD_W}
             height={WORLD_H}
-            style={{ pointerEvents: "none" }}
+            style={{ pointerEvents: "none" , overflow:"visible" }}
           >
             <defs>
               <marker

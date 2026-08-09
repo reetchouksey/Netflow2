@@ -6,7 +6,6 @@ import { useUser, initials, ROLE_LABELS } from '../utils/auth'
 import { isOrgAdmin, isPlatformShell } from '../utils/permissions'
 import { Skeleton } from '../components/Skeleton'
 import { AlertBanner } from '../components/Alert'
-import UsageCard from '../components/UsageCard'
 import { CHIP_CLASS, formatDate, licenceChip } from '../lib/licensing'
 
 // Shortcuts for Workflow Admin — matches what the org-admin shell is for.
@@ -707,8 +706,6 @@ function Profile() {
             </div>
           )}
         </div>
-
-        {showAdminTools && <UsageCard />}
       </div>
     </AppShell>
   )

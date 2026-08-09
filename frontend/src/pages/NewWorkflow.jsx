@@ -370,39 +370,56 @@ const SUBMITTER_OPTIONS = ['All employees', 'Managers only', 'Specific people']
 
 const SLA_OPTIONS = ['Always', 'After first breach', 'Never']
 
-function Step1Template({ selected, onSelect }) {
+function Step1Template({
+  selected,
+  onSelect,
+  aiAvailable,
+  aiPrompt,
+  onAiPromptChange,
+  onAiKeyDown,
+  aiSuggestion,
+  aiBusy,
+  generateWithAI,
+  aiError,
+  showAiPanel,
+  setShowAiPanel,
+  aiInputRef,
+}) {
   const prebuilt = TEMPLATES.filter((t) => t.id !== 'scratch')
   const scratch = TEMPLATES.find((t) => t.id === 'scratch')
   const scratchSelected = selected === 'scratch'
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="max-w-5xl mx-auto pb-10">
       <h2 className="text-2xl font-bold tracking-tight text-fg mb-6">Choose a template</h2>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      <div className="flex flex-nowrap overflow-x-auto gap-4 snap-x snap-mandatory pb-4 -mx-1 px-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
         {prebuilt.map((t) => {
           const isSelected = selected === t.id
           return (
             <button
               key={t.id}
               type="button"
-              onClick={() => onSelect(t.id)}
+              onClick={() => {
+                setShowAiPanel(false)
+                onSelect(t.id)
+              }}
               aria-pressed={isSelected}
-              className={`group relative text-left p-5 rounded-xl border bg-surface shadow-sm transition ${
-                isSelected
+              className={`shrink-0 w-[280px] snap-start group relative text-left p-5 rounded-xl border bg-surface shadow-sm transition ${
+                isSelected && !showAiPanel
                   ? 'border-indigo-500 ring-2 ring-indigo-500/20 bg-indigo-50/50 dark:bg-indigo-500/10'
                   : 'border-line hover:border-indigo-300 hover:shadow-md dark:hover:border-indigo-500/40'
               }`}
             >
               <span
                 className={`absolute top-4 right-4 w-5 h-5 rounded-full border-2 flex items-center justify-center transition ${
-                  isSelected
+                  isSelected && !showAiPanel
                     ? 'border-indigo-600 bg-indigo-600'
                     : 'border-line bg-surface group-hover:border-indigo-300'
                 }`}
                 aria-hidden="true"
               >
-                {isSelected && (
+                {isSelected && !showAiPanel && (
                   <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
@@ -427,36 +444,139 @@ function Step1Template({ selected, onSelect }) {
         <hr className="flex-1 border-line" />
       </div>
 
-      {scratch && (
-        <button
-          type="button"
-          onClick={() => onSelect(scratch.id)}
-          aria-pressed={scratchSelected}
-          className={`w-full flex items-center gap-4 text-left px-5 py-4 rounded-xl border-2 border-dashed transition ${
-            scratchSelected
-              ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-500/10'
-              : 'border-line bg-surface hover:border-indigo-300 dark:hover:border-indigo-500/40'
-          }`}
-        >
-          <span className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${scratch.iconClass}`}>
-            <TemplateIcon name={scratch.icon} />
-          </span>
-          <span className="min-w-0 flex-1 font-semibold text-fg">{scratch.title}</span>
-          <span
-            className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition ${
-              scratchSelected
-                ? 'bg-indigo-600 text-white'
-                : 'border-2 border-line text-transparent'
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {aiAvailable && (
+          <button
+            type="button"
+            onClick={() => {
+              setShowAiPanel(true)
+              onSelect('ai_generated')
+            }}
+            aria-pressed={showAiPanel}
+            className={`w-full flex items-center gap-4 text-left px-5 py-4 rounded-xl border-2 transition ${
+              showAiPanel
+                ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-500/10 shadow-sm'
+                : 'border-line bg-surface hover:border-indigo-300 dark:hover:border-indigo-500/40'
             }`}
-            aria-hidden="true"
           >
-            {scratchSelected && (
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            <span className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
+            </span>
+            <span className="min-w-0 flex-1 font-semibold text-fg">Build with AI</span>
+            <span
+              className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition ${
+                showAiPanel
+                  ? 'bg-indigo-600 text-white'
+                  : 'border-2 border-line text-transparent'
+              }`}
+              aria-hidden="true"
+            >
+              {showAiPanel && (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </span>
+          </button>
+        )}
+
+        {scratch && (
+          <button
+            type="button"
+            onClick={() => {
+              setShowAiPanel(false)
+              onSelect(scratch.id)
+            }}
+            aria-pressed={scratchSelected && !showAiPanel}
+            className={`w-full flex items-center gap-4 text-left px-5 py-4 rounded-xl border-2 border-dashed transition ${
+              scratchSelected && !showAiPanel
+                ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-500/10'
+                : 'border-line bg-surface hover:border-indigo-300 dark:hover:border-indigo-500/40'
+            }`}
+          >
+            <span className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${scratch.iconClass}`}>
+              <TemplateIcon name={scratch.icon} />
+            </span>
+            <span className="min-w-0 flex-1 font-semibold text-fg">{scratch.title}</span>
+            <span
+              className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition ${
+                scratchSelected && !showAiPanel
+                  ? 'bg-indigo-600 text-white'
+                  : 'border-2 border-line text-transparent'
+              }`}
+              aria-hidden="true"
+            >
+              {scratchSelected && !showAiPanel && (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </span>
+          </button>
+        )}
+      </div>
+
+      {showAiPanel && (
+        <div className="mt-8 p-6 rounded-2xl bg-surface border border-line shadow-sm">
+          <label htmlFor="ai-workflow-prompt" className="block text-sm font-semibold text-fg mb-2">
+            What kind of workflow do you need?
+          </label>
+          <p className="text-sm text-fg-subtle mb-4">
+            Describe the process in plain English, and our AI will build a draft for you.
+          </p>
+          
+          <div className="relative">
+            {aiSuggestion && (
+              <div
+                className="absolute inset-0 pointer-events-none px-4 py-3 text-sm font-mono whitespace-pre-wrap break-words"
+                aria-hidden="true"
+              >
+                <span className="invisible">{aiPrompt}</span>
+                <span className="text-fg-subtle">{aiSuggestion}</span>
+              </div>
             )}
-          </span>
-        </button>
+            <textarea
+              id="ai-workflow-prompt"
+              ref={aiInputRef}
+              rows={4}
+              value={aiPrompt}
+              onChange={onAiPromptChange}
+              onKeyDown={onAiKeyDown}
+              onBlur={() => onAiPromptChange({ target: { value: aiPrompt } })}
+              disabled={aiBusy}
+              aria-label="Workflow description for AI"
+              placeholder="e.g. A purchase order request that needs department head approval, and CFO approval if the amount is over $10k."
+              className="w-full relative z-10 bg-transparent text-fg px-4 py-3 text-sm font-mono rounded-xl border border-line focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none placeholder:text-fg-subtle/50 transition-shadow disabled:opacity-50"
+            />
+          </div>
+
+          <div className="mt-4 flex items-center justify-between">
+            <p className="text-xs text-fg-subtle">
+              Press <kbd className="font-mono bg-surface-2 px-1 py-0.5 rounded border border-line">Tab</kbd> to accept suggestions.
+            </p>
+            <button
+              type="button"
+              onClick={generateWithAI}
+              disabled={aiBusy || !aiPrompt.trim()}
+              className="px-6 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm flex items-center gap-2"
+            >
+              {aiBusy ? (
+                <>
+                  <svg className="animate-spin w-4 h-4 text-white/70" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Generating...
+                </>
+              ) : (
+                'Generate Workflow'
+              )}
+            </button>
+          </div>
+          {aiError && <p className="mt-3 text-xs text-danger-fg">{aiError}</p>}
+        </div>
       )}
     </div>
   )
@@ -500,6 +620,7 @@ function withBranchIfNeeded(fromNode, conn, existing) {
 function Step2Builder({ data, setData, fitKey = 0 }) {
   const { nodes, connections, selectedNodeId } = data
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) || null
+  const [isMaximized, setIsMaximized] = useState(false)
   const flowProblems = useMemo(
     () => graphIssues(nodes, connections),
     [nodes, connections]
@@ -594,10 +715,12 @@ function Step2Builder({ data, setData, fitKey = 0 }) {
   }
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col bg-surface overflow-hidden">
+    <div className={`bg-surface overflow-hidden transition-all duration-300 ${isMaximized ? 'fixed inset-0 z-50 flex flex-col' : 'flex-1 min-h-0 flex flex-col'}`}>
       <div className="flex flex-1 min-h-0">
-        <NodeTypesSidebar onAddNode={addNodeAfterTail} />
+        {!isMaximized && <NodeTypesSidebar onAddNode={addNodeAfterTail} />}
         <WorkflowEditor
+          isMaximized={isMaximized}
+          onToggleMaximize={() => setIsMaximized(m => !m)}
           fitKey={fitKey}
           nodes={nodes}
           connections={connections}
@@ -612,13 +735,16 @@ function Step2Builder({ data, setData, fitKey = 0 }) {
           onAddConnection={addConnection}
           onDeleteConnection={deleteConnection}
         />
-        <NodeConfig
-          node={selectedNode}
-          onChange={updateNode}
-          nodes={nodes}
-          connections={connections}
-          onConnectionsChange={setConnections}
-        />
+        {!isMaximized && (
+          <NodeConfig
+            node={selectedNode}
+            onChange={updateNode}
+            nodes={nodes}
+            connections={connections}
+            onConnectionsChange={setConnections}
+            onClose={() => selectNode(null)}
+          />
+        )}
       </div>
     </div>
   )
@@ -1565,6 +1691,28 @@ function NewWorkflow() {
   const [canvasFitKey, setCanvasFitKey] = useState(0)
   const isLive = isEditMode && loadedStatus === 'published'
 
+  // --- AI Builder State ---
+  const [aiAvailable, setAiAvailable] = useState(false)
+  const [aiStatusReady, setAiStatusReady] = useState(false)
+  const [aiPrompt, setAiPrompt] = useState('')
+  const [aiBusy, setAiBusy] = useState(false)
+  const [aiError, setAiError] = useState('')
+  const [aiSuggestion, setAiSuggestion] = useState('')
+  const [showAiPanel, setShowAiPanel] = useState(false)
+  const aiInputRef = useRef(null)
+
+  useEffect(() => {
+    api.get('/api/workflows/ai-status')
+      .then((d) => {
+        setAiAvailable(!!d.aiConfigured)
+        setAiStatusReady(true)
+      })
+      .catch(() => {
+        setAiAvailable(false)
+        setAiStatusReady(true)
+      })
+  }, [])
+
   useEffect(() => {
     if (location.state?.openSettings) setStep(3)
     if (location.state?.publishSuccess) setPublishSuccess(location.state.publishSuccess)
@@ -1606,11 +1754,75 @@ function NewWorkflow() {
           allowCancel: false,
           autoPdf: true,
         },
+        webhookUrl: '',
       },
     }
   })
 
-  // In edit mode, fetch the existing workflow and populate the form state.
+  const generateWithAI = async () => {
+    const prompt = aiPrompt.trim()
+    if (!prompt || aiBusy) return
+    setAiBusy(true)
+    setAiError('')
+    try {
+      const res = await api.post('/api/workflows/ai-draft', { prompt })
+      if (!res.nodes || !res.connections) throw new Error('Invalid AI response format.')
+      setData((d) => ({
+        ...d,
+        template: 'ai_generated',
+        nodes: res.nodes,
+        connections: res.connections,
+        settings: {
+          ...d.settings,
+          name: res.title || 'AI Generated Workflow',
+          description: res.description || prompt,
+        },
+      }))
+      setCanvasFitKey((k) => k + 1)
+      setStep(2)
+      toast.success('Workflow generated successfully!')
+    } catch (err) {
+      setAiError(err.message || 'AI generation failed. Please try again.')
+    } finally {
+      setAiBusy(false)
+    }
+  }
+
+  const onAiPromptChange = (e) => {
+    const val = e.target.value
+    setAiPrompt(val)
+    setAiSuggestion('')
+    if (!aiAvailable || aiBusy || val.trim().length < 3) return
+    if (!val.endsWith(' ')) return
+    const base = val.trim()
+    api.post('/api/workflows/ai-suggest', { prompt: base })
+      .then((res) => {
+        const el = aiInputRef.current
+        if (el && document.activeElement === el) setAiSuggestion(res?.completion || '')
+      })
+      .catch(() => setAiSuggestion(''))
+  }
+
+  const onAiKeyDown = (e) => {
+    const el = aiInputRef.current
+    if (!el) return
+    const caretAtEnd = el.selectionStart === aiPrompt.length && el.selectionStart === el.selectionEnd
+    if (aiSuggestion && (e.key === 'Tab' || (e.key === 'ArrowRight' && caretAtEnd))) {
+      e.preventDefault()
+      const next = aiPrompt + aiSuggestion
+      setAiPrompt(next)
+      setAiSuggestion('')
+      requestAnimationFrame(() => {
+        const el2 = aiInputRef.current
+        if (el2) { el2.focus(); el2.setSelectionRange(next.length, next.length) }
+      })
+      return
+    }
+    if (e.key === 'Escape') { setAiSuggestion(''); return }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); setAiSuggestion(''); generateWithAI() }
+  }
+
+  // Load existing workflow if edit mode, fetch the existing workflow and populate the form state.
   useEffect(() => {
     if (!editId) return
     ;(async () => {
@@ -1987,7 +2199,23 @@ function NewWorkflow() {
             </AlertBanner>
           </div>
         )}
-        {step === 1 && !isEditMode && <Step1Template selected={data.template} onSelect={applyTemplate} />}
+        {step === 1 && !isEditMode && (
+          <Step1Template
+            selected={data.template}
+            onSelect={applyTemplate}
+            aiAvailable={aiAvailable}
+            aiPrompt={aiPrompt}
+            onAiPromptChange={onAiPromptChange}
+            onAiKeyDown={onAiKeyDown}
+            aiSuggestion={aiSuggestion}
+            aiBusy={aiBusy}
+            generateWithAI={generateWithAI}
+            aiError={aiError}
+            showAiPanel={showAiPanel}
+            setShowAiPanel={setShowAiPanel}
+            aiInputRef={aiInputRef}
+          />
+        )}
         {step === 2 && <Step2Builder data={data} setData={setData} fitKey={canvasFitKey} />}
         {step === 3 && <Step3Settings data={data} setData={setData} forms={forms} editId={editId} />}
         {step === 4 && (

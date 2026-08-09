@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { formsStore } from '../lib/formsStore'
 import { FORM_TEMPLATES } from '../lib/formTemplates'
 import { api } from '../utils/api'
 import { fieldMaxMb, MAX_UPLOAD_MB } from '../utils/uploads'
-import { PATTERN_PRESETS } from '../components/FormFields'
+import { PATTERN_PRESETS, SignaturePad } from '../components/FormFields'
 import { toast } from '../lib/toastStore'
 import { confirm } from '../lib/confirmStore'
 import { reportLimit } from '../lib/limitFeedback'
@@ -1063,9 +1063,10 @@ function PreviewField({ field }) {
       return (
         <div>
           {label}
-          <div className="h-24 rounded-md border-2 border-dashed border-line bg-surface-2 flex items-center justify-center text-xs text-fg-subtle">
-            Sign here
-          </div>
+          <SignaturePad disabled onChange={() => {}} />
+          <p className="mt-1.5 text-[11px] text-fg-subtle">
+            Submitters can type a name in a signature font or upload an image.
+          </p>
         </div>
       )
     case 'radio':
@@ -1116,6 +1117,7 @@ function PreviewField({ field }) {
 
 function NewForm() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { id: editId } = useParams()
   const [searchParams] = useSearchParams()
   const isEditMode = !!editId
@@ -1123,6 +1125,7 @@ function NewForm() {
   // How the builder was opened from the "New form" chooser:
   //   ?template=<id> → seed a ready-made template
   //   ?ai=1          → start blank and focus the AI prompt box
+  //   ?ai=1 + location.state.aiDraft → fields already generated in the chooser
   //   ?blank=1       → start with no fields
   // (no param keeps the legacy default: a seeded Leave Request form)
   const templateId = searchParams.get('template')
@@ -1132,10 +1135,15 @@ function NewForm() {
     ? FORM_TEMPLATES.find((t) => t.id === templateId) || null
     : null
 
+  // One-shot seed from Generate Now in the chooser (router state, not URL).
+  const aiDraft = useRef(
+    !isEditMode && location.state?.aiDraft ? location.state.aiDraft : null
+  ).current
+
   // Entry chrome mode for create flow (edit mode has no chooser badge).
   const entryMode = isEditMode
     ? null
-    : aiMode
+    : aiMode || aiDraft
       ? 'ai'
       : template
         ? 'template'
@@ -1147,10 +1155,11 @@ function NewForm() {
   // edit mode always comes from the server. Only honour a draft when the user
   // arrived the same way (no template/ai/blank query juggling).
   const restoredDraft = useRef(
-    !isEditMode && !templateId && !aiMode ? draftStore.read() : null
+    !isEditMode && !templateId && !aiMode && !aiDraft ? draftStore.read() : null
   ).current
 
   const [name, setName] = useState(() => {
+    if (aiDraft?.title) return aiDraft.title
     if (restoredDraft) return restoredDraft.name || ''
     if (isEditMode) return ''
     if (template) return template.name
@@ -1158,6 +1167,14 @@ function NewForm() {
     return 'Leave Request Form'
   })
   const [fields, setFields] = useState(() => {
+    if (aiDraft?.fields?.length) {
+      return aiDraft.fields.map((f) => ({
+        ...f,
+        id: newFieldId(),
+        options: Array.isArray(f.options) ? [...f.options] : f.options,
+        columns: f.type === 'grid' ? freshColumns(f.columns) : f.columns,
+      }))
+    }
     if (restoredDraft) return restoredDraft.fields || []
     if (isEditMode || aiMode || blankMode) return []
     if (template) {
@@ -1171,19 +1188,23 @@ function NewForm() {
     return seededFields()
   })
   const [description, setDescription] = useState(() => {
+    if (aiDraft?.description) return aiDraft.description
     if (restoredDraft) return restoredDraft.description || ''
     return !isEditMode && template ? template.description || '' : ''
   })
   const [draftNotice, setDraftNotice] = useState(!!restoredDraft)
   const [loadError, setLoadError] = useState('')
-  const [selectedId, setSelectedId] = useState(null)
+  const [selectedId, setSelectedId] = useState(() => {
+    // Prefer first AI-seeded field so the inspector is useful immediately.
+    return null
+  })
   const [previewOpen, setPreviewOpen] = useState(false)
   const [dragOver, setDragOver] = useState(false)
 
   // AI Form Builder
   const [aiAvailable, setAiAvailable] = useState(false)
   const [aiStatusReady, setAiStatusReady] = useState(false)
-  const [aiPrompt, setAiPrompt] = useState(() => searchParams.get('prompt') || '')
+  const [aiPrompt, setAiPrompt] = useState(() => aiDraft?.prompt || searchParams.get('prompt') || '')
   const [aiBusy, setAiBusy] = useState(false)
   const [aiError, setAiError] = useState('')
   const aiInputRef = useRef(null)
@@ -1191,15 +1212,15 @@ function NewForm() {
   const [aiSuggestion, setAiSuggestion] = useState('')
   const suggestTimer = useRef(null)
   const latestSuggestBase = useRef('')
-  // Blank/template hide AI by default; AI mode shows it. User can expand later.
-  const [showAiPanel, setShowAiPanel] = useState(() => aiMode)
+  // Blank/template hide AI by default; AI mode shows it. Pre-seeded AI draft opens the canvas.
+  const [showAiPanel, setShowAiPanel] = useState(() => aiMode && !aiDraft)
   const [templateBannerDismissed, setTemplateBannerDismissed] = useState(false)
 
-  const aiFirstEmpty = aiMode && fields.length === 0
+  const aiFirstEmpty = aiMode && fields.length === 0 && !aiDraft
   const showCompactAi =
-    aiAvailable && !aiFirstEmpty && (aiMode || showAiPanel)
+    aiAvailable && !aiFirstEmpty && (aiMode || showAiPanel || !!aiDraft)
   const showOptionalAiToggle =
-    aiAvailable && !aiMode && !showAiPanel && !isEditMode
+    aiAvailable && !aiMode && !aiDraft && !showAiPanel && !isEditMode
 
   // In edit mode, fetch the existing form and populate state.
   useEffect(() => {
@@ -1247,13 +1268,26 @@ function NewForm() {
     navigate('/forms/new?blank=1', { replace: true })
   }, [aiFirstEmpty, aiStatusReady, aiAvailable, navigate])
 
-  // Opened via the chooser's AI option → bring the prompt box into focus.
+  // Opened via the chooser's AI option (empty canvas) → focus the prompt box.
   useEffect(() => {
+    if (aiDraft) return
     if (aiMode && aiStatusReady && aiAvailable && aiInputRef.current) {
       aiInputRef.current.focus()
       try { aiInputRef.current.scrollIntoView({ block: 'center' }) } catch { /* noop */ }
     }
-  }, [aiMode, aiStatusReady, aiAvailable, aiFirstEmpty])
+  }, [aiMode, aiDraft, aiStatusReady, aiAvailable, aiFirstEmpty])
+
+  // Drop router state so a refresh does not try to re-apply a one-shot seed.
+  useEffect(() => {
+    if (!location.state?.aiDraft) return
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: {} })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Select the first field when arriving from Generate Now.
+  useEffect(() => {
+    if (!aiDraft?.fields?.length || selectedId) return
+    setSelectedId((prev) => prev || (fields[0]?.id ?? null))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reorder drag state. `draggingId` is the field being moved, `dropTarget`
   // is `{ id, position: 'before' | 'after' }` for the indicator line.

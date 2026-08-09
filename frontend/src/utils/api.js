@@ -16,6 +16,30 @@ export const toAbsoluteUrl = (url) => {
   return `${BASE}${url.startsWith('/') ? '' : '/'}${url}`
 }
 
+/** BaseLayer DMS web UI (optional). Used for "Open in DMS" links. */
+export const DMS_WEB_URL = String(import.meta.env.VITE_DMS_WEB_URL || '').replace(/\/$/, '')
+
+export const dmsWebUrl = (dmsDocId) =>
+  (DMS_WEB_URL && dmsDocId) ? `${DMS_WEB_URL}/documents/${encodeURIComponent(dmsDocId)}` : ''
+
+/**
+ * Resolve a viewable href for an attachment. When `dmsDocId` is present, asks
+ * NetFlow for a fresh signed URL (R2 TTL ~5 min). Falls back to stored url.
+ */
+export const resolveAttachmentHref = async (file, { mode = 'view' } = {}) => {
+  if (!file) return ''
+  if (file.dmsDocId) {
+    try {
+      const q = mode === 'download' ? '?mode=download' : ''
+      const res = await request('GET', `/api/uploads/${encodeURIComponent(file.dmsDocId)}/url${q}`)
+      if (res?.url) return toAbsoluteUrl(res.url)
+    } catch {
+      /* fall through */
+    }
+  }
+  return toAbsoluteUrl(file.url || '')
+}
+
 const TOKEN_KEY = 'flowsphere_token'
 const USER_KEY = 'flowsphere_user'
 

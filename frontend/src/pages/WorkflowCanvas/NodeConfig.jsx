@@ -64,20 +64,10 @@ export default function NodeConfig({
   nodes = [],
   connections = [],
   onConnectionsChange,
+  onClose,
 }) {
   if (!node) {
-    return (
-      <aside className="w-64 xl:w-80 shrink-0 border-l border-line bg-surface flex flex-col min-h-0">
-        <div className="px-4 xl:px-5 pt-4 pb-3 border-b border-line">
-          <div className="text-[11px] font-semibold tracking-wider text-fg-muted">
-            NODE CONFIG
-          </div>
-        </div>
-        <div className="flex-1 flex flex-col items-center justify-center px-6 py-10 text-center">
-          <p className="text-sm text-fg-muted">Select a node</p>
-        </div>
-      </aside>
-    );
+    return null;
   }
 
   const s = NODE_STYLES[node.type] || NODE_STYLES.start;
@@ -85,10 +75,23 @@ export default function NodeConfig({
 
   return (
     <aside className="w-64 xl:w-80 shrink-0 border-l border-line bg-surface flex flex-col min-h-0">
-      <div className="px-4 xl:px-5 pt-4 pb-3 border-b border-line shrink-0">
+      <div className="px-4 xl:px-5 pt-4 pb-3 border-b border-line shrink-0 flex items-center justify-between">
         <div className="text-[11px] font-semibold tracking-wider text-fg-muted">
           NODE CONFIG
         </div>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-6 h-6 flex items-center justify-center rounded hover:bg-surface-2 text-fg-muted hover:text-fg transition-colors"
+            title="Close panel"
+            aria-label="Close panel"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 xl:px-5 py-5">

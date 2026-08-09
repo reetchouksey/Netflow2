@@ -12,11 +12,13 @@ import Login from './pages/Login'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import Dashboard from './pages/Dashboard'
+import DocumentsDashboard from './pages/DocumentsDashboard'
 import AdminPanel from './pages/AdminPanel'
 import Team from './pages/Team'
 import Departments from './pages/Departments'
 import RolesPermissions from './pages/RolesPermissions'
 import OrgSettings from './pages/OrgSettings'
+import Billing from './pages/Billing'
 import Workflows from './pages/Workflows'
 import NewWorkflow from './pages/NewWorkflow'
 import Forms from './pages/Forms'
@@ -38,6 +40,7 @@ import PlatformUsage from './pages/PlatformUsage'
 import PlatformPlans from './pages/PlatformPlans'
 import PlatformAdmins from './pages/PlatformAdmins'
 import ChangePassword from './pages/ChangePassword'
+import DmsProvider from './pages/DmsProvider'
 import Toaster from './components/Toaster'
 import ConfirmDialog from './components/ConfirmDialog'
 import UserGuideHost from './components/UserGuideHost'
@@ -158,6 +161,7 @@ function App() {
         <Route path="/oauth/callback" element={<OAuthCallback />} />
 
         <Route path="/dashboard"     element={<RequireAuth><Dashboard /></RequireAuth>} />
+        <Route path="/documents"     element={<RequireAuth><DocumentsDashboard /></RequireAuth>} />
         <Route path="/forms"          element={<RequireTenant><Forms /></RequireTenant>} />
         <Route path="/forms/new"      element={<RequireRole can={canCreateForm}><NewForm /></RequireRole>} />
         <Route path="/forms/:id/fill" element={<RequireTenant><FillForm /></RequireTenant>} />
@@ -180,12 +184,14 @@ function App() {
         <Route path="/departments"   element={<RequireRole can={isOrgAdmin}><Departments /></RequireRole>} />
         <Route path="/roles"         element={<RequireRole can={isOrgAdmin}><RolesPermissions /></RequireRole>} />
         <Route path="/settings"      element={<RequireRole can={isOrgAdmin}><OrgSettings /></RequireRole>} />
+        <Route path="/billing"       element={<RequireRole can={isOrgAdmin}><Billing /></RequireRole>} />
         <Route path="/platform"      element={<RequireRole can={isSuperAdmin}><PlatformPanel /></RequireRole>} />
         <Route path="/usage"         element={<RequireRole can={isSuperAdmin}><PlatformUsage /></RequireRole>} />
         <Route path="/activity"      element={<RequireRole can={isSuperAdmin}><PlatformActivity /></RequireRole>} />
         <Route path="/health"        element={<RequireRole can={isSuperAdmin}><PlatformHealth /></RequireRole>} />
         <Route path="/plans"         element={<RequireRole can={isSuperAdmin}><PlatformPlans /></RequireRole>} />
         <Route path="/admins"        element={<RequireRole can={isSuperAdmin}><PlatformAdmins /></RequireRole>} />
+        <Route path="/dms"           element={<RequireRole can={isSuperAdmin}><DmsProvider /></RequireRole>} />
 
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>

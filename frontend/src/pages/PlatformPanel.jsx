@@ -69,6 +69,8 @@ const PLATFORM_METERS = METER_ORDER.filter((m) => m.key !== 'files')
 
 const EMPTY_LIMITS = LIMIT_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: 0 }), { gracePercent: 0 })
 
+const DEFAULT_DEPARTMENTS = ['HR', 'Finance', 'IT', 'Operations', 'Sales', 'Legal']
+
 const EMPTY_FORM = {
   name: '',
   subdomain: '',
@@ -82,23 +84,63 @@ const EMPTY_FORM = {
   billingEmail: '',
   billingAnchorDay: 1,
   adminEmail: '',
-  adminName: ''
+  adminName: '',
+  // Bootstrap Org Admin licensing (create only). Defaults match prior behaviour.
+  adminCanBuild: true,
+  countAdminTowardSeats: true,
+  // DMS initial state for creation
+  dmsEnabled: false,
+  dmsApiKey: '',
+  dmsApiKeyChanged: false,
+  dmsOrgSlug: '',
+  departmentDms: DEFAULT_DEPARTMENTS.map((dept) => ({
+    department: dept,
+    apiKey: '',
+    apiKeyChanged: false,
+    baseUrl: '',
+    folder: '',
+    enabled: true
+  }))
 }
 
-const orgToForm = (org) => ({
-  ...EMPTY_FORM,
-  name: org.name || '',
-  subdomain: org.subdomain || '',
-  allowedDomains: (org.allowedDomains || []).join(', '),
-  externalUsers: org.features?.externalUsers === true,
-  plan: org.plan || 'custom',
-  limits: { ...EMPTY_LIMITS, ...(org.limits || {}) },
-  validFrom: toDateInput(org.licence?.validFrom),
-  validUntil: toDateInput(org.licence?.validUntil),
-  trialEndsAt: toDateInput(org.licence?.trialEndsAt),
-  billingEmail: org.billingEmail || '',
-  billingAnchorDay: org.billingAnchorDay || 1
-})
+const orgToForm = (org) => {
+  const orgDepts = Array.isArray(org?.departments) && org.departments.length > 0 
+    ? org.departments 
+    : DEFAULT_DEPARTMENTS
+
+  return {
+    ...EMPTY_FORM,
+    name: org.name || '',
+    subdomain: org.subdomain || '',
+    allowedDomains: (org.allowedDomains || []).join(', '),
+    externalUsers: org.features?.externalUsers === true,
+    plan: org.plan || 'custom',
+    limits: { ...EMPTY_LIMITS, ...(org.limits || {}) },
+    validFrom: toDateInput(org.licence?.validFrom),
+    validUntil: toDateInput(org.licence?.validUntil),
+    trialEndsAt: toDateInput(org.licence?.trialEndsAt),
+    billingEmail: org.billingEmail || '',
+    billingAnchorDay: org.billingAnchorDay || 1,
+    // DMS integration (SuperAdmin only)
+    dmsEnabled: Boolean(org.integrations?.dmsEnabled),
+    dmsApiKey: org.integrations?.dmsApiKey ? '••••••••' : '',  // masked for display
+    dmsApiKeyChanged: false,  // track if user actually typed a new key
+    dmsOrgSlug: org.integrations?.dmsOrgSlug || '',
+    departmentDms: orgDepts.map(dept => {
+      const existing = org.integrations?.departmentDms?.find(d => 
+        String(d.department).toLowerCase() === String(dept).toLowerCase()
+      )
+      return {
+        department: dept,
+        apiKey: existing?.apiKey ? '••••••••' : '',
+        apiKeyChanged: false,
+        baseUrl: existing?.baseUrl || '',
+        folder: existing?.folder || '',
+        enabled: existing ? existing.enabled !== false : true
+      }
+    })
+  }
+}
 
 // Dates are sent as '' → null so clearing a field means "perpetual" rather than
 // "leave it as it was".
@@ -135,7 +177,23 @@ const formToPayload = (f, { subdomain } = {}) => ({
     ...(f.plan === 'trial' ? { trialEndsAt: dateOut(f.trialEndsAt) } : {})
   },
   billingEmail: f.billingEmail.trim(),
-  billingAnchorDay: Number(f.billingAnchorDay) || 1
+  billingAnchorDay: Number(f.billingAnchorDay) || 1,
+  // DMS integration
+  integrations: {
+    dmsEnabled: Boolean(f.dmsEnabled),
+    // Only send the API key if it was actually changed (not just the masked placeholder)
+    ...(f.dmsApiKeyChanged ? { dmsApiKey: f.dmsApiKey.trim() } : {}),
+    dmsOrgSlug: (f.dmsOrgSlug || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+    ...(f.departmentDms ? {
+      departmentDms: f.departmentDms.map(d => ({
+        department: d.department,
+        ...(d.apiKeyChanged ? { apiKey: d.apiKey.trim() } : {}),
+        baseUrl: d.baseUrl.trim(),
+        folder: d.folder.trim(),
+        enabled: d.enabled
+      }))
+    } : {})
+  }
 })
 
 const copyToClipboard = (text) => {
@@ -167,6 +225,23 @@ function OrgDialog({ org, onClose, onSaved }) {
   const set = (key) => (e) => {
     const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value
     setForm((f) => ({ ...f, [key]: value }))
+  }
+
+  // DMS API key helper: mark as changed so payload includes the new value
+  const setDmsApiKey = (e) => {
+    setForm((f) => ({ ...f, dmsApiKey: e.target.value, dmsApiKeyChanged: true }))
+  }
+
+  const setDeptDms = (index, field, value) => {
+    setForm((f) => {
+      const updated = [...(f.departmentDms || [])]
+      if (field === 'apiKey') {
+        updated[index] = { ...updated[index], apiKey: value, apiKeyChanged: true }
+      } else {
+        updated[index] = { ...updated[index], [field]: value }
+      }
+      return { ...f, departmentDms: updated }
+    })
   }
 
   const setLimit = (key) => (e) =>
@@ -207,7 +282,9 @@ function OrgDialog({ org, onClose, onSaved }) {
         const payload = {
           ...formToPayload(form, { subdomain }),
           adminEmail: form.adminEmail.trim(),
-          adminName: form.adminName.trim()
+          adminName: form.adminName.trim(),
+          adminCanBuild: form.adminCanBuild === true,
+          countAdminTowardSeats: form.countAdminTowardSeats === true
         }
         const res = await api.post('/api/platform/orgs', payload)
         toast.success(`Organization "${payload.name}" created`)
@@ -268,6 +345,36 @@ function OrgDialog({ org, onClose, onSaved }) {
               <label className="block">
                 <span className="text-xs font-medium text-fg-muted">Admin name (optional)</span>
                 <input value={form.adminName} onChange={set('adminName')} placeholder="Acme Admin" className={fieldCls} />
+              </label>
+            </div>
+            <div className="space-y-2 pt-1">
+              <label className="flex items-start gap-2 text-sm text-fg">
+                <input
+                  type="checkbox"
+                  checked={form.adminCanBuild}
+                  onChange={set('adminCanBuild')}
+                  className="mt-0.5 rounded"
+                />
+                <span>
+                  <span className="font-medium">Grant builder access</span>
+                  <span className="block text-[10px] text-fg-subtle">
+                    Org admin can create and edit forms and workflows.
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-sm text-fg">
+                <input
+                  type="checkbox"
+                  checked={form.countAdminTowardSeats}
+                  onChange={set('countAdminTowardSeats')}
+                  className="mt-0.5 rounded"
+                />
+                <span>
+                  <span className="font-medium">Count toward user &amp; builder seats</span>
+                  <span className="block text-[10px] text-fg-subtle">
+                    Uncheck for a complimentary admin that does not use plan seats.
+                  </span>
+                </span>
               </label>
             </div>
             <p className="text-[10px] text-fg-subtle">
@@ -419,6 +526,61 @@ function OrgDialog({ org, onClose, onSaved }) {
             </span>
           </label>
         </div>
+
+        {/* ── DMS integration (SuperAdmin sets this) ───────────── */}
+        <div className="rounded-lg border border-line bg-surface-2/50 p-3 space-y-4">
+          <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-fg">Document storage (DMS)</p>
+                <p className="text-[11px] text-fg-subtle">
+                  Configure global and per-department connection keys to BaseLayer DMS.
+                </p>
+              </div>
+              <label className="flex items-center gap-2 text-sm font-medium text-fg cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.dmsEnabled}
+                  onChange={set('dmsEnabled')}
+                  className="rounded"
+                />
+                Enable DMS
+              </label>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-fg-muted">Org-level fallback</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-xs font-medium text-fg-muted">DMS API Key</span>
+                  <input
+                    type="password"
+                    value={form.dmsApiKey}
+                    onChange={setDmsApiKey}
+                    placeholder="bl_acme_••••••••"
+                    autoComplete="new-password"
+                    className={fieldCls}
+                  />
+                  <span className="text-[10px] text-fg-subtle">
+                    Used if a department doesn't have its own key.
+                  </span>
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-fg-muted">DMS org slug (optional)</span>
+                  <input
+                    value={form.dmsOrgSlug}
+                    onChange={set('dmsOrgSlug')}
+                    placeholder="defaults to subdomain"
+                    className={fieldCls}
+                  />
+                  <span className="text-[10px] text-fg-subtle">
+                    Root folder. Department folders are auto-created under this.
+                  </span>
+                </label>
+              </div>
+            </div>
+
+          
+          </div>
 
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-fg-muted hover:bg-surface-3 rounded-lg transition">

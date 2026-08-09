@@ -7,7 +7,8 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { API_BASE, toAbsoluteUrl } from '../utils/api'
 import { fieldMaxMb } from '../utils/uploads'
-import { fieldDomId, focusFirstError, isFieldVisible, stripHiddenValues, UploadProgress, validateField } from '../components/FormFields'
+import { fieldDomId, focusFirstError, isFieldVisible, isSignatureEmpty, SignaturePad, stripHiddenValues, UploadProgress, validateField } from '../components/FormFields'
+import { MAX_UPLOAD_MB } from '../utils/uploads'
 
 const inputCls =
   'w-full px-3 py-2 text-sm rounded-md border border-line bg-surface text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition'
@@ -225,7 +226,13 @@ function FieldRow({ token, field, value, onChange, error }) {
           </label>
         )
       case 'signature':
-        return <input {...a11y} type="text" value={value ?? ''} onChange={(e) => onChange(e.target.value)} placeholder="Type your full name to sign" className={cls} />
+        return (
+          <SignaturePad
+            id={inputId}
+            onChange={onChange}
+            uploadFile={(file) => publicUpload(token, file, MAX_UPLOAD_MB)}
+          />
+        )
       case 'file':
         return <FileField token={token} value={value} onChange={onChange} maxMb={fieldMaxMb(field)} />
       case 'radio':
@@ -337,7 +344,9 @@ function PublicForm() {
           else if (rows.some((r) => cols.some((c) => cellEmpty(r[c.id])))) errs[f.id] = `Fill every cell in ${f.label}`
           continue
         }
-        const isEmpty = v === undefined || v === null || v === '' || (f.type === 'checkbox' && v === false)
+        const isEmpty = f.type === 'signature'
+          ? isSignatureEmpty(v)
+          : (v === undefined || v === null || v === '' || (f.type === 'checkbox' && v === false))
         if (isEmpty) {
           errs[f.id] = `${f.label} is required`
           continue

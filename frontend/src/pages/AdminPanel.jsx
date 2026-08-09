@@ -17,7 +17,6 @@ import { Skeleton } from '../components/Skeleton'
 import EmptyState from '../components/EmptyState'
 import { AlertBanner } from '../components/Alert'
 import Modal from '../components/Modal'
-import UsageCard from '../components/UsageCard'
 import { limitBanner, reportLimit } from '../lib/limitFeedback'
 import { usageStore, useReadOnly, useUsage } from '../lib/usageStore'
 import { meterText } from '../lib/licensing'
@@ -927,10 +926,6 @@ function AdminPanel() {
             tone="info"
             icon={<IconAdmin className="w-5 h-5" />}
           />
-        </div>
-
-        <div className="shrink-0">
-          <UsageCard />
         </div>
 
         {(feedback || error || (roles.length === 0 && !loading)) && (

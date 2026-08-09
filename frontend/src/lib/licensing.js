@@ -107,6 +107,13 @@ export const formatMb = (mb) => {
     const gb = n / 1024
     return `${gb >= 10 ? Math.round(gb) : gb.toFixed(1)} GB`
   }
+  // Sub-megabyte DMS totals would otherwise round to "0 MB".
+  if (n < 1) {
+    const kb = n * 1024
+    if (kb < 1) return `${Math.max(1, Math.round(n * 1024 * 1024))} B`
+    return `${kb >= 10 ? Math.round(kb) : kb.toFixed(1)} KB`
+  }
+  if (n < 10) return `${n.toFixed(1)} MB`
   return `${Math.round(n)} MB`
 }
 

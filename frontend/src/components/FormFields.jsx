@@ -2,8 +2,8 @@
 // (FillForm) and Submit-node task forms (TaskDetail). Keeps a single source of
 // truth for field rendering, file upload, e-signature capture, and validation.
 
-import React, { useEffect, useState } from 'react'
-import { api, toAbsoluteUrl } from '../utils/api'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { api, toAbsoluteUrl, resolveAttachmentHref, dmsWebUrl } from '../utils/api'
 import { fieldMaxMb, MAX_UPLOAD_MB } from '../utils/uploads'
 
 const inputCls =
@@ -36,10 +36,20 @@ export const SIGNATURE_FONTS = [
   { label: 'Fertigo', value: "fertigo-pro, 'Fertigo', cursive" },
 ]
 
-// Renders a stored signature: typed text in its chosen font, or an uploaded image.
+// Renders a stored signature: typed text, uploaded image, or drawn pad PNG.
 export function SignatureMark({ signature, className = '' }) {
   if (!signature) return null
-  if (signature.kind === 'uploaded' && signature.url) {
+  if ((signature.kind === 'uploaded' || signature.kind === 'drawn') && signature.url) {
+    return (
+      <img
+        src={toAbsoluteUrl(signature.url)}
+        alt="e-signature"
+        className={`max-h-12 rounded border border-line bg-surface p-0.5 ${className}`}
+      />
+    )
+  }
+  // Legacy uploads without kind still have a url.
+  if (signature.url && !signature.text) {
     return (
       <img
         src={toAbsoluteUrl(signature.url)}
@@ -61,24 +71,224 @@ export function SignatureMark({ signature, className = '' }) {
   return null
 }
 
-// E-signature capture. Two modes: type a name in a signature font, or upload an
-// image. Lifts the chosen signature up via onChange —
-// { kind:'typed', text, font } | { kind:'uploaded', url, name } | null.
-export function SignaturePad({ onChange, disabled, label }) {
+// True when a signature field value is missing or incomplete.
+// Accepts structured pads ({ text } / { url }) and legacy plain strings.
+export function isSignatureEmpty(value) {
+  if (value === undefined || value === null || value === '') return true
+  if (typeof value === 'object') return !(value.text || value.url)
+  return !String(value).trim()
+}
+
+const DRAW_H = 140
+
+// E-signature capture: Type (font), Draw (canvas pen), or Upload image.
+// Lifts via onChange —
+// { kind:'typed', text, font } | { kind:'uploaded'|'drawn', url, name } | null.
+// Optional `uploadFile(file) => Promise<{ url, name }>` for public forms.
+export function SignaturePad({ onChange, disabled, label, id, uploadFile }) {
   const [mode, setMode] = useState('type')
   const [text, setText] = useState('')
   const [font, setFont] = useState(SIGNATURE_FONTS[0].value)
   const [uploaded, setUploaded] = useState(null)
+  const [drawn, setDrawn] = useState(null)
+  const [hasInk, setHasInk] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [err, setErr] = useState('')
+
+  const canvasRef = useRef(null)
+  const wrapRef = useRef(null)
+  const drawingRef = useRef(false)
+  const lastRef = useRef(null)
+  const hasInkRef = useRef(false)
+  const exportTimer = useRef(null)
+  const exportGen = useRef(0)
+
+  const clearExportTimer = () => {
+    if (exportTimer.current) {
+      clearTimeout(exportTimer.current)
+      exportTimer.current = null
+    }
+  }
+
+  const paintBlank = useCallback((ctx, w, h) => {
+    ctx.save()
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+    ctx.restore()
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, w, h)
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    ctx.strokeStyle = '#111827'
+    ctx.lineWidth = 2.2
+  }, [])
+
+  const setupCanvas = useCallback(() => {
+    const canvas = canvasRef.current
+    const wrap = wrapRef.current
+    if (!canvas || !wrap) return
+    const dpr = window.devicePixelRatio || 1
+    const w = Math.max(wrap.clientWidth, 1)
+    const h = DRAW_H
+    canvas.width = Math.floor(w * dpr)
+    canvas.height = Math.floor(h * dpr)
+    canvas.style.width = `${w}px`
+    canvas.style.height = `${h}px`
+    const ctx = canvas.getContext('2d')
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    paintBlank(ctx, w, h)
+    hasInkRef.current = false
+    setHasInk(false)
+  }, [paintBlank])
+
+  useEffect(() => {
+    if (mode !== 'draw') return undefined
+    setupCanvas()
+    const wrap = wrapRef.current
+    if (!wrap || typeof ResizeObserver === 'undefined') return undefined
+    const ro = new ResizeObserver(() => {
+      // Resizing wipes ink; avoid fighting an in-progress stroke.
+      if (drawingRef.current) return
+      const had = hasInkRef.current
+      setupCanvas()
+      if (had) {
+        setDrawn(null)
+        clearExportTimer()
+      }
+    })
+    ro.observe(wrap)
+    return () => ro.disconnect()
+  }, [mode, setupCanvas])
+
+  useEffect(() => () => clearExportTimer(), [])
 
   useEffect(() => {
     let sig = null
     if (mode === 'type' && text.trim()) sig = { kind: 'typed', text: text.trim(), font }
-    else if (mode === 'upload' && uploaded) sig = { kind: 'uploaded', url: uploaded.url, name: uploaded.name }
+    else if (mode === 'upload' && uploaded) {
+      sig = {
+        kind: 'uploaded',
+        url: uploaded.url,
+        name: uploaded.name,
+        ...(uploaded.dmsDocId ? { dmsDocId: uploaded.dmsDocId } : {}),
+      }
+    } else if (mode === 'draw' && drawn) {
+      sig = {
+        kind: 'drawn',
+        url: drawn.url,
+        name: drawn.name,
+        ...(drawn.dmsDocId ? { dmsDocId: drawn.dmsDocId } : {}),
+      }
+    }
     onChange(sig)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, text, font, uploaded])
+  }, [mode, text, font, uploaded, drawn])
+
+  const switchMode = (next) => {
+    if (disabled || next === mode) return
+    clearExportTimer()
+    setErr('')
+    if (mode === 'draw' || next === 'draw') {
+      setDrawn(null)
+      hasInkRef.current = false
+      setHasInk(false)
+    }
+    setMode(next)
+  }
+
+  const persistDrawnBlob = useCallback(async () => {
+    const canvas = canvasRef.current
+    if (!canvas || !hasInkRef.current || disabled) return
+    const gen = ++exportGen.current
+    setUploading(true)
+    setErr('')
+    try {
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
+      if (!blob || gen !== exportGen.current) return
+      const file = new File([blob], `signature-${Date.now()}.png`, { type: 'image/png' })
+      const meta = uploadFile
+        ? await uploadFile(file)
+        : (await api.upload(file, MAX_UPLOAD_MB)).file
+      if (gen !== exportGen.current) return
+      setDrawn({
+        url: meta.url,
+        name: meta.name || file.name,
+        ...(meta.dmsDocId ? { dmsDocId: meta.dmsDocId } : {}),
+      })
+    } catch (e2) {
+      if (gen === exportGen.current) setErr(e2.message || 'Could not save signature')
+    } finally {
+      if (gen === exportGen.current) setUploading(false)
+    }
+  }, [disabled, uploadFile])
+
+  const scheduleExport = useCallback(() => {
+    clearExportTimer()
+    exportTimer.current = setTimeout(() => {
+      exportTimer.current = null
+      persistDrawnBlob()
+    }, 400)
+  }, [persistDrawnBlob])
+
+  const pointFromEvent = (e) => {
+    const canvas = canvasRef.current
+    if (!canvas) return null
+    const rect = canvas.getBoundingClientRect()
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top }
+  }
+
+  const onPointerDown = (e) => {
+    if (disabled) return
+    const canvas = canvasRef.current
+    const pt = pointFromEvent(e)
+    if (!canvas || !pt) return
+    e.preventDefault()
+    canvas.setPointerCapture?.(e.pointerId)
+    drawingRef.current = true
+    lastRef.current = pt
+    const ctx = canvas.getContext('2d')
+    ctx.beginPath()
+    ctx.moveTo(pt.x, pt.y)
+    ctx.lineTo(pt.x + 0.01, pt.y + 0.01)
+    ctx.stroke()
+    hasInkRef.current = true
+    setHasInk(true)
+    setDrawn(null)
+    clearExportTimer()
+  }
+
+  const onPointerMove = (e) => {
+    if (!drawingRef.current || disabled) return
+    const canvas = canvasRef.current
+    const pt = pointFromEvent(e)
+    const last = lastRef.current
+    if (!canvas || !pt || !last) return
+    e.preventDefault()
+    const ctx = canvas.getContext('2d')
+    ctx.beginPath()
+    ctx.moveTo(last.x, last.y)
+    ctx.lineTo(pt.x, pt.y)
+    ctx.stroke()
+    lastRef.current = pt
+  }
+
+  const endStroke = (e) => {
+    if (!drawingRef.current) return
+    drawingRef.current = false
+    lastRef.current = null
+    try { canvasRef.current?.releasePointerCapture?.(e.pointerId) } catch { /* noop */ }
+    if (hasInkRef.current) scheduleExport()
+  }
+
+  const clearDraw = () => {
+    if (disabled) return
+    clearExportTimer()
+    exportGen.current += 1
+    setupCanvas()
+    setDrawn(null)
+    setErr('')
+    setUploading(false)
+  }
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0]
@@ -96,8 +306,14 @@ export function SignaturePad({ onChange, disabled, label }) {
     }
     setUploading(true)
     try {
-      const { file: meta } = await api.upload(file, MAX_UPLOAD_MB)
-      setUploaded({ url: meta.url, name: meta.name })
+      const meta = uploadFile
+        ? await uploadFile(file)
+        : (await api.upload(file, MAX_UPLOAD_MB)).file
+      setUploaded({
+        url: meta.url,
+        name: meta.name,
+        ...(meta.dmsDocId ? { dmsDocId: meta.dmsDocId } : {}),
+      })
     } catch (e2) {
       setErr(e2.message || 'Upload failed')
     } finally {
@@ -110,20 +326,27 @@ export function SignaturePad({ onChange, disabled, label }) {
     `px-2.5 py-1 transition ${mode === m ? 'bg-indigo-600 text-white' : 'bg-surface text-fg-muted hover:bg-surface-2'}`
 
   return (
-    <div className="border border-line rounded-md p-3 bg-surface-2/60">
-      <div className="flex items-center justify-between mb-2">
+    <div
+      id={id}
+      tabIndex={id ? -1 : undefined}
+      className="border border-line rounded-md p-3 bg-surface-2/60 focus:outline-none"
+    >
+      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
         {label ? <span className="text-xs font-semibold text-fg">{label}</span> : <span />}
         <div className="flex rounded-md border border-line overflow-hidden text-xs">
-          <button type="button" onClick={() => setMode('type')} disabled={disabled} className={tabCls('type')}>
+          <button type="button" onClick={() => switchMode('type')} disabled={disabled} className={tabCls('type')}>
             Type
           </button>
-          <button type="button" onClick={() => setMode('upload')} disabled={disabled} className={tabCls('upload')}>
+          <button type="button" onClick={() => switchMode('draw')} disabled={disabled} className={tabCls('draw')}>
+            Draw
+          </button>
+          <button type="button" onClick={() => switchMode('upload')} disabled={disabled} className={tabCls('upload')}>
             Upload
           </button>
         </div>
       </div>
 
-      {mode === 'type' ? (
+      {mode === 'type' && (
         <>
           <input
             type="text"
@@ -151,10 +374,48 @@ export function SignaturePad({ onChange, disabled, label }) {
             </div>
           )}
         </>
-      ) : (
+      )}
+
+      {mode === 'draw' && (
+        <div>
+          <div
+            ref={wrapRef}
+            className={`relative w-full rounded-md border-2 border-dashed border-line bg-white overflow-hidden ${disabled ? 'opacity-60' : ''}`}
+          >
+            <canvas
+              ref={canvasRef}
+              className={`block w-full ${disabled ? 'cursor-not-allowed' : 'cursor-crosshair'}`}
+              style={{ height: DRAW_H, touchAction: 'none' }}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={endStroke}
+              onPointerCancel={endStroke}
+            />
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <p className="text-[11px] text-fg-subtle">
+              {uploading
+                ? 'Saving signature…'
+                : hasInk
+                  ? (drawn ? 'Signature saved' : 'Sign with mouse, finger, or stylus')
+                  : 'Sign with mouse, finger, or stylus'}
+            </p>
+            <button
+              type="button"
+              onClick={clearDraw}
+              disabled={disabled || (!hasInk && !drawn)}
+              className="px-2.5 py-1 text-xs font-medium rounded-md border border-line text-fg-muted hover:bg-surface disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
+      {mode === 'upload' && (
         <>
           <label className="flex items-center gap-3">
-            <span className="px-3 py-2 rounded-md border border-line bg-surface text-sm font-medium text-fg hover:bg-surface-2 cursor-pointer">
+            <span className={`px-3 py-2 rounded-md border border-line bg-surface text-sm font-medium text-fg ${disabled ? 'opacity-60' : 'hover:bg-surface-2 cursor-pointer'}`}>
               {uploading ? 'Uploading…' : uploaded ? 'Replace image' : 'Choose image'}
             </span>
             <input type="file" accept="image/*" onChange={handleFile} disabled={disabled || uploading} className="hidden" />
@@ -226,7 +487,15 @@ export function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB, disabled }) 
     }
   }
 
-  const current = value && typeof value === 'object' && value.url ? value : null
+  const current = value && typeof value === 'object' && (value.url || value.dmsDocId) ? value : null
+  const dmsHref = current?.dmsDocId ? dmsWebUrl(current.dmsDocId) : ''
+
+  const openCurrent = async (e) => {
+    e.preventDefault()
+    if (!current) return
+    const href = await resolveAttachmentHref(current)
+    if (href) window.open(href, '_blank', 'noopener,noreferrer')
+  }
 
   return (
     <div>
@@ -240,11 +509,18 @@ export function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB, disabled }) 
       {uploading && <UploadProgress percent={progress} />}
       {uploadError && <p className="mt-1 text-xs text-danger-fg">{uploadError}</p>}
       {current && !uploading && (
-        <p className="mt-1 text-xs text-success-fg">
-          Uploaded:{' '}
-          <a href={toAbsoluteUrl(current.url)} target="_blank" rel="noreferrer" className="underline hover:brightness-110">
-            {current.name}
-          </a>
+        <p className="mt-1 text-xs text-success-fg flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span>
+            Uploaded:{' '}
+            <a href={toAbsoluteUrl(current.url) || '#'} onClick={openCurrent} target="_blank" rel="noreferrer" className="underline hover:brightness-110">
+              {current.name || 'file'}
+            </a>
+          </span>
+          {dmsHref ? (
+            <a href={dmsHref} target="_blank" rel="noreferrer" className="underline text-fg-muted hover:text-fg">
+              Open in DMS
+            </a>
+          ) : null}
         </p>
       )}
     </div>
@@ -345,17 +621,13 @@ export function FieldRow({ field, value, onChange, error, richSignature = false,
           </div>
         )
       case 'signature':
-        return richSignature ? (
-          <SignaturePad onChange={onChange} disabled={disabled} />
-        ) : (
-          <input
-            {...a11y}
-            type="text"
-            value={value ?? ''}
+        // Always use the rich pad (typed font / image). `richSignature` is kept
+        // for call-site compatibility; plain text is no longer offered.
+        return (
+          <SignaturePad
+            id={inputId}
+            onChange={onChange}
             disabled={disabled}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder="Type your full name to sign"
-            className={cls}
           />
         )
       case 'file':
@@ -517,7 +789,7 @@ export function validateFields(fields, values) {
     if (f.required) {
       let empty = v === undefined || v === null || v === ''
       if (!empty && f.type === 'checkbox') empty = v === false
-      if (!empty && f.type === 'signature' && typeof v === 'object') empty = !(v.text || v.url)
+      if (f.type === 'signature') empty = isSignatureEmpty(v)
       if (empty) {
         errs[f.id] = `${f.label} is required`
         continue

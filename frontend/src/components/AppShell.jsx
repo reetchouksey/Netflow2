@@ -16,6 +16,7 @@ import { useFocusTrap, useOutsideDismiss, useScrollLock, modifierKeyLabel } from
 import AssistantWidget from './AssistantWidget'
 import LicenceBanner from './LicenceBanner'
 import NotificationsBell from './NotificationsBell'
+import DmsProviderWidget from './DmsProviderWidget'
 
 // ---------- left rail ----------------------------------------------------
 // Four shells. Items without `visible` are always shown inside that shell.
@@ -48,28 +49,39 @@ const PLATFORM_NAV = [
 
 const ORG_ADMIN_NAV = [
   {
-    label: 'MAIN',
+    label: null,
     items: [
       { key: 'dashboard', label: 'Dashboard', to: '/dashboard', icon: IconDashboard },
-      { key: 'forms', label: 'Forms', to: '/forms', icon: IconForms },
-      { key: 'workflows', label: 'Workflow Builder', to: '/workflows', icon: IconWorkflows }
     ]
   },
   {
-    label: 'REPORTS',
+    label: 'MANAGEMENT',
     items: [
-      { key: 'analytics', label: 'Reports', to: '/analytics', icon: IconAnalytics },
-      { key: 'audit', label: 'Audit Logs', to: '/audit-log', icon: IconAudit }
+      { key: 'departments', label: 'Departments', to: '/departments', icon: IconBuilding, chevron: true },
+      { key: 'users', label: 'Users', to: '/admin', icon: IconTeam, chevron: true },
+      { key: 'roles', label: 'Roles & Permissions', to: '/roles', icon: IconRoles, chevron: true },
+      { key: 'forms', label: 'Forms', to: '/forms', icon: IconForms, chevron: true },
+      { key: 'workflows', label: 'Workflows', to: '/workflows', icon: IconWorkflows, chevron: true }
+    ]
+  },
+  {
+    label: 'Documents Management System',
+    items: [
+      { key: 'documents', label: 'DMS', to: '/documents', icon: IconFolder, chevron: true }
+    ]
+  },
+  {
+    label: 'MONITORING',
+    items: [
+      { key: 'reports', label: 'Reports', to: '/analytics', icon: IconAnalytics, chevron: true },
+      { key: 'audit', label: 'Audit Logs', to: '/audit-log', icon: IconAudit, chevron: true }
     ]
   },
   {
     label: 'SETTINGS',
     items: [
-      { key: 'admin', label: 'Users', to: '/admin', icon: IconAdmin },
-      { key: 'departments', label: 'Departments', to: '/departments', icon: IconTeam },
-      { key: 'roles', label: 'Roles & Permissions', to: '/roles', icon: IconRoles },
-      { key: 'org-settings', label: 'Organization', to: '/settings', icon: IconSettings },
-      { key: 'profile', label: 'Profile', to: '/profile', icon: IconProfile }
+      { key: 'org-settings', label: 'Organization Settings', to: '/settings', icon: IconSettings, chevron: true },
+      { key: 'billing', label: 'Plan & Usage', to: '/billing', icon: IconBilling, chevron: true }
     ]
   }
 ]
@@ -130,12 +142,22 @@ function NavSections({ user, pendingCount, onNavigate }) {
   return (
     <>
       {sections.map((section, si) => (
-        <div key={section.label} className={si === 0 ? '' : 'mt-5 pt-5 border-t border-line/70'}>
-          <p className="px-3 mb-2 text-[10px] font-semibold tracking-[0.14em] text-fg-subtle uppercase">
-            {section.label}
-          </p>
+        <div key={section.label || `sec-${si}`} className={si === 0 ? '' : 'mt-5 pt-5 border-t border-line/70'}>
+          {section.label && (
+            <p className="px-3 mb-2 text-[10px] font-semibold tracking-[0.14em] text-fg-subtle uppercase">
+              {section.label}
+            </p>
+          )}
           <ul className="space-y-1">
             {section.items.map((item) => {
+              if (item.component) {
+                const ItemComponent = item.component
+                return (
+                  <li key={item.key}>
+                    <ItemComponent user={user} />
+                  </li>
+                )
+              }
               const Icon = item.icon
               const label = item.labelFor ? item.labelFor(user) : item.label
               const isActive = pathname === item.to || pathname.startsWith(item.to + '/')
@@ -174,11 +196,6 @@ function NavSections({ user, pendingCount, onNavigate }) {
                         {pendingCount > 99 ? '99+' : pendingCount}
                       </span>
                     )}
-                    {item.chevron && (
-                      <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-fg-subtle" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                      </svg>
-                    )}
                   </Link>
                 </li>
               )
@@ -211,11 +228,27 @@ function Sidebar({ user, pendingCount, open, onToggle }) {
       <div className="w-64 h-full flex flex-col min-h-0">
         <div className="shrink-0 h-16 px-3 flex items-center gap-2 border-b border-line bg-surface/80 backdrop-blur-sm">
           <Link to="/dashboard" className="flex items-center gap-2.5 min-w-0 flex-1 rounded-lg hover:opacity-90 transition px-1 py-1">
-            <img src="/netflow-icon.png" alt="" className="w-8 h-8 rounded-xl shadow-sm ring-1 ring-black/5 dark:ring-white/10" />
-            <div className="min-w-0 leading-tight">
-              <p className="font-bold text-fg text-[15px] tracking-tight truncate">NetFlow</p>
-              <p className="text-[10px] font-medium text-fg-subtle truncate">{shellLabel}</p>
-            </div>
+            {getShell(user) === SHELL.ORG_ADMIN ? (
+              <>
+                <div className="w-8 h-8 rounded-lg bg-pink-50 text-pink-600 dark:bg-pink-500/15 dark:text-pink-300 flex items-center justify-center shrink-0 shadow-[0_1px_3px_rgb(0_0_0/0.05)] ring-1 ring-pink-100 dark:ring-pink-500/20">
+                  <IconBuilding className="w-4 h-4" />
+                </div>
+                <div className="min-w-0 leading-tight">
+                  <p className="font-bold text-fg text-[13px] tracking-tight truncate">{user?.tenantName }</p>
+                  <div className="inline-flex items-center px-1.5 py-[1px] rounded text-[9px] font-bold tracking-wide bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-500/20 mt-0.5">
+                    Active
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <img src="/netflow-icon.png" alt="" className="w-8 h-8 rounded-xl shadow-sm ring-1 ring-black/5 dark:ring-white/10" />
+                <div className="min-w-0 leading-tight">
+                  <p className="font-bold text-fg text-[15px] tracking-tight truncate">NetFlow</p>
+                  <p className="text-[10px] font-medium text-fg-subtle truncate">{shellLabel}</p>
+                </div>
+              </>
+            )}
           </Link>
           <button
             type="button"
@@ -941,3 +974,25 @@ function IconPlans(p) { return (
 function IconMenu(p) { return (
   <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
 )}
+function IconDms(p) { return (
+  <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><ellipse cx="12" cy="5" rx="9" ry="3" /><path strokeLinecap="round" strokeLinejoin="round" d="M3 5v14c0 1.657 4.03 3 9 3s9-1.343 9-3V5M3 12c0 1.657 4.03 3 9 3s9-1.343 9-3" /></svg>
+)}
+function IconBuilding(p) { return (
+  <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+)}
+function IconFolder(p) { return (
+  <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+)}
+function IconTemplate(p) { return (
+  <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" /></svg>
+)}
+function IconChart(p) { return (
+  <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+)}
+function IconIntegration(p) { return (
+  <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" /></svg>
+)}
+function IconBilling(p) { return (
+  <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+)}
+

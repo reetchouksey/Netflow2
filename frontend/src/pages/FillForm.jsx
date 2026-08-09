@@ -9,7 +9,7 @@ import { api, toAbsoluteUrl } from '../utils/api'
 import { useUser } from '../utils/auth'
 import { formsStore } from '../lib/formsStore'
 import { fieldMaxMb, MAX_UPLOAD_MB } from '../utils/uploads'
-import { fieldDomId, focusFirstError, isFieldVisible, stripHiddenValues, UploadProgress, validateField } from '../components/FormFields'
+import { fieldDomId, focusFirstError, isFieldVisible, isSignatureEmpty, SignaturePad, stripHiddenValues, UploadProgress, validateField } from '../components/FormFields'
 import { limitBanner } from '../lib/limitFeedback'
 
 const inputCls =
@@ -270,13 +270,9 @@ function FieldRow({ field, value, onChange, error }) {
         )
       case 'signature':
         return (
-          <input
-            {...a11y}
-            type="text"
-            value={value ?? ''}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder="Type your full name to sign"
-            className={cls}
+          <SignaturePad
+            id={inputId}
+            onChange={onChange}
           />
         )
       case 'file':
@@ -438,11 +434,14 @@ function FillForm() {
           }
           continue
         }
-        const isEmpty =
-          v === undefined ||
-          v === null ||
-          v === '' ||
-          (f.type === 'checkbox' && v === false)
+        const isEmpty = f.type === 'signature'
+          ? isSignatureEmpty(v)
+          : (
+            v === undefined ||
+            v === null ||
+            v === '' ||
+            (f.type === 'checkbox' && v === false)
+          )
         if (isEmpty) {
           errs[f.id] = `${f.label} is required`
           continue

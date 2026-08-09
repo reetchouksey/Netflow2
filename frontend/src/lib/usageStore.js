@@ -45,6 +45,7 @@ const fetchAll = async ({ withUsage = state.canManage } = {}) => {
         try {
           const res = await api.get('/api/usage')
           patch.usage = res.usage || null
+          patch.trend = res.trend || []
           patch.canManage = true
         } catch (err) {
           // A non-admin simply has no business seeing the meters.
