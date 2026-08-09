@@ -57,6 +57,56 @@ const loadOrg = async (req, res) => {
   return org
 }
 
+// POST /api/organization/dms-login
+router.post('/dms-login', async (req, res, next) => {
+  try {
+    const org = await loadOrg(req, res)
+    if (!org) return undefined
+
+    const { email, password } = req.body
+    if (!email || !password) {
+      return sendError(res, 'Email and password required', 'BAD_REQUEST', 400)
+    }
+
+    const rootUrl = dms.resolveBaseUrl(org)
+    if (!rootUrl) {
+      return sendError(res, 'DMS is not configured', 'DMS_NOT_CONFIGURED', 400)
+    }
+
+    const base = rootUrl.replace(/\/api\/?$/, '')
+    const loginUrl = `${base}/api/auth/login`
+
+    const response = await fetch(loginUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    })
+
+    let data;
+    try {
+      data = await response.json()
+    } catch (parseErr) {
+      return sendError(res, `BaseLayer returned an invalid response (Status ${response.status}). The service might be down.`, 'DMS_INVALID_RESPONSE', response.status || 502)
+    }
+
+    if (!response.ok) {
+      return sendError(res, data.message || 'BaseLayer Login Failed', 'DMS_LOGIN_FAILED', response.status)
+    }
+
+    if (!data.token) {
+      return sendError(res, 'No token received from BaseLayer', 'DMS_NO_TOKEN', 500)
+    }
+
+    org.integrations.dmsJwt = data.token
+    await org.save()
+
+    writeAuditLog(req.user, 'update', 'Organization', org._id, 'BaseLayer DMS login successful')
+    return sendSuccess(res, { message: 'BaseLayer Login successful' })
+  } catch (err) {
+    next(err)
+  }
+})
+
 // GET /api/organization
 router.get('/', async (req, res, next) => {
   try {
@@ -153,7 +203,8 @@ router.get('/dms-storage', async (req, res, next) => {
     })
   } catch (err) {
     if (err instanceof dms.DmsError) {
-      return sendError(res, err.message || 'DMS storage lookup failed', err.code || 'DMS_ERROR', err.status || 502, { dms: err.body || null })
+      const code = err.status === 401 ? 'DMS_UNAUTHORIZED' : (err.code || 'DMS_ERROR')
+      return sendError(res, err.message || 'DMS storage lookup failed', code, err.status || 502, { dms: err.body || null })
     }
     next(err)
   }

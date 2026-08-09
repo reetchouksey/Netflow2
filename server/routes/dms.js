@@ -52,6 +52,10 @@ router.get('/documents', async (req, res) => {
 
     sendSuccess(res, { documents })
   } catch (err) {
+    if (err instanceof dmsClient.DmsError) {
+      const code = err.status === 401 ? 'DMS_UNAUTHORIZED' : (err.code || 'DMS_ERROR')
+      return sendError(res, err.message, code, err.status || 500)
+    }
     sendError(res, err.message, 'DMS_DOCUMENTS_ERROR')
   }
 })
@@ -104,6 +108,10 @@ router.get('/folders', async (req, res) => {
     sendSuccess(res, { folders })
 
   } catch (err) {
+    if (err instanceof dmsClient.DmsError) {
+      const code = err.status === 401 ? 'DMS_UNAUTHORIZED' : (err.code || 'DMS_ERROR')
+      return sendError(res, err.message, code, err.status || 500)
+    }
     sendError(res, err.message, 'DMS_FOLDERS_ERROR')
   }
 })
@@ -124,7 +132,11 @@ router.get('/documents/:id/url', async (req, res) => {
     
     sendSuccess(res, { url })
   } catch (err) {
-    sendError(res, err.message, 'DMS_URL_ERROR')
+    if (err instanceof dmsClient.DmsError) {
+      const code = err.status === 401 ? 'DMS_UNAUTHORIZED' : (err.code || 'DMS_ERROR')
+      return sendError(res, err.message, code, err.status || 500)
+    }
+    sendError(res, err.message, 'DMS_SYNC_ERROR')
   }
 })
 
@@ -137,7 +149,11 @@ router.delete('/documents/:id', async (req, res) => {
     })
     sendSuccess(res, { message: 'Document deleted successfully' })
   } catch (err) {
-    sendError(res, err.message, 'DMS_DELETE_ERROR')
+    if (err instanceof dmsClient.DmsError) {
+      const code = err.status === 401 ? 'DMS_UNAUTHORIZED' : (err.code || 'DMS_ERROR')
+      return sendError(res, err.message, code, err.status || 500)
+    }
+    sendError(res, err.message, 'DMS_DOCUMENT_ERROR')
   }
 })
 
@@ -156,6 +172,10 @@ router.get('/stats', async (req, res) => {
 
     sendSuccess(res, { stats })
   } catch (err) {
+    if (err instanceof dmsClient.DmsError) {
+      const code = err.status === 401 ? 'DMS_UNAUTHORIZED' : (err.code || 'DMS_ERROR')
+      return sendError(res, err.message, code, err.status || 500)
+    }
     sendError(res, err.message, 'DMS_STATS_ERROR')
   }
 })

@@ -43,6 +43,7 @@ const organizationSchema = new mongoose.Schema({
   integrations: {
     // Org-level fallback key — used when a department has no key of its own.
     dmsApiKey:  { type: String, default: '' },
+    dmsJwt:     { type: String, default: '' },
     dmsEnabled: { type: Boolean, default: false },
     // Root folder in DMS (e.g. "acme"). Falls back to org.subdomain when empty.
     dmsOrgSlug: { type: String, default: '' },

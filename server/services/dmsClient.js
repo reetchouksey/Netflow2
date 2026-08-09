@@ -103,20 +103,27 @@ async function dmsFetch(pathname, {
   apiKey,
   rootUrl,   // department-specific DMS server URL override
   user,
+  org,       // tenant context for dynamic resolution
+  jwtToken,  // tenant-specific DMS JWT override
   timeoutMs = 5000,
   formData = false,
   quiet = false,
 } = {}) {
   if (!isEnabled()) return null
 
-  const root = rootUrl || baseUrl()
+  const root = rootUrl || (org ? resolveBaseUrl(org) : baseUrl())
   if (!root) throw new DmsError('DMS_API_URL is not configured', { code: 'DMS_MISCONFIGURED' })
-  const key = apiKey || resolveApiKey()
-  if (!key) throw new DmsError('DMS_API_KEY is not configured', { code: 'DMS_MISCONFIGURED' })
+  const key = apiKey || (org ? resolveApiKey(org) : resolveApiKey())
+  const tokenToUse = jwtToken || org?.integrations?.dmsJwt || process.env.DMS_JWT
+
+  if (!key && !tokenToUse) {
+    throw new DmsError('DMS authentication not configured', { status: 401, code: 'DMS_UNAUTHORIZED' })
+  }
 
   const url = `${root}${pathname.startsWith('/') ? pathname : `/${pathname}`}`
-  const hdrs = { ...headers, 'X-Api-Key': key }
-  if (process.env.DMS_JWT) hdrs['Authorization'] = `Bearer ${process.env.DMS_JWT}`
+  const hdrs = { ...headers }
+  if (key) hdrs['X-Api-Key'] = key
+  if (tokenToUse) hdrs['Authorization'] = `Bearer ${tokenToUse}`
   if (user?.name) hdrs['X-On-Behalf-Of'] = String(user.name)
   if (user?.email) hdrs['X-On-Behalf-Of-Email'] = String(user.email)
 
@@ -150,7 +157,7 @@ async function dmsFetch(pathname, {
 async function ping({ org } = {}) {
   if (!isEnabled()) return false
   try {
-    await dmsFetch('/health', { apiKey: resolveApiKey(org), timeoutMs: 3000, quiet: true })
+    await dmsFetch('/health', { apiKey: resolveApiKey(org), org, timeoutMs: 3000, quiet: true })
     return true
   } catch {
     return false
@@ -203,6 +210,7 @@ async function uploadFile({ filePath, filename, mime, user, ref = {}, org, depar
     body: fd,
     formData: true,
     apiKey: deptApiKey,       // department-specific or org fallback
+    org,
     rootUrl: deptRootUrl,     // department-specific server or global URL
     user,
     timeoutMs: 10000,
@@ -242,6 +250,7 @@ async function signedUrl(dmsDocId, { mode = 'view', org, user } = {}) {
   const q = mode === 'download' ? 'mode=download' : 'mode=view'
   const json = await dmsFetch(`/documents/${encodeURIComponent(dmsDocId)}/url?${q}`, {
     apiKey: resolveApiKey(org),
+    org,
     user,
     timeoutMs: 5000,
   })
@@ -259,6 +268,7 @@ async function getDoc(dmsDocId, { org, user } = {}) {
   if (!isEnabled() || !dmsDocId) return null
   return dmsFetch(`/documents/${encodeURIComponent(dmsDocId)}`, {
     apiKey: resolveApiKey(org),
+    org,
     user,
   })
 }
@@ -275,6 +285,7 @@ async function findByRef({ taskId, formResponseId, workflowId, id } = {}, { org,
   try {
     const json = await dmsFetch(`/documents/by-external-ref?${usp}`, {
       apiKey: resolveApiKey(org),
+      org,
       user,
     })
     return json.document || json.data?.document || json || null
@@ -305,6 +316,7 @@ async function postEvent(dmsDocId, { type, actor, detail, meta } = {}, { org } =
       meta: meta || undefined,
     }),
     apiKey: resolveApiKey(org),
+    org,
     user: typeof actor === 'object' ? actor : undefined,
     timeoutMs: 5000,
   })
@@ -380,6 +392,7 @@ async function listDocuments({ org, user, limit = 100, offset = 0, page } = {}) 
 
   const json = await dmsFetch(`/documents?${usp}`, {
     apiKey: resolveApiKey(org),
+    org,
     user,
     timeoutMs: 10000,
   })
@@ -401,7 +414,7 @@ async function getStorageUsage({ org, user } = {}) {
     const key = resolveApiKey(org)
     for (const path of ['/usage', '/stats']) {
       try {
-        const json = await dmsFetch(path, { apiKey: key, user, timeoutMs: 5000, quiet: true })
+        const json = await dmsFetch(path, { apiKey: key, org, user, timeoutMs: 5000, quiet: true })
         const parsed = parseUsagePayload(json)
         if (parsed) {
           return {
@@ -473,16 +486,11 @@ async function getStorageUsage({ org, user } = {}) {
 async function getFoldersTree({ org, user } = {}) {
   if (!isEnabled()) return null
 
-  const jwt = process.env.DMS_JWT
-  if (!jwt) {
-    if (process.env.DMS_DEBUG === '1') console.debug('[dms] getFoldersTree skipped: no DMS_JWT provided')
-    return null
-  }
-
   try {
     // The /folders endpoint requires the JWT token for authentication
     const json = await dmsFetch('/folders', { 
-      headers: { 'Authorization': `Bearer ${jwt}` },
+      org,
+      user,
       timeoutMs: 5000, 
       quiet: true 
     })
@@ -503,6 +511,7 @@ async function deleteDoc(dmsDocId, { org, user } = {}) {
   return dmsFetch(`/documents/${encodeURIComponent(dmsDocId)}`, {
     method: 'DELETE',
     apiKey: resolveApiKey(org),
+    org,
     user,
     timeoutMs: 10000,
   })

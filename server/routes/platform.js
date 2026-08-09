@@ -1109,7 +1109,8 @@ router.get('/dms-storage', async (req, res, next) => {
     })
   } catch (err) {
     if (err instanceof dms.DmsError) {
-      return sendError(res, err.message || 'DMS storage lookup failed', err.code || 'DMS_ERROR', err.status || 502, {
+      const code = err.status === 401 ? 'DMS_UNAUTHORIZED' : (err.code || 'DMS_ERROR')
+      return sendError(res, err.message || 'DMS storage lookup failed', code, err.status || 502, {
         dms: err.body || null
       })
     }
@@ -1152,7 +1153,8 @@ router.get('/dms-documents', async (req, res, next) => {
     return sendSuccess(res, { enabled: true, documents: docs, total, groups })
   } catch (err) {
     if (err instanceof dms.DmsError) {
-      return sendError(res, err.message || 'DMS document listing failed', err.code || 'DMS_ERROR', err.status || 502, { dms: err.body || null })
+      const code = err.status === 401 ? 'DMS_UNAUTHORIZED' : (err.code || 'DMS_ERROR')
+      return sendError(res, err.message || 'DMS document listing failed', code, err.status || 502, { dms: err.body || null })
     }
     next(err)
   }
