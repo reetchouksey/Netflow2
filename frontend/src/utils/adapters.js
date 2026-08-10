@@ -82,7 +82,18 @@ export const adaptTask = (apiTask) => {
     ? `${submitter} (${external.email})`
     : submitter
   const status = TASK_STATUS_MAP[apiTask.status] || 'Pending'
-  const dueMs = apiTask.dueDate ? new Date(apiTask.dueDate).getTime() - Date.now() : 0
+  const isResolved = apiTask.status !== 'pending' && apiTask.status !== 'escalated'
+  
+  let compareTime = Date.now()
+  if (isResolved) {
+    compareTime = apiTask.updatedAt ? new Date(apiTask.updatedAt).getTime() : Date.now()
+    if (Array.isArray(apiTask.approvalHistory) && apiTask.approvalHistory.length > 0) {
+      const lastAction = apiTask.approvalHistory[apiTask.approvalHistory.length - 1]
+      if (lastAction.performedAt) compareTime = new Date(lastAction.performedAt).getTime()
+    }
+  }
+
+  const dueMs = apiTask.dueDate ? new Date(apiTask.dueDate).getTime() - compareTime : 0
   const dueInMinutes = Math.round(dueMs / 60000)
   const slaBreached = apiTask.status === 'escalated' || apiTask.isEscalated || dueInMinutes < 0
 
@@ -142,7 +153,7 @@ export const adaptTask = (apiTask) => {
   const totalHours = apiTask.dueDate
     ? Math.max(1, Math.round((new Date(apiTask.dueDate).getTime() - createdMs) / 3600000))
     : 48
-  const assignedHoursAgo = Math.max(0, Math.round((Date.now() - createdMs) / 3600000))
+  const assignedHoursAgo = Math.max(0, Math.round((compareTime - createdMs) / 3600000))
 
   // assignedTo / submittedBy may be populated objects or raw ObjectId strings,
   // depending on the endpoint. Normalise both to plain id strings so the UI can
@@ -153,8 +164,8 @@ export const adaptTask = (apiTask) => {
   return {
     _raw: apiTask,
     id: apiTask._id,
-    title: apiTask.title,
-    subject: apiTask.title,
+    title: apiTask.formResponseId?.formId?.title || apiTask.workflowId?.title || apiTask.title,
+    subject: apiTask.formResponseId?.formId?.title || apiTask.workflowId?.title || apiTask.title,
     // 'submit' tasks ask the assignee to upload a file + comment (no approve/reject).
     actionType: apiTask.actionType || 'approval',
     instructions: apiTask.instructions || '',

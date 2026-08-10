@@ -90,6 +90,22 @@ function RequireTenant({ children }) {
   return <RequireRole can={isTenantShell}>{children}</RequireRole>
 }
 
+function RequireDms({ children }) {
+  const user = useUser()
+  const location = useLocation()
+  const token = getToken()
+  if (!token || !user) {
+    return <Navigate to="/login" replace state={{ from: location }} />
+  }
+  if (needsPasswordChange(user, location)) {
+    return <Navigate to="/change-password" replace />
+  }
+  if (user.dmsEnabled === false) {
+    return <Navigate to="/dashboard" replace />
+  }
+  return children
+}
+
 function PublicOnly({ children }) {
   const user = useUser()
   const token = getToken()
@@ -161,7 +177,7 @@ function App() {
         <Route path="/oauth/callback" element={<OAuthCallback />} />
 
         <Route path="/dashboard"     element={<RequireAuth><Dashboard /></RequireAuth>} />
-        <Route path="/documents"     element={<RequireAuth><DocumentsDashboard /></RequireAuth>} />
+        <Route path="/documents"     element={<RequireDms><DocumentsDashboard /></RequireDms>} />
         <Route path="/forms"          element={<RequireTenant><Forms /></RequireTenant>} />
         <Route path="/forms/new"      element={<RequireRole can={canCreateForm}><NewForm /></RequireRole>} />
         <Route path="/forms/:id/fill" element={<RequireTenant><FillForm /></RequireTenant>} />

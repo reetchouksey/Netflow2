@@ -1206,18 +1206,32 @@ function ApiConfig({ node, update }) {
         </div>
       </Field>
 
-      <Field label="Request body">
-        <textarea
-          rows={4}
-          value={node.apiBody || ""}
-          onChange={(e) => update({ apiBody: e.target.value })}
-          placeholder={'{\n  "id": "{{formData.requestId}}",\n  "by": "{{submitter.email}}"\n}'}
-          className={`${inputCls} font-mono text-xs`}
-        />
-        <p className="mt-1 text-[11px] text-fg-subtle">
-          Use {"{{formData.field}}"}, {"{{submitter.email}}"}, {"{{lastApprovalOutcome}}"} to insert live values.
-        </p>
+      <Field label="Data to Send">
+        <label className="flex items-center gap-2 cursor-pointer pt-1 pb-1">
+          <input
+            type="checkbox"
+            checked={node.sendAllData === true || (node.sendAllData === undefined && !node.apiBody?.trim())}
+            onChange={(e) => update({ sendAllData: e.target.checked })}
+            className="w-3.5 h-3.5 text-indigo-600 rounded border-line focus:ring-indigo-500 bg-surface-2"
+          />
+          <span className="text-xs font-medium text-fg">Send entire form data automatically</span>
+        </label>
       </Field>
+
+      {!(node.sendAllData === true || (node.sendAllData === undefined && !node.apiBody?.trim())) && (
+        <Field label="Custom Request body">
+          <textarea
+            rows={4}
+            value={node.apiBody || ""}
+            onChange={(e) => update({ apiBody: e.target.value })}
+            placeholder={'{\n  "id": "{{formData.requestId}}",\n  "by": "{{submitter.email}}"\n}'}
+            className={`${inputCls} font-mono text-xs`}
+          />
+          <p className="mt-1 text-[11px] text-fg-subtle">
+            Use {"{{formData.field}}"}, {"{{submitter.email}}"}, {"{{lastApprovalOutcome}}"} to insert live values.
+          </p>
+        </Field>
+      )}
 
       <Field label="Authentication">
         <select

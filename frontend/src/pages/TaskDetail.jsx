@@ -770,9 +770,18 @@ function SlaStatus({ task }) {
   const breached = remaining < 0 || task.slaBreached
 
   const hoursLabel = (h) => `${h} ${h === 1 ? 'hour' : 'hours'}`
-  const remainingLabel = breached
-    ? `${hoursLabel(Math.abs(Math.round(remaining)))} overdue`
-    : `${hoursLabel(Math.round(remaining))} remaining`
+  
+  let remainingLabel
+  const isResolved = task.status !== 'Pending' && task.status !== 'Escalated'
+  if (isResolved) {
+    remainingLabel = breached
+      ? `Completed ${hoursLabel(Math.abs(Math.round(remaining)))} overdue`
+      : 'Completed on time'
+  } else {
+    remainingLabel = breached
+      ? `${hoursLabel(Math.abs(Math.round(remaining)))} overdue`
+      : `${hoursLabel(Math.round(remaining))} remaining`
+  }
 
   const barColor = breached
     ? 'bg-danger-solid'

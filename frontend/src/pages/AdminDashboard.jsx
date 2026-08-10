@@ -357,7 +357,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* ── Row 3: Tables + DMS Status ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-5 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
         {/* Recent Workflows */}
         <div className="bg-surface border border-line rounded-xl p-5 shadow-sm">
@@ -430,6 +430,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* DMS Status */}
+        {user?.dmsEnabled !== false && (
         <div className="bg-surface border border-line rounded-xl p-5 shadow-sm flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-fg">DMS Status</h2>
@@ -471,6 +472,7 @@ export default function AdminDashboard() {
             </div>
           </div>
         </div>
+        )}
       </div>
     </AppShell>
   )

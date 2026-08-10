@@ -119,10 +119,20 @@ const WORKSPACE_NAV = [
 
 function visibleSections(user) {
   const shell = getShell(user)
-  if (shell === SHELL.PLATFORM) return PLATFORM_NAV
-  if (shell === SHELL.ORG_ADMIN) return ORG_ADMIN_NAV
-  if (shell === SHELL.OPS) return OPS_NAV
-  return WORKSPACE_NAV
+  let sections = []
+  if (shell === SHELL.PLATFORM) sections = PLATFORM_NAV
+  else if (shell === SHELL.ORG_ADMIN) sections = ORG_ADMIN_NAV
+  else if (shell === SHELL.OPS) sections = OPS_NAV
+  else sections = WORKSPACE_NAV
+
+  if (user && user.dmsEnabled === false) {
+    sections = sections.map(section => ({
+      ...section,
+      items: section.items.filter(item => item.key !== 'documents')
+    })).filter(section => section.items.length > 0)
+  }
+
+  return sections
 }
 
 const SHELL_FOOTER = {

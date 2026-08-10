@@ -368,9 +368,10 @@ export default function OrgSettings() {
           </div>
 
           {/* Bottom Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <SectionCard 
-              title="Document Storage (DMS)" 
+          <div className={`grid grid-cols-1 ${user?.dmsEnabled !== false ? 'lg:grid-cols-2' : ''} gap-6`}>
+            {user?.dmsEnabled !== false && (
+              <SectionCard 
+                title="Document Storage (DMS)" 
               icon={<IconPlan className="w-4 h-4" />}
             >
               <div className="flex flex-col 2xl:flex-row 2xl:items-center gap-6 h-full">
@@ -449,6 +450,7 @@ export default function OrgSettings() {
                 </div>
               </div>
             </SectionCard>
+            )}
 
             <SectionCard 
               title="Recent Organization Activity" 

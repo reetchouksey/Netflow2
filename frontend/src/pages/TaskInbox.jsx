@@ -304,9 +304,18 @@ function TaskInbox() {
     )
     // Employees' "My requests" are ordered by submission date/time, newest first.
     if (scope === 'submitted') {
-      return [...list].sort(
-        (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
-      )
+      const sortedList = [...list].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+      const execMap = new Map()
+      for (const t of sortedList) {
+        if (!t.executionId) {
+          execMap.set(t.id, t)
+          continue
+        }
+        if (!execMap.has(t.executionId)) {
+          execMap.set(t.executionId, t)
+        }
+      }
+      return Array.from(execMap.values())
     }
     return list
   }, [tasks, teamTasks, scope, meId])

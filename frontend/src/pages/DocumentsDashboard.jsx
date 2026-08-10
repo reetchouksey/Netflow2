@@ -43,16 +43,16 @@ const FileIcon = ({ type, className = "w-6 h-6" }) => {
   const color = colors[type] || 'text-gray-500'
 
   if (type === 'PDF') {
-    return <svg className={`${className} ${color}`} viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5zM9 9.5h1v-1H9v1zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm10 5.5h1v-3h-1v3z"/></svg>
+    return <svg className={`${className} ${color}`} viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5zM9 9.5h1v-1H9v1zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm10 5.5h1v-3h-1v3z" /></svg>
   }
   if (type === 'DOCX') {
-    return <svg className={`${className} ${color}`} viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm-1.8 14H10.5l-1-4.2-1 4.2H6.8l-1.5-6h1.7l.8 4.2 1-4.2h1.4l1 4.2.8-4.2h1.6l-1.4 6zM13 9V3.5L18.5 9H13z"/></svg>
+    return <svg className={`${className} ${color}`} viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm-1.8 14H10.5l-1-4.2-1 4.2H6.8l-1.5-6h1.7l.8 4.2 1-4.2h1.4l1 4.2.8-4.2h1.6l-1.4 6zM13 9V3.5L18.5 9H13z" /></svg>
   }
   if (type === 'XLSX') {
-    return <svg className={`${className} ${color}`} viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm-2.8 14h-1.7l-1.2-3.3-1.2 3.3H5.3l2.1-5-2-4.9h1.7l1 3.2 1-3.2h1.6l-2 4.9 2.1 5zM13 9V3.5L18.5 9H13z"/></svg>
+    return <svg className={`${className} ${color}`} viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm-2.8 14h-1.7l-1.2-3.3-1.2 3.3H5.3l2.1-5-2-4.9h1.7l1 3.2 1-3.2h1.6l-2 4.9 2.1 5zM13 9V3.5L18.5 9H13z" /></svg>
   }
   // Generic Image for JPG
-  return <svg className={`${className} ${color}`} viewBox="0 0 24 24" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+  return <svg className={`${className} ${color}`} viewBox="0 0 24 24" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" /></svg>
 }
 
 // ── Header Actions ─────────────────────────────────────────────────────
@@ -70,9 +70,9 @@ function DmsHeaderActions({ loading, error, needsLogin, onSync }) {
       setUploading(true);
       const formData = new FormData();
       formData.append('file', file);
-      
+
       const res = await api.post('/api/uploads', formData);
-      
+
       if (res && onSync) {
         onSync(); // Refresh dashboard data after upload
       }
@@ -95,7 +95,7 @@ function DmsHeaderActions({ loading, error, needsLogin, onSync }) {
         </span>
       </div>
 
-      <button 
+      <button
         onClick={onSync}
         disabled={loading}
         className="flex items-center gap-2 border border-line hover:border-indigo-200 dark:hover:border-indigo-500/30 hover:bg-indigo-50/50 dark:hover:bg-indigo-500/10 rounded-lg px-3 py-1.5 bg-surface shadow-sm text-xs font-semibold text-fg transition disabled:opacity-50"
@@ -104,7 +104,7 @@ function DmsHeaderActions({ loading, error, needsLogin, onSync }) {
         {loading ? 'Syncing...' : 'Sync Now'}
       </button>
 
-      <a 
+      <a
         href="https://dms-documentmanagementsystem-1.onrender.com/login"
         target="_blank"
         rel="noopener noreferrer"
@@ -113,14 +113,14 @@ function DmsHeaderActions({ loading, error, needsLogin, onSync }) {
         <IconSettings className="w-3.5 h-3.5 text-fg-muted" />
         DMS Login
       </a>
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        onChange={handleUpload} 
-        className="hidden" 
-        accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" 
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleUpload}
+        className="hidden"
+        accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
       />
-      <button 
+      <button
         disabled={uploading}
         onClick={() => fileInputRef.current?.click()}
         className="flex items-center gap-2 bg-[#4F6BFF] hover:bg-[#435be0] text-white rounded-lg px-4 py-1.5 shadow-sm text-xs font-semibold transition disabled:opacity-50"
@@ -152,7 +152,7 @@ const FolderNode = ({ node, activeFolderId, setActiveFolderId, depth = 0 }) => {
 
   return (
     <div>
-      <div 
+      <div
         className={`flex items-center gap-2 px-2 py-1.5 text-xs font-medium cursor-pointer rounded-md transition ${activeFolderId === node._id ? 'bg-[#4F6BFF]/10 text-[#4F6BFF]' : 'text-fg hover:bg-surface-2'}`}
         onClick={handleClick}
         style={{ paddingLeft: `${0.5 + depth * 1.25}rem` }}
@@ -167,7 +167,7 @@ const FolderNode = ({ node, activeFolderId, setActiveFolderId, depth = 0 }) => {
         <IconFolder className={`w-3.5 h-3.5 shrink-0 ${activeFolderId === node._id ? 'text-[#4F6BFF]' : 'text-amber-400'}`} />
         <span className="truncate">{node.name}</span>
       </div>
-      
+
       {isOpen && hasChildren && (
         <div className="flex flex-col gap-0.5 mt-0.5">
           {node.children.map(child => (
@@ -249,7 +249,7 @@ export default function DocumentsDashboard() {
         api.get('/api/dms/documents'),
         api.get('/api/dms/stats')
       ])
-      
+
       let fetchedFolders = folderRes.folders || folderRes.data?.folders || []
       let fetchedDocs = docRes.documents || docRes.data?.documents || []
       let fetchedStats = statsRes.stats || statsRes.data?.stats || null
@@ -298,15 +298,15 @@ export default function DocumentsDashboard() {
       setActiveDocUrl(null)
       setActiveDocUrlLoading(true)
       api.get(`/api/dms/documents/${activeDoc._id}/url?mode=view`)
-      .then(data => {
-        if (data && data.url) {
-          setActiveDocUrl(data.url)
-        } else {
-          console.error("DMS URL fetch failed:", data)
-        }
-      })
-      .catch(err => console.error("Network error fetching DMS URL:", err))
-      .finally(() => setActiveDocUrlLoading(false))
+        .then(data => {
+          if (data && data.url) {
+            setActiveDocUrl(data.url)
+          } else {
+            console.error("DMS URL fetch failed:", data)
+          }
+        })
+        .catch(err => console.error("Network error fetching DMS URL:", err))
+        .finally(() => setActiveDocUrlLoading(false))
     } else {
       setActiveDocUrl(null)
       setActiveDocUrlLoading(false)
@@ -389,119 +389,119 @@ export default function DocumentsDashboard() {
       mainClass="flex-1 flex flex-col p-4 md:p-6 pb-24 md:pb-6 h-screen min-h-0 overflow-hidden bg-[#FAFBFF] dark:bg-surface-1"
     >
       <div className="flex-1 flex flex-col min-h-0 gap-5">
-        
+
         {/* Top Metrics Row */}
         {!isTableMaximized && (
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 shrink-0">
-          <div className="bg-white dark:bg-surface border border-line rounded-xl p-4 shadow-sm flex flex-col justify-between hover:shadow-md transition">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-blue-50 text-[#4F6BFF] flex items-center justify-center shrink-0">
-                <IconFolder className="w-5 h-5" />
+            <div className="bg-white dark:bg-surface border border-line rounded-xl p-4 shadow-sm flex flex-col justify-between hover:shadow-md transition">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-50 text-[#4F6BFF] flex items-center justify-center shrink-0">
+                  <IconFolder className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold text-fg-subtle tracking-wide">Total Documents</p>
+                  <p className="text-2xl font-bold tabular-nums text-fg leading-none mt-1">{stats.totalDocs.toLocaleString()}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-[11px] font-semibold text-fg-subtle tracking-wide">Total Documents</p>
-                <p className="text-2xl font-bold tabular-nums text-fg leading-none mt-1">{stats.totalDocs.toLocaleString()}</p>
-              </div>
-            </div>
-            <p className="text-[10px] font-medium text-emerald-600 flex items-center gap-1 mt-3">
-              <span className="text-emerald-500 font-bold">↑</span> {stats.docsTrend}
-            </p>
-          </div>
-
-          <div className="bg-white dark:bg-surface border border-line rounded-xl p-4 shadow-sm flex flex-col justify-between hover:shadow-md transition">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-blue-50 text-[#4F6BFF] flex items-center justify-center shrink-0">
-                <IconFolderOpen className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-[11px] font-semibold text-fg-subtle tracking-wide">Total Folders</p>
-                <p className="text-2xl font-bold tabular-nums text-fg leading-none mt-1">{stats.totalFolders}</p>
-              </div>
-            </div>
-            <p className="text-[10px] font-medium text-emerald-600 flex items-center gap-1 mt-3">
-              <span className="text-emerald-500 font-bold">↑</span> {stats.foldersTrend}
-            </p>
-          </div>
-
-          <div className="bg-white dark:bg-surface border border-[#4F6BFF]/30 dark:border-blue-500/50 rounded-xl p-4 shadow-[0_4px_12px_rgba(79,107,255,0.08)] flex flex-col justify-between relative overflow-hidden group">
-            <div className="absolute inset-x-0 bottom-0 h-1 bg-[#4F6BFF]"></div>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-[#4F6BFF]/10 flex items-center justify-center shrink-0">
-                <IconClock className="w-5 h-5 text-[#4F6BFF]" />
-              </div>
-              <div>
-                <p className="text-xs text-fg-muted font-bold uppercase tracking-wider mb-0.5">Storage Used ({stats.plan})</p>
-                <p className="text-2xl font-black text-fg leading-none tracking-tight">
-                  {stats.displayStorageUsed}
-                </p>
-              </div>
-            </div>
-            <div className="mt-3">
-              <p className="text-[10px] font-medium text-fg-muted">
-                of {stats.limitMb >= 1024 ? `${Math.round(stats.limitMb / 1024)} GB` : `${stats.limitMb} MB`} ({stats.storagePct}%)
+              <p className="text-[10px] font-medium text-emerald-600 flex items-center gap-1 mt-3">
+                <span className="text-emerald-500 font-bold">↑</span> {stats.docsTrend}
               </p>
-              <div className="w-full bg-surface-2 rounded-full h-1.5 mt-1 overflow-hidden">
-                <div className="bg-[#4F6BFF] h-1.5 rounded-full" style={{ width: `${Math.min(100, stats.storagePct)}%` }}></div>
-              </div>
             </div>
-          </div>
 
-          <div className="bg-white dark:bg-surface border border-line rounded-xl p-4 shadow-sm flex flex-col justify-between hover:shadow-md transition">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-orange-50 text-orange-500 flex items-center justify-center shrink-0">
-                <IconCloudUpload className="w-5 h-5" />
+            <div className="bg-white dark:bg-surface border border-line rounded-xl p-4 shadow-sm flex flex-col justify-between hover:shadow-md transition">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-50 text-[#4F6BFF] flex items-center justify-center shrink-0">
+                  <IconFolderOpen className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold text-fg-subtle tracking-wide">Total Folders</p>
+                  <p className="text-2xl font-bold tabular-nums text-fg leading-none mt-1">{stats.totalFolders}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-[11px] font-semibold text-fg-subtle tracking-wide">Documents Uploaded</p>
-                <p className="text-2xl font-bold tabular-nums text-fg leading-none mt-1">{stats.uploadedMonth.toLocaleString()}</p>
-              </div>
+              <p className="text-[10px] font-medium text-emerald-600 flex items-center gap-1 mt-3">
+                <span className="text-emerald-500 font-bold">↑</span> {stats.foldersTrend}
+              </p>
             </div>
-            <p className="text-[10px] font-medium text-fg-muted mt-3">This Month</p>
-          </div>
 
-          <div className="bg-white dark:bg-surface border border-line rounded-xl p-4 shadow-sm flex flex-col justify-between hover:shadow-md transition hidden lg:flex">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-500 flex items-center justify-center shrink-0">
-                <IconCloudDownload className="w-5 h-5" />
+            <div className="bg-white dark:bg-surface border border-[#4F6BFF]/30 dark:border-blue-500/50 rounded-xl p-4 shadow-[0_4px_12px_rgba(79,107,255,0.08)] flex flex-col justify-between relative overflow-hidden group">
+              <div className="absolute inset-x-0 bottom-0 h-1 bg-[#4F6BFF]"></div>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-[#4F6BFF]/10 flex items-center justify-center shrink-0">
+                  <IconClock className="w-5 h-5 text-[#4F6BFF]" />
+                </div>
+                <div>
+                  <p className="text-xs text-fg-muted font-bold uppercase tracking-wider mb-0.5">Storage Used ({stats.plan})</p>
+                  <p className="text-2xl font-black text-fg leading-none tracking-tight">
+                    {stats.displayStorageUsed}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-[11px] font-semibold text-fg-subtle tracking-wide">Documents Downloaded</p>
-                <p className="text-2xl font-bold tabular-nums text-fg leading-none mt-1">{stats.downloadedMonth}</p>
+              <div className="mt-3">
+                <p className="text-[10px] font-medium text-fg-muted">
+                  of {stats.limitMb >= 1024 ? `${Math.round(stats.limitMb / 1024)} GB` : `${stats.limitMb} MB`} ({stats.storagePct}%)
+                </p>
+                <div className="w-full bg-surface-2 rounded-full h-1.5 mt-1 overflow-hidden">
+                  <div className="bg-[#4F6BFF] h-1.5 rounded-full" style={{ width: `${Math.min(100, stats.storagePct)}%` }}></div>
+                </div>
               </div>
             </div>
-            <p className="text-[10px] font-medium text-fg-muted mt-3">This Month</p>
-          </div>
+
+            <div className="bg-white dark:bg-surface border border-line rounded-xl p-4 shadow-sm flex flex-col justify-between hover:shadow-md transition">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-orange-50 text-orange-500 flex items-center justify-center shrink-0">
+                  <IconCloudUpload className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold text-fg-subtle tracking-wide">Documents Uploaded</p>
+                  <p className="text-2xl font-bold tabular-nums text-fg leading-none mt-1">{stats.uploadedMonth.toLocaleString()}</p>
+                </div>
+              </div>
+              <p className="text-[10px] font-medium text-fg-muted mt-3">This Month</p>
+            </div>
+
+            <div className="bg-white dark:bg-surface border border-line rounded-xl p-4 shadow-sm flex flex-col justify-between hover:shadow-md transition hidden lg:flex">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-500 flex items-center justify-center shrink-0">
+                  <IconCloudDownload className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold text-fg-subtle tracking-wide">Documents Downloaded</p>
+                  <p className="text-2xl font-bold tabular-nums text-fg leading-none mt-1">{stats.downloadedMonth}</p>
+                </div>
+              </div>
+              <p className="text-[10px] font-medium text-fg-muted mt-3">This Month</p>
+            </div>
           </div>
         )}
 
         {/* Three Panel Main Layout */}
         <div className="flex-1 min-h-0 flex gap-4">
-          
+
           {/* Left Panel: Folder Tree */}
           {!isTableMaximized && (
             <div className="w-64 bg-white dark:bg-surface border border-line rounded-xl shadow-sm flex flex-col min-h-0 shrink-0">
-            <div className="p-4 border-b border-line flex items-center justify-between shrink-0">
-              <h3 className="text-xs font-bold text-fg">Folder Structure</h3>
-              <div className="flex items-center gap-2">
-                <button className="text-fg-muted hover:text-fg transition"><IconSync className="w-3.5 h-3.5" /></button>
+              <div className="p-4 border-b border-line flex items-center justify-between shrink-0">
+                <h3 className="text-xs font-bold text-fg">Folder Structure</h3>
+                <div className="flex items-center gap-2">
+                  <button className="text-fg-muted hover:text-fg transition"><IconSync className="w-3.5 h-3.5" /></button>
+                </div>
               </div>
-            </div>
-            <div className="flex-1 overflow-y-auto p-2">
-              <div className="flex flex-col gap-1">
-                <div className="flex flex-col gap-0.5 mt-2">
-                  {folderTree.map(f => (
-                    <FolderNode 
-                      key={f._id} 
-                      node={f} 
-                      activeFolderId={activeFolderId} 
-                      setActiveFolderId={setActiveFolderId} 
-                      depth={0} 
-                    />
-                  ))}
+              <div className="flex-1 overflow-y-auto p-2">
+                <div className="flex flex-col gap-1">
+                  <div className="flex flex-col gap-0.5 mt-2">
+                    {folderTree.map(f => (
+                      <FolderNode
+                        key={f._id}
+                        node={f}
+                        activeFolderId={activeFolderId}
+                        setActiveFolderId={setActiveFolderId}
+                        depth={0}
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
           )}
 
           {/* Center Panel: Document List */}
@@ -509,7 +509,7 @@ export default function DocumentsDashboard() {
             {/* Breadcrumb & Toolbar */}
             <div className="p-4 border-b border-line shrink-0">
               <div className="text-[11px] font-semibold text-fg-muted mb-3 flex items-center gap-1.5">
-                <span 
+                <span
                   className="hover:text-fg cursor-pointer transition"
                   onClick={() => setActiveFolderId(null)}
                 >
@@ -527,7 +527,7 @@ export default function DocumentsDashboard() {
                         if (parent) {
                           return (
                             <>
-                              <span 
+                              <span
                                 className="hover:text-fg cursor-pointer transition"
                                 onClick={() => setActiveFolderId(parent._id)}
                               >
@@ -549,34 +549,34 @@ export default function DocumentsDashboard() {
               <div className="flex items-center gap-3">
                 <div className="flex-1 relative">
                   <IconSearch className="w-4 h-4 text-fg-subtle absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input 
-                    type="text" 
-                    placeholder="Search documents by name, type or tags..." 
+                  <input
+                    type="text"
+                    placeholder="Search documents by name, type or tags..."
                     className="w-full pl-9 pr-4 py-1.5 text-xs bg-surface border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4F6BFF] focus:border-transparent transition"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 </div>
                 <div className="relative">
-                  <button 
+                  <button
                     onClick={() => {
                       if (!showFilters) setTempFilters(filters)
                       setShowFilters(!showFilters)
-                    }} 
+                    }}
                     className={`flex items-center gap-2 border border-line hover:bg-surface-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition shrink-0 ${showFilters ? 'bg-surface-2 text-fg' : 'text-fg-muted'}`}
                   >
                     <IconFilter className="w-3.5 h-3.5" /> Filters
                   </button>
-                  
+
                   {/* Filters Dropdown */}
                   {showFilters && (
                     <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-surface border border-line rounded-xl shadow-lg z-50 p-4 animate-in fade-in slide-in-from-top-2">
                       <h4 className="text-xs font-bold text-fg mb-3">Filter Documents</h4>
-                      
+
                       <div className="space-y-4">
                         <div>
                           <label className="text-[10px] font-bold text-fg-muted uppercase tracking-wider mb-1.5 block">Document Type</label>
-                          <select 
+                          <select
                             className="w-full text-xs bg-surface border border-line rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#4F6BFF]"
                             value={tempFilters.type}
                             onChange={(e) => setTempFilters({ ...tempFilters, type: e.target.value })}
@@ -587,10 +587,10 @@ export default function DocumentsDashboard() {
                             ))}
                           </select>
                         </div>
-                        
+
                         <div>
                           <label className="text-[10px] font-bold text-fg-muted uppercase tracking-wider mb-1.5 block">Date Added</label>
-                          <select 
+                          <select
                             className="w-full text-xs bg-surface border border-line rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#4F6BFF]"
                             value={tempFilters.dateRange}
                             onChange={(e) => setTempFilters({ ...tempFilters, dateRange: e.target.value })}
@@ -602,9 +602,9 @@ export default function DocumentsDashboard() {
                           </select>
                         </div>
                       </div>
-                      
+
                       <div className="mt-4 pt-3 border-t border-line flex justify-end gap-2">
-                        <button 
+                        <button
                           onClick={() => {
                             setFilters({ type: 'All', dateRange: 'Anytime' })
                             setTempFilters({ type: 'All', dateRange: 'Anytime' })
@@ -614,7 +614,7 @@ export default function DocumentsDashboard() {
                         >
                           Reset
                         </button>
-                        <button 
+                        <button
                           onClick={() => {
                             setFilters(tempFilters)
                             setShowFilters(false)
@@ -628,21 +628,21 @@ export default function DocumentsDashboard() {
                   )}
                 </div>
                 <div className="relative">
-                  <div 
+                  <div
                     onClick={() => setShowSortMenu(!showSortMenu)}
                     className="flex items-center gap-2 shrink-0 cursor-pointer hover:bg-surface-2 px-2 py-1.5 rounded-lg transition"
                   >
                     <span className="text-xs text-fg-muted font-medium hidden md:inline">Sort: <strong className="text-fg">{
                       sortBy === 'newest' ? 'Newest First' :
-                      sortBy === 'oldest' ? 'Oldest First' :
-                      sortBy === 'nameAsc' ? 'Name (A-Z)' :
-                      sortBy === 'nameDesc' ? 'Name (Z-A)' :
-                      sortBy === 'sizeDesc' ? 'Size (Largest)' :
-                      'Size (Smallest)'
+                        sortBy === 'oldest' ? 'Oldest First' :
+                          sortBy === 'nameAsc' ? 'Name (A-Z)' :
+                            sortBy === 'nameDesc' ? 'Name (Z-A)' :
+                              sortBy === 'sizeDesc' ? 'Size (Largest)' :
+                                'Size (Smallest)'
                     }</strong></span>
                     <IconChevronDown className="w-3 h-3 text-fg-muted hidden md:inline" />
                   </div>
-                  
+
                   {showSortMenu && (
                     <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-surface border border-line rounded-xl shadow-lg z-50 p-2 animate-in fade-in slide-in-from-top-2">
                       {[
@@ -668,7 +668,7 @@ export default function DocumentsDashboard() {
                   )}
                 </div>
 
-                <button 
+                <button
                   onClick={() => setIsTableMaximized(!isTableMaximized)}
                   className="p-1.5 border border-line rounded-lg bg-surface hover:bg-surface-2 transition text-fg-muted shrink-0"
                   title={isTableMaximized ? "Restore Table View" : "Maximize Table View"}
@@ -678,7 +678,7 @@ export default function DocumentsDashboard() {
               </div>
             </div>
 
-    {/* Document Table */}
+            {/* Document Table */}
             <div className="flex-1 overflow-auto">
               {needsLogin ? (
                 <div className="flex-1 flex flex-col items-center justify-center p-8 bg-surface-1 h-full">
@@ -881,11 +881,11 @@ export default function DocumentsDashboard() {
                 )
               })()}
             </div>
-            
+
             {/* Table Footer */}
             <div className="p-4 border-t border-line flex items-center justify-between shrink-0 bg-surface-1">
               <p className="text-xs text-fg-muted font-medium">
-                {documents.length > 0 
+                {documents.length > 0
                   ? `Showing 1 to ${documents.length} of ${stats.totalDocs} documents`
                   : `Showing 0 documents`}
               </p>
@@ -905,7 +905,7 @@ export default function DocumentsDashboard() {
               uploadedByObj = { name: activeDoc.uploadedBy }
             }
             const avatarStr = uploadedByObj.avatar || uploadedByObj.name?.substring(0, 2).toUpperCase() || 'U'
-            
+
             let displaySize = '0 B'
             if (activeDoc.sizeBytes) {
               const size = activeDoc.sizeBytes
@@ -914,7 +914,7 @@ export default function DocumentsDashboard() {
               else displaySize = `${(size / (1024 * 1024)).toFixed(2)} MB`
             }
             const displayDate = new Date(activeDoc.createdAt).toLocaleDateString('en-GB')
-            
+
             return (
               <div className="w-72 xl:w-80 bg-white dark:bg-surface border border-line rounded-xl shadow-sm flex flex-col min-h-0 shrink-0 relative overflow-hidden">
                 <div className="p-3 flex items-center justify-between border-b border-line shrink-0">
@@ -928,19 +928,19 @@ export default function DocumentsDashboard() {
                     </button>
                   </div>
                 </div>
-                
+
                 <div className="flex-1 overflow-y-auto pb-4">
                   {/* Preview Thumbnail */}
                   <div className="p-4 bg-surface-2/50 flex flex-col items-center justify-center min-h-[140px] border-b border-line">
                     <FileIcon type={getDisplayType(activeDoc)} className="w-16 h-16 drop-shadow-sm mb-3" />
                     <div className="flex gap-2">
-                      <button onClick={() => setIsFullscreenPreview(true)} className="px-3 py-1 bg-white dark:bg-surface border border-line rounded-md text-[10px] font-bold text-fg hover:bg-surface-2 shadow-sm transition flex items-center gap-1.5"><IconEye className="w-3.5 h-3.5"/> Preview</button>
-                      <button 
-                        onClick={() => window.open(activeDocUrl || '#', '_blank')} 
+                      <button onClick={() => setIsFullscreenPreview(true)} className="px-3 py-1 bg-white dark:bg-surface border border-line rounded-md text-[10px] font-bold text-fg hover:bg-surface-2 shadow-sm transition flex items-center gap-1.5"><IconEye className="w-3.5 h-3.5" /> Preview</button>
+                      <button
+                        onClick={() => window.open(activeDocUrl || '#', '_blank')}
                         disabled={activeDocUrlLoading || !activeDocUrl}
                         className="px-3 py-1 bg-white dark:bg-surface border border-line rounded-md text-[10px] font-bold text-fg hover:bg-surface-2 shadow-sm transition flex items-center gap-1.5 disabled:opacity-50"
                       >
-                        <IconCloudDownload className="w-3.5 h-3.5"/> {activeDocUrlLoading ? '...' : 'Download'}
+                        <IconCloudDownload className="w-3.5 h-3.5" /> {activeDocUrlLoading ? '...' : 'Download'}
                       </button>
                     </div>
                   </div>
@@ -964,7 +964,7 @@ export default function DocumentsDashboard() {
                       <span className="text-fg-muted font-medium">Size</span>
                       <span className="col-span-2 font-semibold text-fg tabular-nums">{displaySize}</span>
                     </div>
-                    
+
                     <div className="pt-2 border-t border-line grid grid-cols-3 gap-2 items-center">
                       <span className="text-fg-muted font-medium">Uploaded By</span>
                       <div className="col-span-2 flex items-center gap-2">
@@ -1025,8 +1025,8 @@ export default function DocumentsDashboard() {
                 <FileIcon type={getDisplayType(activeDoc)} className="w-6 h-6" />
                 <h3 className="font-bold text-fg truncate max-w-lg">{activeDoc.name}</h3>
               </div>
-              <button 
-                onClick={() => setIsFullscreenPreview(false)} 
+              <button
+                onClick={() => setIsFullscreenPreview(false)}
                 className="p-2 bg-surface hover:bg-surface-2 rounded-lg text-fg-muted hover:text-fg transition shadow-sm border border-line"
               >
                 <IconClose className="w-5 h-5" />
@@ -1039,22 +1039,22 @@ export default function DocumentsDashboard() {
                 <>
                   <FileIcon type={getDisplayType(activeDoc)} className="w-40 h-40 drop-shadow-md mb-6" />
                   <p className="text-fg-muted font-bold text-lg mb-2">Previewing {getDisplayType(activeDoc)} Document</p>
-                  <p className="text-fg-subtle text-sm mb-6">{activeDoc.sizeBytes ? `${(activeDoc.sizeBytes / (1024*1024)).toFixed(2)} MB` : '0 MB'} • Uploaded by {activeDoc.uploadedBy?.name || 'Unknown'}</p>
-                  
+                  <p className="text-fg-subtle text-sm mb-6">{activeDoc.sizeBytes ? `${(activeDoc.sizeBytes / (1024 * 1024)).toFixed(2)} MB` : '0 MB'} • Uploaded by {activeDoc.uploadedBy?.name || 'Unknown'}</p>
+
                   <div className="flex gap-4">
-                    <button 
+                    <button
                       onClick={() => window.open(activeDocUrl || '#', '_blank')}
                       disabled={activeDocUrlLoading || !activeDocUrl}
                       className="px-6 py-3 bg-[#4F6BFF] text-white rounded-xl font-bold shadow-md shadow-[#4F6BFF]/20 transition hover:bg-[#435be0] hover:shadow-lg flex items-center gap-2 disabled:opacity-50"
                     >
-                      <IconCloudDownload className="w-5 h-5"/> {activeDocUrlLoading ? 'Loading...' : 'Download Document'}
+                      <IconCloudDownload className="w-5 h-5" /> {activeDocUrlLoading ? 'Loading...' : 'Download Document'}
                     </button>
-                    <button 
+                    <button
                       onClick={() => window.open(activeDocUrl || '#', '_blank')}
                       disabled={activeDocUrlLoading || !activeDocUrl}
                       className="px-6 py-3 bg-white dark:bg-surface border border-line text-fg rounded-xl font-bold shadow-sm transition hover:bg-surface-2 flex items-center gap-2 disabled:opacity-50"
                     >
-                      <IconEye className="w-5 h-5"/> {activeDocUrlLoading ? 'Loading...' : 'Open in Browser'}
+                      <IconEye className="w-5 h-5" /> {activeDocUrlLoading ? 'Loading...' : 'Open in Browser'}
                     </button>
                   </div>
                 </>

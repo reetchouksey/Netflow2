@@ -185,6 +185,7 @@ export const NODE_DEFAULTS = {
     apiMethod: "POST",
     apiHeaders: [],
     apiBody: "",
+    sendAllData: true,
     apiAuth: { mode: "none" },
     saveResponseAs: "",
     continueOnError: true,

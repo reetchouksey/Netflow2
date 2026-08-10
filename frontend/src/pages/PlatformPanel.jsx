@@ -16,6 +16,7 @@ import EmptyState from '../components/EmptyState'
 import { AlertBanner } from '../components/Alert'
 import Modal from '../components/Modal'
 import UsageMeter from '../components/UsageMeter'
+import ThreeDToggle from '../components/ThreeDToggle'
 import { useOutsideDismiss } from '../utils/a11y'
 import {
   PLAN_OPTIONS, PLAN_LABELS, LIMIT_FIELDS, METER_ORDER,
@@ -531,24 +532,18 @@ function OrgDialog({ org, onClose, onSaved }) {
         <div className="rounded-lg border border-line bg-surface-2/50 p-3 space-y-4">
           <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-semibold text-fg">Document storage (DMS)</p>
+                <p className="text-sm font-semibold text-fg">Document Management Systems</p>
                 <p className="text-[11px] text-fg-subtle">
-                  Configure global and per-department connection keys to BaseLayer DMS.
+                  Configure document storage and management system settings.
                 </p>
               </div>
-              <label className="flex items-center gap-2 text-sm font-medium text-fg cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={form.dmsEnabled}
-                  onChange={set('dmsEnabled')}
-                  className="rounded"
-                />
-                Enable DMS
-              </label>
+              <ThreeDToggle 
+                checked={form.dmsEnabled} 
+                onChange={(val) => setForm(f => ({ ...f, dmsEnabled: val }))} 
+              />
             </div>
 
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-fg-muted">Org-level fallback</p>
+            <div hidden={!form.dmsEnabled} className="space-y-2">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <label className="block">
                   <span className="text-xs font-medium text-fg-muted">DMS API Key</span>
@@ -561,7 +556,7 @@ function OrgDialog({ org, onClose, onSaved }) {
                     className={fieldCls}
                   />
                   <span className="text-[10px] text-fg-subtle">
-                    Used if a department doesn't have its own key.
+                   Api key for document management system.
                   </span>
                 </label>
                 <label className="block">
@@ -573,7 +568,7 @@ function OrgDialog({ org, onClose, onSaved }) {
                     className={fieldCls}
                   />
                   <span className="text-[10px] text-fg-subtle">
-                    Root folder. Department folders are auto-created under this.
+                    Root folder auto-created
                   </span>
                 </label>
               </div>
