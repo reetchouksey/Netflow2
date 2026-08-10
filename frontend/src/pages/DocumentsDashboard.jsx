@@ -678,48 +678,46 @@ export default function DocumentsDashboard() {
               </div>
             </div>
 
-            {/* Document Table */}
+    {/* Document Table */}
             <div className="flex-1 overflow-auto">
               {needsLogin ? (
                 <div className="flex-1 flex flex-col items-center justify-center p-8 bg-surface-1 h-full">
+                  <div className="w-full max-w-sm bg-surface-1 rounded-2xl p-8 shadow-[0px_9px_16px_rgba(0,0,0,0.20),-8px_-8px_16px_rgba(255,255,255,0.8)] dark:shadow-[8px_8px_16px_rgba(0,0,0,0.3),-8px_-8px_16px_rgba(255,255,255,0.05)] border-none">
                   <h3 className="text-xl font-bold text-fg mb-2">DMS Authentication Required</h3>
-        
-                  
-                  <div className="w-full max-w-sm bg-white dark:bg-surface border border-line rounded-xl p-6 shadow-sm">
-                    <form onSubmit={handleDmsLogin} className="flex flex-col gap-4">
+                    <form onSubmit={handleDmsLogin} className="flex flex-col gap-6">
                       <div>
-                        <label className="block text-xs font-semibold text-fg-subtle mb-1.5">Email Address</label>
+                        <label className="block text-xs font-semibold text-fg-subtle mb-2 px-1">Email Address</label>
                         <input
                           type="email"
                           placeholder="you@organization.com"
-                          className="w-full bg-surface-2 border border-line rounded-lg px-3 py-2 text-sm text-fg placeholder-fg-muted focus:outline-none focus:ring-2 focus:ring-[#4F6BFF] focus:border-transparent transition"
+                          className="w-full bg-surface-1 rounded-xl px-4 py-3 text-sm text-fg placeholder-fg-muted focus:outline-none focus:ring-1 focus:ring-[#4F6BFF]/50 transition-all shadow-[inset_4px_4px_8px_rgba(0,0,0,0.1),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] dark:shadow-[inset_4px_4px_8px_rgba(0,0,0,0.3),inset_-4px_-4px_8px_rgba(255,255,255,0.05)] border-none"
                           value={loginEmail}
                           onChange={(e) => setLoginEmail(e.target.value)}
                           required
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-fg-subtle mb-1.5">Password</label>
+                        <label className="block text-xs font-semibold text-fg-subtle mb-2 px-1">Password</label>
                         <input
                           type="password"
                           placeholder="••••••••"
-                          className="w-full bg-surface-2 border border-line rounded-lg px-3 py-2 text-sm text-fg placeholder-fg-muted focus:outline-none focus:ring-2 focus:ring-[#4F6BFF] focus:border-transparent transition"
+                          className="w-full bg-surface-1 rounded-xl px-4 py-3 text-sm text-fg placeholder-fg-muted focus:outline-none focus:ring-1 focus:ring-[#4F6BFF]/50 transition-all shadow-[inset_4px_4px_8px_rgba(0,0,0,0.1),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] dark:shadow-[inset_4px_4px_8px_rgba(0,0,0,0.3),inset_-4px_-4px_8px_rgba(255,255,255,0.05)] border-none"
                           value={loginPassword}
                           onChange={(e) => setLoginPassword(e.target.value)}
                           required
                         />
                       </div>
-                      
+
                       {loginError && (
-                        <div className="p-3 bg-red-50 text-red-600 border border-red-100 rounded-lg text-xs font-medium">
+                        <div className="p-3 bg-red-50/50 text-red-600 rounded-xl text-xs font-medium shadow-[inset_2px_2px_4px_rgba(239,68,68,0.1),inset_-2px_-2px_4px_rgba(255,255,255,0.5)] border-none">
                           {loginError}
                         </div>
                       )}
-                      
+
                       <button
                         type="submit"
                         disabled={loginLoading}
-                        className="mt-2 w-full bg-[#4F6BFF] hover:bg-blue-600 text-white font-bold py-2.5 rounded-lg transition-colors shadow-sm disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        className="mt-4 w-full bg-blue-500 text-white font-bold py-3.5 rounded-xl transition-all shadow-[0px_9px_30px_rgba(0,0,0,0.20),-6px_-6px_12px_rgba(255,255,255,0.8)] dark:shadow-[6px_6px_12px_rgba(0,0,0,0.3),-6px_-6px_12px_rgba(255,255,255,0.05)] hover:shadow-[4px_4px_8px_rgba(0,0,0,0.1),-4px_-4px_8px_rgba(255,255,255,0.8)] dark:hover:shadow-[4px_4px_8px_rgba(0,0,0,0.3),-4px_-4px_8px_rgba(255,255,255,0.05)] active:shadow-[inset_4px_4px_8px_rgba(0,0,0,0.1),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] dark:active:shadow-[inset_4px_4px_8px_rgba(0,0,0,0.3),inset_-4px_-4px_8px_rgba(255,255,255,0.05)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 border-none"
                       >
                         {loginLoading ? 'Connecting...' : 'Connect to BaseLayer'}
                       </button>
@@ -735,153 +733,153 @@ export default function DocumentsDashboard() {
                   <p className="text-fg-muted text-center max-w-md">{error}</p>
                 </div>
               ) : (() => {
-                  // Filter documents by activeFolderId and searchQuery
-                  let displayedDocs = documents
+                // Filter documents by activeFolderId and searchQuery
+                let displayedDocs = documents
 
-                  if (activeFolderId) {
-                    displayedDocs = displayedDocs.filter(doc => {
-                      const folder = folders.find(f => f._id === activeFolderId)
-                      if (!folder) return false
-                      if (doc.folderPath && doc.folderPath.startsWith(folder._id)) return true
-                      return doc.folderPath === folder.name || doc.department === folder.name
+                if (activeFolderId) {
+                  displayedDocs = displayedDocs.filter(doc => {
+                    const folder = folders.find(f => f._id === activeFolderId)
+                    if (!folder) return false
+                    if (doc.folderPath && doc.folderPath.startsWith(folder._id)) return true
+                    return doc.folderPath === folder.name || doc.department === folder.name
+                  })
+                }
+
+                if (searchQuery.trim()) {
+                  const q = searchQuery.toLowerCase()
+                  displayedDocs = displayedDocs.filter(doc => {
+                    const matchName = doc.name?.toLowerCase().includes(q)
+                    const matchType = doc.type?.toLowerCase().includes(q)
+                    const matchTags = doc.tags?.some(t => {
+                      const tagText = typeof t === 'string' ? t : (t.v || t.k || JSON.stringify(t))
+                      return tagText.toLowerCase().includes(q)
                     })
-                  }
+                    return matchName || matchType || matchTags
+                  })
+                }
 
-                  if (searchQuery.trim()) {
-                    const q = searchQuery.toLowerCase()
-                    displayedDocs = displayedDocs.filter(doc => {
-                      const matchName = doc.name?.toLowerCase().includes(q)
-                      const matchType = doc.type?.toLowerCase().includes(q)
-                      const matchTags = doc.tags?.some(t => {
-                        const tagText = typeof t === 'string' ? t : (t.v || t.k || JSON.stringify(t))
-                        return tagText.toLowerCase().includes(q)
-                      })
-                      return matchName || matchType || matchTags
-                    })
-                  }
+                // Apply selected Filters (Type, Date Range)
+                if (filters.type !== 'All') {
+                  displayedDocs = displayedDocs.filter(doc => doc.type === filters.type)
+                }
 
-                  // Apply selected Filters (Type, Date Range)
-                  if (filters.type !== 'All') {
-                    displayedDocs = displayedDocs.filter(doc => doc.type === filters.type)
-                  }
+                if (filters.dateRange !== 'Anytime') {
+                  const now = new Date()
+                  displayedDocs = displayedDocs.filter(doc => {
+                    if (!doc.createdAt) return false
+                    const docDate = new Date(doc.createdAt)
+                    if (filters.dateRange === 'Last 7 Days') {
+                      return (now - docDate) <= (7 * 24 * 60 * 60 * 1000)
+                    }
+                    if (filters.dateRange === 'Last 30 Days') {
+                      return (now - docDate) <= (30 * 24 * 60 * 60 * 1000)
+                    }
+                    if (filters.dateRange === 'This Year') {
+                      return docDate.getFullYear() === now.getFullYear()
+                    }
+                    return true
+                  })
+                }
 
-                  if (filters.dateRange !== 'Anytime') {
-                    const now = new Date()
-                    displayedDocs = displayedDocs.filter(doc => {
-                      if (!doc.createdAt) return false
-                      const docDate = new Date(doc.createdAt)
-                      if (filters.dateRange === 'Last 7 Days') {
-                        return (now - docDate) <= (7 * 24 * 60 * 60 * 1000)
-                      }
-                      if (filters.dateRange === 'Last 30 Days') {
-                        return (now - docDate) <= (30 * 24 * 60 * 60 * 1000)
-                      }
-                      if (filters.dateRange === 'This Year') {
-                        return docDate.getFullYear() === now.getFullYear()
-                      }
-                      return true
-                    })
-                  }
+                // Apply Sorting
+                if (sortBy === 'newest') displayedDocs.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+                else if (sortBy === 'oldest') displayedDocs.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
+                else if (sortBy === 'nameAsc') displayedDocs.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                else if (sortBy === 'nameDesc') displayedDocs.sort((a, b) => (b.name || '').localeCompare(a.name || ''))
+                else if (sortBy === 'sizeDesc') displayedDocs.sort((a, b) => (b.sizeBytes || 0) - (a.sizeBytes || 0))
+                else if (sortBy === 'sizeAsc') displayedDocs.sort((a, b) => (a.sizeBytes || 0) - (b.sizeBytes || 0))
 
-                  // Apply Sorting
-                  if (sortBy === 'newest') displayedDocs.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
-                  else if (sortBy === 'oldest') displayedDocs.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
-                  else if (sortBy === 'nameAsc') displayedDocs.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-                  else if (sortBy === 'nameDesc') displayedDocs.sort((a, b) => (b.name || '').localeCompare(a.name || ''))
-                  else if (sortBy === 'sizeDesc') displayedDocs.sort((a, b) => (b.sizeBytes || 0) - (a.sizeBytes || 0))
-                  else if (sortBy === 'sizeAsc') displayedDocs.sort((a, b) => (a.sizeBytes || 0) - (b.sizeBytes || 0))
-
-                  if (displayedDocs.length === 0) {
-                    return (
-                      <div className="flex-1 flex flex-col items-center justify-center p-8 bg-surface-1 h-full text-fg-muted">
-                        No documents found in this folder.
-                      </div>
-                    )
-                  }
-
+                if (displayedDocs.length === 0) {
                   return (
-                    <table className="w-full text-left text-xs whitespace-nowrap min-w-[700px]">
-                      <thead className="sticky top-0 bg-white dark:bg-surface z-10 border-b border-line shadow-sm">
-                        <tr className="text-[10px] text-fg-muted uppercase tracking-wider">
-                          <th className="px-4 py-3 font-bold w-1/3">Name</th>
-                          <th className="px-4 py-3 font-bold">Type</th>
-                          <th className="px-4 py-3 font-bold">Uploaded By</th>
-                          <th className="px-4 py-3 font-bold">Size</th>
-                          <th className="px-4 py-3 font-bold">Uploaded On</th>
-                          <th className="px-4 py-3 font-bold text-center">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-line">
-                        {displayedDocs.map(doc => {
-                      const isSelected = activeDoc?._id === doc._id
-                      let uploadedByObj = doc.uploadedBy || {}
-                      if (typeof doc.uploadedBy === 'string') {
-                        uploadedByObj = { name: doc.uploadedBy }
-                      }
-                      const avatarStr = uploadedByObj.avatar || uploadedByObj.name?.substring(0, 2).toUpperCase() || 'U'
-                      
-                      let displaySize = '0 B'
-                      if (doc.sizeBytes) {
-                        const size = doc.sizeBytes
-                        if (size < 1024) displaySize = `${size} B`
-                        else if (size < 1024 * 1024) displaySize = `${(size / 1024).toFixed(1)} KB`
-                        else displaySize = `${(size / (1024 * 1024)).toFixed(2)} MB`
-                      }
-                      
-                      const displayDate = new Date(doc.createdAt).toLocaleDateString('en-GB')
+                    <div className="flex-1 flex flex-col items-center justify-center p-8 bg-surface-1 h-full text-fg-muted">
+                      No documents found in this folder.
+                    </div>
+                  )
+                }
 
-                      return (
-                        <tr 
-                          key={doc._id} 
-                          className={`group hover:bg-[#4F6BFF]/5 transition cursor-pointer ${isSelected ? 'bg-[#4F6BFF]/5' : ''}`}
-                          onClick={() => setActiveDoc(doc)}
-                        >
-                          <td className="px-4 py-3 flex items-center gap-3">
-                            <FileIcon type={getDisplayType(doc)} className="w-6 h-6 shrink-0" />
-                            <div className="min-w-0">
-                              <p className={`font-semibold truncate max-w-[200px] xl:max-w-[250px] ${isSelected ? 'text-[#4F6BFF]' : 'text-fg'}`}>{doc.name}</p>
-                              <div className="flex gap-1.5 mt-1">
-                                {doc.tags?.slice(0, 1).map((t, idx) => {
-                                  const tagText = typeof t === 'string' ? t : (t.v || t.k || JSON.stringify(t))
-                                  return (
-                                    <span key={idx} className={`text-[9px] px-1.5 rounded font-bold uppercase bg-blue-50 text-blue-600 border border-blue-100`}>{tagText}</span>
-                                  )
-                                })}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 font-medium text-fg">{doc.type}</td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-surface-3 flex items-center justify-center text-[9px] font-bold text-fg-subtle">
-                                {avatarStr}
-                              </div>
+                return (
+                  <table className="w-full text-left text-xs whitespace-nowrap min-w-[700px]">
+                    <thead className="sticky top-0 bg-white dark:bg-surface z-10 border-b border-line shadow-sm">
+                      <tr className="text-[10px] text-fg-muted uppercase tracking-wider">
+                        <th className="px-4 py-3 font-bold w-1/3">Name</th>
+                        <th className="px-4 py-3 font-bold">Type</th>
+                        <th className="px-4 py-3 font-bold">Uploaded By</th>
+                        <th className="px-4 py-3 font-bold">Size</th>
+                        <th className="px-4 py-3 font-bold">Uploaded On</th>
+                        <th className="px-4 py-3 font-bold text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-line">
+                      {displayedDocs.map(doc => {
+                        const isSelected = activeDoc?._id === doc._id
+                        let uploadedByObj = doc.uploadedBy || {}
+                        if (typeof doc.uploadedBy === 'string') {
+                          uploadedByObj = { name: doc.uploadedBy }
+                        }
+                        const avatarStr = uploadedByObj.avatar || uploadedByObj.name?.substring(0, 2).toUpperCase() || 'U'
+
+                        let displaySize = '0 B'
+                        if (doc.sizeBytes) {
+                          const size = doc.sizeBytes
+                          if (size < 1024) displaySize = `${size} B`
+                          else if (size < 1024 * 1024) displaySize = `${(size / 1024).toFixed(1)} KB`
+                          else displaySize = `${(size / (1024 * 1024)).toFixed(2)} MB`
+                        }
+
+                        const displayDate = new Date(doc.createdAt).toLocaleDateString('en-GB')
+
+                        return (
+                          <tr
+                            key={doc._id}
+                            className={`group hover:bg-[#4F6BFF]/5 transition cursor-pointer ${isSelected ? 'bg-[#4F6BFF]/5' : ''}`}
+                            onClick={() => setActiveDoc(doc)}
+                          >
+                            <td className="px-4 py-3 flex items-center gap-3">
+                              <FileIcon type={getDisplayType(doc)} className="w-6 h-6 shrink-0" />
                               <div className="min-w-0">
-                                <p className="font-semibold text-fg truncate text-[11px]">{uploadedByObj.name || 'Unknown'}</p>
-                                <p className="text-[10px] text-fg-muted truncate">{uploadedByObj.role || 'Member'}</p>
+                                <p className={`font-semibold truncate max-w-[200px] xl:max-w-[250px] ${isSelected ? 'text-[#4F6BFF]' : 'text-fg'}`}>{doc.name}</p>
+                                <div className="flex gap-1.5 mt-1">
+                                  {doc.tags?.slice(0, 1).map((t, idx) => {
+                                    const tagText = typeof t === 'string' ? t : (t.v || t.k || JSON.stringify(t))
+                                    return (
+                                      <span key={idx} className={`text-[9px] px-1.5 rounded font-bold uppercase bg-blue-50 text-blue-600 border border-blue-100`}>{tagText}</span>
+                                    )
+                                  })}
+                                </div>
                               </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 font-medium text-fg tabular-nums">{displaySize}</td>
-                          <td className="px-4 py-3">
-                            <p className="font-medium text-fg text-[11px]">{displayDate}</p>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <button 
-                              onClick={(e) => handleDeleteDoc(doc, e)}
-                              title="Delete Document"
-                              className="p-1.5 text-fg-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded transition opacity-0 group-hover:opacity-100"
-                            >
-                              <IconTrash className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              )
-            })()}
+                            </td>
+                            <td className="px-4 py-3 font-medium text-fg">{doc.type}</td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full bg-surface-3 flex items-center justify-center text-[9px] font-bold text-fg-subtle">
+                                  {avatarStr}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-fg truncate text-[11px]">{uploadedByObj.name || 'Unknown'}</p>
+                                  <p className="text-[10px] text-fg-muted truncate">{uploadedByObj.role || 'Member'}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 font-medium text-fg tabular-nums">{displaySize}</td>
+                            <td className="px-4 py-3">
+                              <p className="font-medium text-fg text-[11px]">{displayDate}</p>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <button
+                                onClick={(e) => handleDeleteDoc(doc, e)}
+                                title="Delete Document"
+                                className="p-1.5 text-fg-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded transition opacity-0 group-hover:opacity-100"
+                              >
+                                <IconTrash className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                )
+              })()}
             </div>
             
             {/* Table Footer */}
