@@ -263,8 +263,11 @@ router.post('/login', authLimiter, async (req, res, next) => {
     const token = signToken(user)
     const userPayload = user.toJSON()
     if (user.orgId) {
-      const orgDoc = await Organization.findById(user.orgId).select('name').lean()
-      if (orgDoc) userPayload.tenantName = orgDoc.name
+      const orgDoc = await Organization.findById(user.orgId).select('name integrations').lean()
+      if (orgDoc) {
+        userPayload.tenantName = orgDoc.name
+        userPayload.dmsEnabled = Boolean(orgDoc.integrations?.dmsEnabled)
+      }
     }
     return sendSuccess(res, { token, user: userPayload })
   } catch (err) {
@@ -516,6 +519,7 @@ router.get('/me', protect, async (req, res) => {
   const userPayload = { ...req.user }
   if (req.organization) {
     userPayload.tenantName = req.organization.name
+    userPayload.dmsEnabled = Boolean(req.organization.integrations?.dmsEnabled)
   }
   return sendSuccess(res, { user: userPayload })
 })
@@ -571,7 +575,12 @@ router.post('/change-password', protect, async (req, res, next) => {
     await user.save()
 
     const token = signToken(user)
-    return sendSuccess(res, { token, user: user.toJSON() })
+    const userPayload = user.toJSON()
+    if (req.organization) {
+      userPayload.tenantName = req.organization.name
+      userPayload.dmsEnabled = Boolean(req.organization.integrations?.dmsEnabled)
+    }
+    return sendSuccess(res, { token, user: userPayload })
   } catch (err) {
     next(err)
   }

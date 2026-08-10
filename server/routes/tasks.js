@@ -272,7 +272,31 @@ router.get('/my-tasks', protect, async (req, res, next) => {
       }
     }
 
-    return sendSuccess(res, { count: tasks.length, tasks })
+    let finalTasks = tasks
+    if (scope === 'submitted' || scope === 'team') {
+      const execMap = new Map()
+      const sortedByCreated = [...tasks].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      for (const t of sortedByCreated) {
+        if (!t.workflowExecutionId) {
+          execMap.set(t._id, t)
+          continue
+        }
+        const key = String(t.workflowExecutionId)
+        if (!execMap.has(key)) {
+          // Use form/workflow title instead of the node step title
+          t.title = t.formResponseId?.formId?.title || t.workflowId?.title || t.title
+          execMap.set(key, t)
+        }
+      }
+      finalTasks = Array.from(execMap.values()).sort((a, b) => {
+        if (a.dueDate && b.dueDate) return new Date(a.dueDate) - new Date(b.dueDate)
+        if (a.dueDate) return -1
+        if (b.dueDate) return 1
+        return new Date(b.createdAt) - new Date(a.createdAt)
+      })
+    }
+
+    return sendSuccess(res, { count: finalTasks.length, tasks: finalTasks })
   } catch (err) {
     next(err)
   }

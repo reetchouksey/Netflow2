@@ -159,7 +159,9 @@ async function ping({ org } = {}) {
   try {
     await dmsFetch('/health', { apiKey: resolveApiKey(org), org, timeoutMs: 3000, quiet: true })
     return true
-  } catch {
+  } catch (err) {
+    require('fs').appendFileSync('ping-error.log', new Date().toISOString() + ' - Ping failed: ' + (err.stack || err.message || err) + '\n');
+    console.error('DMS Ping Failed:', err.message || err);
     return false
   }
 }

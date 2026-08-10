@@ -37,6 +37,7 @@ const nodeSchema = new mongoose.Schema({
     apiMethod: { type: String, default: 'POST' },
     apiHeaders: [{ key: { type: String }, value: { type: String } }],
     apiBody: { type: String }, // JSON template with {{formData.x}} placeholders
+    sendAllData: { type: Boolean },
     // 'mode' (not 'type') on purpose: a nested field named `type` would be read
     // by Mongoose as a SchemaType declaration and collapse the subdocument.
     apiAuth: {
