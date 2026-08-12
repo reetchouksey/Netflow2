@@ -67,7 +67,8 @@ const ORG_ADMIN_NAV = [
   {
     label: 'Documents Management System',
     items: [
-      { key: 'documents', label: 'DMS', to: '/documents', icon: IconFolder, chevron: true }
+      { key: 'documents', label: 'DMS', to: '/documents', icon: IconFolder, chevron: true },
+      { key: 's3-storage', label: 'S3 Storage', to: '/s3-storage', icon: IconFolder, chevron: true }
     ]
   },
   {
@@ -129,6 +130,13 @@ function visibleSections(user) {
     sections = sections.map(section => ({
       ...section,
       items: section.items.filter(item => item.key !== 'documents')
+    })).filter(section => section.items.length > 0)
+  }
+
+  if (user && user.s3Enabled === false) {
+    sections = sections.map(section => ({
+      ...section,
+      items: section.items.filter(item => item.key !== 's3-storage')
     })).filter(section => section.items.length > 0)
   }
 

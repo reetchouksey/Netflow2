@@ -12,7 +12,9 @@ import Login from './pages/Login'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import Dashboard from './pages/Dashboard'
+import Business from './pages/Bussiness/index'
 import DocumentsDashboard from './pages/DocumentsDashboard'
+import S3Dashboard from './pages/S3Dashboard'
 import AdminPanel from './pages/AdminPanel'
 import Team from './pages/Team'
 import Departments from './pages/Departments'
@@ -171,13 +173,15 @@ function App() {
         <Route path="/login"    element={<PublicOnly><Login /></PublicOnly>} />
         <Route path="/forgot-password" element={<PublicOnly><ForgotPassword /></PublicOnly>} />
         <Route path="/reset-password"  element={<ResetPassword />} />
-
-        {/* Public, unauthenticated form link (share with non-users). */}
+        <Route path="/business"        element={<Business />} />
+        
+        {/* Public (unauthenticated) form links — collect data from non-users */}
         <Route path="/f/:token" element={<PublicForm />} />
         <Route path="/oauth/callback" element={<OAuthCallback />} />
 
         <Route path="/dashboard"     element={<RequireAuth><Dashboard /></RequireAuth>} />
         <Route path="/documents"     element={<RequireDms><DocumentsDashboard /></RequireDms>} />
+        <Route path="/s3-storage"    element={<RequireTenant><S3Dashboard /></RequireTenant>} />
         <Route path="/forms"          element={<RequireTenant><Forms /></RequireTenant>} />
         <Route path="/forms/new"      element={<RequireRole can={canCreateForm}><NewForm /></RequireRole>} />
         <Route path="/forms/:id/fill" element={<RequireTenant><FillForm /></RequireTenant>} />

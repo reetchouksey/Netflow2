@@ -9,7 +9,7 @@ import { api, toAbsoluteUrl } from '../utils/api'
 import { useUser } from '../utils/auth'
 import { formsStore } from '../lib/formsStore'
 import { fieldMaxMb, MAX_UPLOAD_MB } from '../utils/uploads'
-import { fieldDomId, focusFirstError, isFieldVisible, isSignatureEmpty, SignaturePad, stripHiddenValues, UploadProgress, validateField } from '../components/FormFields'
+import { fieldDomId, focusFirstError, isFieldVisible, isSignatureEmpty, SignaturePad, stripHiddenValues, UploadProgress, validateField, CameraCapture } from '../components/FormFields'
 import { limitBanner } from '../lib/limitFeedback'
 
 const inputCls =
@@ -47,6 +47,7 @@ function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB }) {
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(null)
   const [uploadError, setUploadError] = useState('')
+  const [useCamera, setUseCamera] = useState(false)
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0]
@@ -78,14 +79,45 @@ function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB }) {
 
   const current = value && typeof value === 'object' && value.url ? value : null
 
+  if (useCamera) {
+    return (
+      <div className="space-y-2">
+        <CameraCapture
+          value={value}
+          onChange={(val) => {
+            onChange(val)
+            if (val) setUseCamera(false)
+          }}
+          autoStart={true}
+          inlineMode={true}
+          onCancel={() => setUseCamera(false)}
+        />
+      </div>
+    )
+  }
+
   return (
     <div>
-      <input
-        type="file"
-        onChange={handleFile}
-        disabled={uploading}
-        className="block w-full text-sm text-fg-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-info-subtle file:text-info-fg hover:file:brightness-95 disabled:opacity-60"
-      />
+      <div className="flex items-center gap-3">
+        <input
+          type="file"
+          onChange={handleFile}
+          disabled={uploading}
+          className="block w-full text-sm text-fg-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-info-subtle file:text-info-fg hover:file:brightness-95 disabled:opacity-60"
+        />
+        <button
+          type="button"
+          onClick={() => setUseCamera(true)}
+          disabled={uploading}
+          className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-surface-2 text-fg hover:bg-surface-3 transition border border-line disabled:opacity-60"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+          </svg>
+          Camera
+        </button>
+      </div>
       {!uploading && !uploadError && <p className="mt-1 text-xs text-fg-subtle">Max {maxMb} MB</p>}
       {uploading && <UploadProgress percent={progress} />}
       {uploadError && <p className="mt-1 text-xs text-danger-fg">{uploadError}</p>}
@@ -297,6 +329,8 @@ function FieldRow({ field, value, onChange, error }) {
             ))}
           </div>
         )
+      case 'camera':
+        return <CameraCapture value={value} onChange={onChange} />
       case 'grid':
         return <GridField field={field} value={value} onChange={onChange} />
 

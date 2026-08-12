@@ -124,6 +124,9 @@ export const adaptTask = (apiTask) => {
     if (file) {
       return { label, value: file.name, href: file.url, isFile: true }
     }
+    if (def?.type === 'signature' || (v && typeof v === 'object' && v.kind && (v.text || v.url || v.dataURL))) {
+      return { label, value: v, isSignature: true }
+    }
     return {
       label,
       value: typeof v === 'object' ? JSON.stringify(v) : String(v ?? '')

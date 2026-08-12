@@ -245,7 +245,7 @@ export default function AdminDashboard() {
               <IconClock className="w-5 h-5" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider leading-snug">
+              <p className="text-[11px] text-slate-500 font-bold tracking-wider leading-snug">
                 Storage Used<br />
               </p>
               <p className="text-2xl font-bold tabular-nums text-fg mt-0.5">

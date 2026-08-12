@@ -114,6 +114,8 @@ function SubmissionDetails({ task }) {
                     </svg>
                     {row.value || 'Download'}
                   </a>
+                ) : row.isSignature ? (
+                  <SignatureMark signature={row.value} />
                 ) : (
                   row.value
                 )}

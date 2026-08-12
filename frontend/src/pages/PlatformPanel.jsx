@@ -101,7 +101,15 @@ const EMPTY_FORM = {
     baseUrl: '',
     folder: '',
     enabled: true
-  }))
+  })),
+  // S3 initial state
+  s3Enabled: false,
+  s3Bucket: '',
+  s3Endpoint: '',
+  s3Region: 'auto',
+  s3AccessKeyId: '',
+  s3SecretAccessKey: '',
+  s3SecretChanged: false
 }
 
 const orgToForm = (org) => {
@@ -139,7 +147,15 @@ const orgToForm = (org) => {
         folder: existing?.folder || '',
         enabled: existing ? existing.enabled !== false : true
       }
-    })
+    }),
+    // S3 integration
+    s3Enabled: Boolean(org.integrations?.s3?.enabled),
+    s3Bucket: org.integrations?.s3?.bucket || '',
+    s3Endpoint: org.integrations?.s3?.endpoint || '',
+    s3Region: org.integrations?.s3?.region || 'auto',
+    s3AccessKeyId: org.integrations?.s3?.accessKeyId || '',
+    s3SecretAccessKey: org.integrations?.s3?.secretAccessKey ? '••••••••' : '',
+    s3SecretChanged: false
   }
 }
 
@@ -193,7 +209,15 @@ const formToPayload = (f, { subdomain } = {}) => ({
         folder: d.folder.trim(),
         enabled: d.enabled
       }))
-    } : {})
+    } : {}),
+    s3: {
+      enabled: Boolean(f.s3Enabled),
+      bucket: f.s3Bucket.trim(),
+      endpoint: f.s3Endpoint.trim(),
+      region: f.s3Region.trim(),
+      accessKeyId: f.s3AccessKeyId.trim(),
+      ...(f.s3SecretChanged ? { secretAccessKey: f.s3SecretAccessKey.trim() } : {})
+    }
   }
 })
 
@@ -576,6 +600,74 @@ function OrgDialog({ org, onClose, onSaved }) {
 
           
           </div>
+
+        {/* ── S3 Dedicated Storage (SuperAdmin sets this) ───────────── */}
+        <div className="rounded-lg border border-line bg-surface-2/50 p-3 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-fg">S3 Dedicated Storage</p>
+              <p className="text-[11px] text-fg-subtle">
+                Provide a dedicated S3-compatible bucket for this organization's files.
+              </p>
+            </div>
+            <ThreeDToggle 
+              checked={form.s3Enabled} 
+              onChange={(val) => setForm(f => ({ ...f, s3Enabled: val }))} 
+            />
+          </div>
+
+          <div hidden={!form.s3Enabled} className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-xs font-medium text-fg-muted">Bucket Name</span>
+                <input
+                  value={form.s3Bucket}
+                  onChange={set('s3Bucket')}
+                  placeholder="acme-netflow-bucket"
+                  className={fieldCls}
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-fg-muted">Region</span>
+                <input
+                  value={form.s3Region}
+                  onChange={set('s3Region')}
+                  placeholder="auto"
+                  className={fieldCls}
+                />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="text-xs font-medium text-fg-muted">Endpoint URL (Optional for AWS)</span>
+                <input
+                  value={form.s3Endpoint}
+                  onChange={set('s3Endpoint')}
+                  placeholder="https://<account>.r2.cloudflarestorage.com"
+                  className={fieldCls}
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-fg-muted">Access Key ID</span>
+                <input
+                  value={form.s3AccessKeyId}
+                  onChange={set('s3AccessKeyId')}
+                  placeholder="AKIAIOSFODNN7EXAMPLE"
+                  className={fieldCls}
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-fg-muted">Secret Access Key</span>
+                <input
+                  type="password"
+                  value={form.s3SecretAccessKey}
+                  onChange={(e) => setForm(f => ({ ...f, s3SecretAccessKey: e.target.value, s3SecretChanged: true }))}
+                  placeholder="••••••••"
+                  autoComplete="new-password"
+                  className={fieldCls}
+                />
+              </label>
+            </div>
+          </div>
+        </div>
 
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-fg-muted hover:bg-surface-3 rounded-lg transition">
