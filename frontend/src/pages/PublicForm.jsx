@@ -232,8 +232,16 @@ function PublicCameraCapture({ token, value, onChange, autoStart, inlineMode = f
   const [cameraError, setCameraError] = useState('')
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
+  const [facingMode, setFacingMode] = useState('environment')
   const streamRef = React.useRef(null)
   const isMounted = React.useRef(true)
+
+  useEffect(() => {
+    if (streaming && isMounted.current) {
+      startCamera()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [facingMode])
 
   useEffect(() => {
     isMounted.current = true
@@ -248,7 +256,7 @@ function PublicCameraCapture({ token, value, onChange, autoStart, inlineMode = f
     setCameraError('')
     setIsStarting(true)
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode } })
       if (!isMounted.current) {
         stream.getTracks().forEach(t => t.stop())
         return
@@ -353,10 +361,19 @@ function PublicCameraCapture({ token, value, onChange, autoStart, inlineMode = f
           <button type="button" onClick={handleRetake} className="mt-2 text-xs font-semibold text-indigo-600 hover:text-indigo-700 underline">Retake Photo</button>
         </div>
       ) : streaming ? (
-        <div>
+        <div className="relative">
           <video ref={videoRef} autoPlay playsInline muted className="w-full max-h-60 object-cover rounded-lg border border-line shadow-sm bg-black" />
+          <button
+            type="button"
+            onClick={() => setFacingMode(prev => prev === 'environment' ? 'user' : 'environment')}
+            className="absolute top-2 right-2 bg-gray-900/50 hover:bg-gray-900/80 text-white p-2 rounded-full backdrop-blur-sm transition"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M15.207 10.793a1 1 0 010 1.414l-3 3a1 1 0 01-1.414-1.414L12.086 12H5a1 1 0 010-2h7.086l-1.293-1.293a1 1 0 011.414-1.414l3 3zM4.793 9.207a1 1 0 010-1.414l3-3a1 1 0 011.414 1.414L7.914 8H15a1 1 0 010 2H7.914l1.293 1.293a1 1 0 01-1.414 1.414l-3-3z" clipRule="evenodd" />
+            </svg>
+          </button>
           <button type="button" onClick={handleCapture} disabled={uploading} className="mt-2 w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow transition disabled:opacity-50">
-            {uploading ? 'Uploading…' : '📸 Capture Photo'}
+            {uploading ? 'Uploading…' : ' Capture Photo'}
           </button>
           <button
             type="button"
