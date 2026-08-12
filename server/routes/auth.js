@@ -267,6 +267,9 @@ router.post('/login', authLimiter, async (req, res, next) => {
       if (orgDoc) {
         userPayload.tenantName = orgDoc.name
         userPayload.dmsEnabled = Boolean(orgDoc.integrations?.dmsEnabled)
+        userPayload.s3Enabled = Boolean(orgDoc.integrations?.s3?.enabled)
+        userPayload.s3Bucket = orgDoc.integrations?.s3?.bucket || null
+        userPayload.s3Region = orgDoc.integrations?.s3?.region || null
       }
     }
     return sendSuccess(res, { token, user: userPayload })
@@ -520,6 +523,9 @@ router.get('/me', protect, async (req, res) => {
   if (req.organization) {
     userPayload.tenantName = req.organization.name
     userPayload.dmsEnabled = Boolean(req.organization.integrations?.dmsEnabled)
+    userPayload.s3Enabled = Boolean(req.organization.integrations?.s3?.enabled)
+    userPayload.s3Bucket = req.organization.integrations?.s3?.bucket || null
+    userPayload.s3Region = req.organization.integrations?.s3?.region || null
   }
   return sendSuccess(res, { user: userPayload })
 })

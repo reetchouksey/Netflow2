@@ -41,6 +41,16 @@ const organizationSchema = new mongoose.Schema({
   // All DMS config is set by the Platform Super Admin only — Org Admins get a
   // read-only status view (GET /api/organization/dms-status).
   integrations: {
+    // S3 Dedicated Storage (per tenant bypass of DMS)
+    s3: {
+      enabled:         { type: Boolean, default: false },
+      bucket:          { type: String, default: '' },
+      endpoint:        { type: String, default: '' },
+      region:          { type: String, default: 'auto' },
+      accessKeyId:     { type: String, default: '' },
+      secretAccessKey: { type: String, default: '' }
+    },
+
     // Org-level fallback key — used when a department has no key of its own.
     dmsApiKey:  { type: String, default: '' },
     dmsJwt:     { type: String, default: '' },
