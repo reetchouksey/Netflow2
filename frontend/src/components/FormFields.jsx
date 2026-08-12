@@ -735,8 +735,12 @@ export function CameraCapture({ value, onChange, disabled, autoStart, inlineMode
             onClick={() => setFacingMode(prev => prev === 'environment' ? 'user' : 'environment')}
             className="absolute top-2 right-2 bg-gray-900/50 hover:bg-gray-900/80 text-white p-2 rounded-full backdrop-blur-sm transition"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M15.207 10.793a1 1 0 010 1.414l-3 3a1 1 0 01-1.414-1.414L12.086 12H5a1 1 0 010-2h7.086l-1.293-1.293a1 1 0 011.414-1.414l3 3zM4.793 9.207a1 1 0 010-1.414l3-3a1 1 0 011.414 1.414L7.914 8H15a1 1 0 010 2H7.914l1.293 1.293a1 1 0 01-1.414 1.414l-3-3z" clipRule="evenodd" />
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 512 512">
+              <path d="M350.54,148,318.22,100.86A32,32,0,0,0,291.83,88H220.17a32,32,0,0,0-26.39,12.86L161.46,148H88a40,40,0,0,0-40,40V384a40,40,0,0,0,40,40H424a40,40,0,0,0,40-40V188A40,40,0,0,0,424,148Z" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="32"/>
+              <polyline points="124 256 160 220 196 256" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="32"/>
+              <path d="M160,220V296a64,64,0,0,0,64,64h60" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="32"/>
+              <polyline points="388 336 352 372 316 336" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="32"/>
+              <path d="M352,372V296a64,64,0,0,0-64-64H228" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="32"/>
             </svg>
           </button>
           <button
