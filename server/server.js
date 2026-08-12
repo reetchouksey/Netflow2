@@ -134,6 +134,7 @@ app.use('/api/organization', require('./routes/organization'))
 app.use('/api/forms', require('./routes/forms'))
 app.use('/api/uploads', require('./routes/uploads'))
 app.use('/api/dms', require('./routes/dms'))
+app.use('/api/s3', require('./routes/s3'))
 
 // Public (unauthenticated) form links — collect data from non-users.
 app.use('/api/public', require('./routes/public'))
