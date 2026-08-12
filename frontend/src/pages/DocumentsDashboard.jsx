@@ -868,7 +868,7 @@ export default function DocumentsDashboard() {
                               <button
                                 onClick={(e) => handleDeleteDoc(doc, e)}
                                 title="Delete Document"
-                                className="p-1.5 text-fg-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded transition opacity-0 group-hover:opacity-100"
+                                className="p-1.5 text-fg-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded transition "
                               >
                                 <IconTrash className="w-4 h-4" />
                               </button>
