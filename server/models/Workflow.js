@@ -132,6 +132,8 @@ const workflowSchema = new mongoose.Schema({
     token: { type: String, index: true, sparse: true },
     // HMAC signing secret for X-NetFlow-Signature (sha256=<hex> over raw body).
     secret: { type: String },
+    // If false, any POST to the webhook URL will be accepted without signature verification.
+    requireSignature: { type: Boolean, default: true },
     // POST here when a webhook-started run completes / fails / is rejected.
     callbackUrl: { type: String, default: '' },
     // Optional schema for inbound payloads (validated when non-empty).
