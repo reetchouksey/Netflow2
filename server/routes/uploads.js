@@ -16,6 +16,7 @@ const { isReadOnly } = require('../middleware/licence')
 const { addStorage } = require('../utils/usageMeter')
 const { dirForOrg, safeFilename, urlFor } = require('../utils/fileStore')
 const dms = require('../services/dmsClient')
+const s3Client = require('../services/s3Client')
 
 const router = express.Router()
 
@@ -73,7 +74,7 @@ router.post('/', protect, async (req, res, next) => {
         if (!req.file) return sendError(res, 'No file provided', 'NO_FILE', 400)
 
         // ── DMS path ──────────────────────────────────────────────────────
-        if (dms.isEnabled()) {
+        if (!s3Client.isEnabled(req.organization) && dms.isConfiguredFor(req.organization)) {
           const provisionalId = crypto.randomBytes(12).toString('hex')
           const taskId = String(req.query.taskId || '').trim() || undefined
           const formResponseId = String(req.query.formResponseId || '').trim() || undefined
@@ -139,6 +140,29 @@ router.post('/', protect, async (req, res, next) => {
               code,
               status >= 400 && status < 600 ? status : 502
             )
+          }
+        }
+
+        // ── S3 path ───────────────────────────────────────────────────────
+        if (s3Client.isEnabled(req.organization)) {
+          const s3Key = `${req.orgId}/${req.file.filename}`
+          try {
+            const fileBuffer = await fs.promises.readFile(req.file.path)
+            await s3Client.uploadFile(req.organization, s3Key, fileBuffer, req.file.mimetype)
+            await fs.promises.unlink(req.file.path).catch(() => {})
+
+            return sendSuccess(res, {
+              file: {
+                name: req.file.originalname,
+                s3Key,
+                mime: req.file.mimetype,
+                size: req.file.size
+              }
+            }, 201)
+          } catch (s3Err) {
+            await fs.promises.unlink(req.file.path).catch(() => {})
+            console.error('[s3] upload failed:', s3Err.message)
+            return sendError(res, 'S3 upload failed. Please try again or contact your administrator.', 'S3_UPLOAD_FAILED', 502)
           }
         }
 
