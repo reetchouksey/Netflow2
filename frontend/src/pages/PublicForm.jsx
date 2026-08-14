@@ -634,10 +634,11 @@ function PublicForm() {
       // Only send currently-visible fields (a value entered then hidden by a
       // rule change must not leak into the response).
       const payload = stripHiddenValues(visibleFields, values)
+      const uploadedPayload = await api.uploadPendingFiles(payload)
       const res = await fetch(`${API_BASE}/api/public/forms/${token}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formData: payload, submitter: { name, email } })
+        body: JSON.stringify({ formData: uploadedPayload, submitter: { name, email } })
       })
       await readJson(res)
       setDone(true)

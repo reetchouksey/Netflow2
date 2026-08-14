@@ -12,7 +12,7 @@ const BASE = String(import.meta.env.VITE_API_URL || 'http://localhost:5000').tri
 export const API_BASE = BASE
 export const toAbsoluteUrl = (url) => {
   if (!url) return ''
-  if (/^https?:\/\//i.test(url)) return url
+  if (/^https?:\/\//i.test(url) || url.startsWith('blob:')) return url
   return `${BASE}${url.startsWith('/') ? '' : '/'}${url}`
 }
 
@@ -176,6 +176,33 @@ export const api = {
       return uploadWithProgress(`/api/uploads${q}`, fd, opts)
     }
     return request('POST', `/api/uploads${q}`, fd, opts)
+  },
+  
+  // Scans a payload (object/array) for any pending files (objects with { pending: true, file: File })
+  // and uploads them. Returns a deep clone of the payload with pending files replaced by uploaded metadata.
+  uploadPendingFiles: async (payload) => {
+    if (!payload || typeof payload !== 'object') return payload
+    
+    if (Array.isArray(payload)) {
+      return Promise.all(payload.map(item => api.uploadPendingFiles(item)))
+    }
+    
+    // If it's a pending file marker
+    if (payload.pending && payload.file) {
+      const { file: saved } = await api.upload(payload.file)
+      // For signature pads, preserve the kind
+      if (payload.kind) {
+        return { ...saved, kind: payload.kind }
+      }
+      return saved
+    }
+    
+    // Otherwise recurse through object properties
+    const result = {}
+    for (const [k, v] of Object.entries(payload)) {
+      result[k] = await api.uploadPendingFiles(v)
+    }
+    return result
   }
 }
 

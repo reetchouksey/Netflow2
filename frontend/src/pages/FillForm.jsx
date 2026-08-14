@@ -503,7 +503,8 @@ function FillForm() {
       // Only submit currently-visible fields — a value entered then hidden by a
       // rule change must not leak into the response.
       const payload = stripHiddenValues(visibleFields, values)
-      const data = await formsStore.submit(id, payload)
+      const uploadedPayload = await api.uploadPendingFiles(payload)
+      const data = await formsStore.submit(id, uploadedPayload)
       // The server clears the draft on submit; reflect that locally too.
       setDraftRestored(false)
       setResult(data)

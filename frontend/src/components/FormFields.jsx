@@ -207,14 +207,13 @@ export function SignaturePad({ onChange, disabled, label, id, uploadFile }) {
       const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
       if (!blob || gen !== exportGen.current) return
       const file = new File([blob], `signature-${Date.now()}.png`, { type: 'image/png' })
-      const meta = uploadFile
-        ? await uploadFile(file)
-        : (await api.upload(file, MAX_UPLOAD_MB)).file
+      const url = URL.createObjectURL(blob)
       if (gen !== exportGen.current) return
       setDrawn({
-        url: meta.url,
-        name: meta.name || file.name,
-        ...(meta.dmsDocId ? { dmsDocId: meta.dmsDocId } : {}),
+        pending: true,
+        file,
+        url,
+        name: file.name
       })
     } catch (e2) {
       if (gen === exportGen.current) setErr(e2.message || 'Could not save signature')
@@ -307,13 +306,12 @@ export function SignaturePad({ onChange, disabled, label, id, uploadFile }) {
     }
     setUploading(true)
     try {
-      const meta = uploadFile
-        ? await uploadFile(file)
-        : (await api.upload(file, MAX_UPLOAD_MB)).file
+      const url = URL.createObjectURL(file)
       setUploaded({
-        url: meta.url,
-        name: meta.name,
-        ...(meta.dmsDocId ? { dmsDocId: meta.dmsDocId } : {}),
+        pending: true,
+        file,
+        url,
+        name: file.name
       })
     } catch (e2) {
       setErr(e2.message || 'Upload failed')
@@ -474,22 +472,13 @@ export function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB, disabled }) 
       e.target.value = ''
       return
     }
-    setUploading(true)
-    setProgress(0)
     setUploadError('')
-    try {
-      const { file: saved } = await api.upload(file, maxMb, { onProgress: setProgress })
-      onChange(saved)
-    } catch (err) {
-      setUploadError(err.message || 'Upload failed')
-      onChange('')
-    } finally {
-      setUploading(false)
-      setProgress(null)
-    }
+    const url = URL.createObjectURL(file)
+    onChange({ pending: true, file, url, name: file.name, size: file.size, mime: file.type })
+    e.target.value = ''
   }
 
-  const current = value && typeof value === 'object' && (value.url || value.dmsDocId) ? value : null
+  const current = value && typeof value === 'object' && (value.url || value.dmsDocId || value.pending) ? value : null
   const dmsHref = current?.dmsDocId ? dmsWebUrl(current.dmsDocId) : ''
 
   const openCurrent = async (e) => {
@@ -545,9 +534,9 @@ export function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB, disabled }) 
       {uploading && <UploadProgress percent={progress} />}
       {uploadError && <p className="mt-1 text-xs text-danger-fg">{uploadError}</p>}
       {current && !uploading && (
-        <p className="mt-1 text-xs text-success-fg flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span>
-            Uploaded:{' '}
+        <p className="mt-1 text-xs flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className={current.pending ? "text-fg" : "text-success-fg"}>
+            {current.pending ? 'Ready to submit:' : 'Uploaded:'}{' '}
             <a href={toAbsoluteUrl(current.url) || '#'} onClick={openCurrent} target="_blank" rel="noreferrer" className="underline hover:brightness-110">
               {current.name || 'file'}
             </a>
@@ -564,7 +553,7 @@ export function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB, disabled }) 
 }
 
 // Camera capture field: opens a live video stream, lets the user snap a photo,
-// uploads it automatically, and stores { name, url, mime, size } as the value.
+// previews it locally, uploads it upon confirmation, and stores { name, url, mime, size }.
 export function CameraCapture({ value, onChange, disabled, autoStart, inlineMode = false, onCancel }) {
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
@@ -574,6 +563,11 @@ export function CameraCapture({ value, onChange, disabled, autoStart, inlineMode
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const [facingMode, setFacingMode] = useState('environment')
+  
+  // Preview state
+  const [previewFile, setPreviewFile] = useState(null)
+  const [previewUrl, setPreviewUrl] = useState(null)
+
   const streamRef = useRef(null)
   const isMounted = useRef(true)
 
@@ -630,15 +624,18 @@ export function CameraCapture({ value, onChange, disabled, autoStart, inlineMode
   }, [streaming])
 
   useEffect(() => {
-    if (autoStart && !disabled && !current) {
+    if (autoStart && !disabled && !current && !previewUrl) {
       startCamera()
     }
 
-    // Cleanup camera stream on unmount
+    // Cleanup camera stream and object URLs on unmount
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(t => t.stop())
         streamRef.current = null
+      }
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl)
       }
     }
     // We only want to auto-start once on mount
@@ -661,20 +658,29 @@ export function CameraCapture({ value, onChange, disabled, autoStart, inlineMode
     canvas.height = video.videoHeight || 480
     canvas.getContext('2d').drawImage(video, 0, 0)
     stopCamera()
+    
     canvas.toBlob(async (blob) => {
       if (!blob) { setUploadError('Failed to capture image'); return }
       const file = new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' })
-      setUploading(true)
-      setUploadError('')
-      try {
-        const { file: saved } = await api.upload(file)
-        onChange(saved)
-      } catch (err) {
-        setUploadError(err.message || 'Upload failed')
-      } finally {
-        setUploading(false)
-      }
+      const url = URL.createObjectURL(blob)
+      setPreviewFile(file)
+      setPreviewUrl(url)
     }, 'image/jpeg', 0.92)
+  }
+
+  const handleConfirmPreview = () => {
+    if (!previewFile) return
+    onChange({ pending: true, file: previewFile, url: previewUrl, name: previewFile.name, size: previewFile.size, mime: previewFile.type })
+    setPreviewFile(null)
+    setPreviewUrl(null)
+  }
+
+  const handleDiscardPreview = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    setPreviewFile(null)
+    setPreviewUrl(null)
+    setUploadError('')
+    startCamera()
   }
 
   const handleRetake = () => {
@@ -683,19 +689,12 @@ export function CameraCapture({ value, onChange, disabled, autoStart, inlineMode
   }
 
   // Fallback: native file input accepting images
-  const handleFallbackFile = async (e) => {
+  const handleFallbackFile = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-    setUploading(true)
     setUploadError('')
-    try {
-      const { file: saved } = await api.upload(file)
-      onChange(saved)
-    } catch (err) {
-      setUploadError(err.message || 'Upload failed')
-    } finally {
-      setUploading(false)
-    }
+    const url = URL.createObjectURL(file)
+    onChange({ pending: true, file, url, name: file.name, size: file.size, mime: file.type })
   }
 
   const supportsCamera = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia
@@ -704,7 +703,7 @@ export function CameraCapture({ value, onChange, disabled, autoStart, inlineMode
     <div className="space-y-2">
       <canvas ref={canvasRef} className="hidden" />
 
-      {current && !streaming ? (
+      {current && !streaming && !previewUrl ? (
         <div className="relative">
           <img
             src={toAbsoluteUrl(current.url)}
@@ -720,6 +719,33 @@ export function CameraCapture({ value, onChange, disabled, autoStart, inlineMode
               Retake Photo
             </button>
           )}
+        </div>
+      ) : previewUrl ? (
+        <div className="relative">
+          <img
+            src={previewUrl}
+            alt="Preview photo"
+            className="w-full max-h-60 object-cover rounded-lg border border-line shadow-sm"
+          />
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              onClick={handleConfirmPreview}
+              disabled={uploading}
+              className="flex-1 py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow transition disabled:opacity-50"
+            >
+              {uploading ? 'Uploading…' : 'Confirm & Upload'}
+            </button>
+            <button
+              type="button"
+              onClick={handleDiscardPreview}
+              disabled={uploading}
+              className="py-2 px-4 bg-surface hover:bg-surface-2 text-fg border border-line text-sm font-semibold rounded-lg shadow-sm transition disabled:opacity-50"
+            >
+              Discard
+            </button>
+          </div>
+          {uploadError && <p className="mt-2 text-xs text-danger-fg">{uploadError}</p>}
         </div>
       ) : streaming ? (
         <div className="relative">
@@ -746,10 +772,9 @@ export function CameraCapture({ value, onChange, disabled, autoStart, inlineMode
           <button
             type="button"
             onClick={handleCapture}
-            disabled={uploading}
-            className="mt-2 w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow transition disabled:opacity-50"
+            className="mt-2 w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow transition"
           >
-            {uploading ? 'Uploading…' : ' Capture Photo'}
+            Capture Photo
           </button>
           <button
             type="button"

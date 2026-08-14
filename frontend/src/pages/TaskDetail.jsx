@@ -5,7 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import { tasksStore, useTask } from '../lib/tasksStore'
 import { useUser } from '../utils/auth'
-import { toAbsoluteUrl } from '../utils/api'
+import { api, toAbsoluteUrl } from '../utils/api'
 import { SignaturePad, SignatureMark, FieldRow, validateFields, FieldValueView, isFieldVisible, stripHiddenValues } from '../components/FormFields'
 import { confirm } from '../lib/confirmStore'
 import { ListRowSkeleton } from '../components/Skeleton'
@@ -84,6 +84,47 @@ function GridValueTable({ grid }) {
   )
 }
 
+function CameraS3Link({ data }) {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleClick = async (e) => {
+    e.preventDefault()
+    if (loading) return
+    setLoading(true)
+    setError('')
+    try {
+      const res = await api.get(`/api/s3/download?key=${encodeURIComponent(data.s3Key)}`)
+      if (res?.data?.url || res?.url) {
+        window.open(res.data?.url || res.url, '_blank', 'noopener,noreferrer')
+      } else {
+        setError('Could not get download URL')
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to open image')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1 items-start">
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={loading}
+        className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700 underline text-left disabled:opacity-50"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+        </svg>
+        {loading ? 'Opening...' : data.name || 'Camera Image'}
+      </button>
+      {error && <span className="text-xs text-danger-fg">{error}</span>}
+    </div>
+  )
+}
+
 function SubmissionDetails({ task }) {
   const pill = statusPill(requestStatus(task))
   return (
@@ -114,6 +155,18 @@ function SubmissionDetails({ task }) {
                     </svg>
                     {row.value || 'Download'}
                   </a>
+                ) : row.isCamera ? (
+                  (() => {
+                    try {
+                      const parsed = JSON.parse(row.value)
+                      if (parsed && parsed.s3Key) {
+                        return <CameraS3Link data={parsed} />
+                      }
+                    } catch {
+                      // Fallback to raw value if not JSON
+                    }
+                    return <span className="text-fg">{row.value}</span>
+                  })()
                 ) : row.isSignature ? (
                   <SignatureMark signature={row.value} />
                 ) : (
@@ -274,7 +327,9 @@ function SubmitActions({ task, onSubmitted }) {
     }
     setBusy(true)
     try {
-      await tasksStore.submit(task.id, { comment, formData: stripHiddenValues(shownFields, values) })
+      const payload = stripHiddenValues(shownFields, values)
+      const uploadedPayload = await api.uploadPendingFiles(payload)
+      await tasksStore.submit(task.id, { comment, formData: uploadedPayload })
       onSubmitted?.()
     } catch (err) {
       setError(err.message || 'Submit failed')
