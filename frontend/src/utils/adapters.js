@@ -347,6 +347,7 @@ export const adaptWorkflow = (w) => ({
         enabled: w.inboundWebhook.enabled === true,
         token: w.inboundWebhook.token || '',
         secret: w.inboundWebhook.secret || '',
+        requireSignature: w.inboundWebhook.requireSignature !== false,
         callbackUrl: w.inboundWebhook.callbackUrl || '',
         expectedFields: Array.isArray(w.inboundWebhook.expectedFields)
           ? w.inboundWebhook.expectedFields
