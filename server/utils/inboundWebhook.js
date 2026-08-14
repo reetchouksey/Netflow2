@@ -25,6 +25,9 @@ const applyInboundWebhookPatch = (workflow, patch) => {
   if (typeof patch.enabled === 'boolean') {
     workflow.inboundWebhook.enabled = patch.enabled
   }
+  if (patch.requireSignature !== undefined) {
+    workflow.inboundWebhook.requireSignature = patch.requireSignature
+  }
   if (typeof patch.callbackUrl === 'string') {
     workflow.inboundWebhook.callbackUrl = patch.callbackUrl.trim()
   }
@@ -54,7 +57,12 @@ const signBody = (secret, rawBody) => {
   return crypto.createHmac('sha256', String(secret)).update(payload).digest('hex')
 }
 
-const verifyWebhookSignature = (req, secret) => {
+const verifyWebhookSignature = (req, inboundWebhook) => {
+  if (inboundWebhook && inboundWebhook.requireSignature === false) {
+    return { ok: true }
+  }
+  
+  const secret = inboundWebhook?.secret
   if (!secret) {
     if (process.env.NODE_ENV === 'production') {
       return { ok: false, reason: 'Webhook secret not configured', status: 401 }
