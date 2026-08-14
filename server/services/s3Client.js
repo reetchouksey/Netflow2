@@ -109,8 +109,17 @@ const deleteFile = async (org, key) => {
   return await client.send(command)
 }
 
+// Returns true when the org has a complete, enabled S3 config.
+// Used by upload routes to decide whether to route files to S3.
+const isEnabled = (org) => {
+  const s3 = org?.integrations?.s3
+  if (!s3 || !s3.enabled) return false
+  return Boolean(s3.bucket && s3.accessKeyId && s3.secretAccessKey)
+}
+
 module.exports = {
   getClient,
+  isEnabled,
   listFolder,
   getPresignedUploadUrl,
   getPresignedDownloadUrl,

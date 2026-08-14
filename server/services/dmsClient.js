@@ -9,6 +9,15 @@ const isEnabled = () => String(process.env.DMS_ENABLED || '').toLowerCase() === 
 
 const baseUrl = () => String(process.env.DMS_API_URL || '').replace(/\/$/, '')
 
+const isConfiguredFor = (org, department = null) => {
+  if (!isEnabled()) return false
+  const root = resolveBaseUrl(org, department)
+  if (!root) return false
+  const key = resolveApiKey(org, department)
+  const token = org?.integrations?.dmsJwt || process.env.DMS_JWT
+  return Boolean(key || token)
+}
+
 // Finds the per-department DMS config entry for a given department name.
 // Returns null when no entry exists or the department is disabled.
 const resolveDeptConfig = (org, department) => {
@@ -521,6 +530,7 @@ async function deleteDoc(dmsDocId, { org, user } = {}) {
 
 module.exports = {
   isEnabled,
+  isConfiguredFor,
   resolveApiKey,
   resolveBaseUrl,
   resolveDeptConfig,
