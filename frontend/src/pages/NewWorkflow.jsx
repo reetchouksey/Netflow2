@@ -1076,7 +1076,23 @@ function Step3Settings({ data, setData, forms, editId }) {
                     </button>
                   </div>
                 </div>
-                {settings.inboundWebhook?.secret && (
+                <div className="pt-2">
+                  <ToggleRow
+                    checked={settings.inboundWebhook?.requireSignature !== false}
+                    onChange={(e) =>
+                      updateWebhook({ requireSignature: e.target.checked })
+                    }
+                    label="Require HMAC Signature (Authentication)"
+                  />
+                  {settings.inboundWebhook?.requireSignature === false && (
+                    <div className="mt-2 p-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl">
+                      <p className="text-xs text-amber-800 dark:text-amber-300 font-medium">
+                        Warning: Your webhook is now completely public. Anyone with the URL can trigger this workflow.
+                      </p>
+                    </div>
+                  )}
+                </div>
+                {settings.inboundWebhook?.requireSignature !== false && settings.inboundWebhook?.secret && (
                   <div>
                     <FieldLabel htmlFor="wf-signing-secret">Signing secret</FieldLabel>
                     <div className="flex gap-2">
@@ -1872,6 +1888,7 @@ function NewWorkflow() {
               enabled: workflow.inboundWebhook?.enabled === true,
               token: workflow.inboundWebhook?.token || '',
               secret: workflow.inboundWebhook?.secret || '',
+              requireSignature: workflow.inboundWebhook?.requireSignature !== false,
               callbackUrl: workflow.inboundWebhook?.callbackUrl || '',
               expectedFields: Array.isArray(workflow.inboundWebhook?.expectedFields)
                 ? workflow.inboundWebhook.expectedFields.map((f) => ({
@@ -2000,6 +2017,7 @@ function NewWorkflow() {
       notifyOnSlaBreach: settings.notifyOnSlaBreach,
       inboundWebhook: {
         enabled: settings.inboundWebhook?.enabled === true,
+        requireSignature: settings.inboundWebhook?.requireSignature !== false,
         callbackUrl: settings.inboundWebhook?.callbackUrl || '',
         expectedFields: Array.isArray(settings.inboundWebhook?.expectedFields)
           ? settings.inboundWebhook.expectedFields
