@@ -19,6 +19,7 @@ const BREACH_ACTIONS = [
 const ROLE_APPROVERS = [
   { value: "direct_manager",  label: "Reporting manager (auto)",  hint: "Auto-detected from the org chart — routes to the submitter's own reporting manager" },
   { value: "hr_partner",      label: "HR partner (auto)",         hint: "Auto-detected — routes to the submitter's own assigned HR partner" },
+  { value: "form_auto",       label: "Form Auto",                 hint: "Auto-detected from a Reference User field in the submitted form" },
   { value: "hr_admin",        label: "Admin",                    hint: "Any user with the Admin role" },
   { value: "ceo",             label: "CEO",                      hint: "Any user with the CEO role (falls back to Admin)" },
   { value: "hr_manager",      label: "HR Manager",               hint: "Manager in HR department" },
@@ -64,10 +65,20 @@ export default function NodeConfig({
   nodes = [],
   connections = [],
   onConnectionsChange,
-  onClose,
 }) {
   if (!node) {
-    return null;
+    return (
+      <aside className="w-64 xl:w-80 shrink-0 border-l border-line bg-surface flex flex-col min-h-0">
+        <div className="px-4 xl:px-5 pt-4 pb-3 border-b border-line">
+          <div className="text-[11px] font-semibold tracking-wider text-fg-muted">
+            NODE CONFIG
+          </div>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center px-6 py-10 text-center">
+          <p className="text-sm text-fg-muted">Select a node</p>
+        </div>
+      </aside>
+    );
   }
 
   const s = NODE_STYLES[node.type] || NODE_STYLES.start;
@@ -75,23 +86,10 @@ export default function NodeConfig({
 
   return (
     <aside className="w-64 xl:w-80 shrink-0 border-l border-line bg-surface flex flex-col min-h-0">
-      <div className="px-4 xl:px-5 pt-4 pb-3 border-b border-line shrink-0 flex items-center justify-between">
+      <div className="px-4 xl:px-5 pt-4 pb-3 border-b border-line shrink-0">
         <div className="text-[11px] font-semibold tracking-wider text-fg-muted">
           NODE CONFIG
         </div>
-        {onClose && (
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-6 h-6 flex items-center justify-center rounded hover:bg-surface-2 text-fg-muted hover:text-fg transition-colors"
-            title="Close panel"
-            aria-label="Close panel"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        )}
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 xl:px-5 py-5">
@@ -550,13 +548,8 @@ function SubmitConfig({ node, update }) {
   // The Submit node assigns a task to a person/role who must upload a file +
   // optional comment and click Submit to advance the flow (e.g. Accounts
   // generating a Costing). The assignee resolves like an approver at runtime.
-  const users = useActiveUsers();
-  const [mode, setMode] = useState(node.approverId ? "person" : "role");
-
-  // Re-sync the mode when a different node is selected.
-  useEffect(() => {
-    setMode(node.approverId ? "person" : "role");
-  }, [node.id]);
+  const setRoleMode = (value) =>
+    update({ approverRole: value, approverId: null });
 
   const legacyToken = node.approver
     ? String(node.approver).toLowerCase().replace(/\s+/g, "_")
@@ -568,66 +561,31 @@ function SubmitConfig({ node, update }) {
 
   const roleHint = roleApproverByValue(currentRoleValue)?.hint;
 
-  const onApproverChange = (value) => {
-    if (value === "__person__") {
-      setMode("person");
-    } else {
-      setMode("role");
-      update({ approverRole: value, approverId: null });
+  useEffect(() => {
+    if (node.approverId || (!node.approverRole && legacyToken)) {
+      update({ approverRole: currentRoleValue, approverId: null });
     }
-  };
-
-  const onPersonChange = (userId) =>
-    update({ approverId: userId || null, approverRole: userId ? null : currentRoleValue });
-
-  const selectedPerson = users.find((u) => String(u._id) === String(node.approverId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [node.id]);
 
   return (
     <>
       <Field label="Assign to">
         <select
-          value={mode === "person" ? "__person__" : currentRoleValue}
-          onChange={(e) => onApproverChange(e.target.value)}
+          value={currentRoleValue}
+          onChange={(e) => setRoleMode(e.target.value)}
           className={inputCls}
         >
-          <optgroup label="Auto (from org chart)">
-            {ROLE_APPROVERS.map((r) => (
-              <option key={r.value} value={r.value}>{r.label}</option>
-            ))}
-          </optgroup>
-          <optgroup label="Specific person">
-            <option value="__person__">Pick a specific person…</option>
-          </optgroup>
+          {ROLE_APPROVERS.map((r) => (
+            <option key={r.value} value={r.value}>{r.label}</option>
+          ))}
         </select>
-
-        {mode === "person" ? (
-          <div className="mt-2">
-            <select
-              value={node.approverId || ""}
-              onChange={(e) => onPersonChange(e.target.value)}
-              className={inputCls}
-            >
-              <option value="">— Select a person —</option>
-              {users.map((u) => (
-                <option key={u._id} value={u._id}>
-                  {u.name}{u.department ? ` · ${u.department}` : ""}
-                </option>
-              ))}
-            </select>
-            <p className="mt-1.5 text-[11px] text-fg-muted">
-              {selectedPerson
-                ? `Always assigned to ${selectedPerson.name}. They will fill the form below.`
-                : "This exact person will be assigned every time, regardless of who submits."}
-            </p>
-          </div>
-        ) : (
-          <>
-            {roleHint && <p className="mt-1 text-[11px] text-fg-muted">{roleHint}</p>}
-            <p className="mt-1.5 text-[11px] text-fg-subtle">
-              This person fills the form below and clicks Submit to advance the workflow.
-            </p>
-          </>
+        {roleHint && (
+          <p className="mt-1 text-[11px] text-fg-muted">{roleHint}</p>
         )}
+        <p className="mt-1.5 text-[11px] text-fg-subtle">
+          This person fills the form below and clicks Submit to advance the workflow.
+        </p>
       </Field>
 
       <Field label="Instructions">
@@ -982,30 +940,9 @@ function ReviewConfig({ node, update, nodes, connections, onConnectionsChange })
   // chooses to forward (no changes) or send it back for changes. Routing mirrors
   // the Decision node: two outgoing edges tagged 'approve' (forward) / 'reject'
   // (changes) which the engine reads as config.forwardPath / config.changesPath.
-  const users = useActiveUsers();
-  const [mode, setMode] = useState(node.approverId ? "person" : "role");
-
-  // Re-sync the mode when a different node is selected.
-  useEffect(() => {
-    setMode(node.approverId ? "person" : "role");
-  }, [node.id]);
-
+  const setRoleMode = (value) => update({ approverRole: value, approverId: null });
   const currentRoleValue = node.approverRole || "direct_manager";
   const roleHint = roleApproverByValue(currentRoleValue)?.hint;
-
-  const onApproverChange = (value) => {
-    if (value === "__person__") {
-      setMode("person");
-    } else {
-      setMode("role");
-      update({ approverRole: value, approverId: null });
-    }
-  };
-
-  const onPersonChange = (userId) =>
-    update({ approverId: userId || null, approverRole: userId ? null : currentRoleValue });
-
-  const selectedPerson = users.find((u) => String(u._id) === String(node.approverId));
 
   const targets = nodes.filter((n) => n.id !== node.id);
   const forwardEdge = connections.find(
@@ -1045,49 +982,21 @@ function ReviewConfig({ node, update, nodes, connections, onConnectionsChange })
     <>
       <Field label="Assign to (reviewer)">
         <select
-          value={mode === "person" ? "__person__" : currentRoleValue}
-          onChange={(e) => onApproverChange(e.target.value)}
+          value={currentRoleValue}
+          onChange={(e) => setRoleMode(e.target.value)}
           className={inputCls}
         >
-          <optgroup label="Auto (from org chart)">
-            {ROLE_APPROVERS.map((r) => (
-              <option key={r.value} value={r.value}>{r.label}</option>
-            ))}
-          </optgroup>
-          <optgroup label="Specific person">
-            <option value="__person__">Pick a specific person…</option>
-          </optgroup>
+          {ROLE_APPROVERS.map((r) => (
+            <option key={r.value} value={r.value}>{r.label}</option>
+          ))}
         </select>
-
-        {mode === "person" ? (
-          <div className="mt-2">
-            <select
-              value={node.approverId || ""}
-              onChange={(e) => onPersonChange(e.target.value)}
-              className={inputCls}
-            >
-              <option value="">— Select a person —</option>
-              {users.map((u) => (
-                <option key={u._id} value={u._id}>
-                  {u.name}{u.department ? ` · ${u.department}` : ""}
-                </option>
-              ))}
-            </select>
-            <p className="mt-1.5 text-[11px] text-fg-muted">
-              {selectedPerson
-                ? `Always assigned to ${selectedPerson.name} for review.`
-                : "This exact person will review every time, regardless of who submits."}
-            </p>
-          </div>
-        ) : (
-          <>
-            {roleHint && <p className="mt-1 text-[11px] text-fg-muted">{roleHint}</p>}
-            <p className="mt-1.5 text-[11px] text-fg-subtle">
-              The reviewer sees the submission + all earlier documents, then forwards
-              it or sends it back — no approve/reject.
-            </p>
-          </>
+        {roleHint && (
+          <p className="mt-1 text-[11px] text-fg-muted">{roleHint}</p>
         )}
+        <p className="mt-1.5 text-[11px] text-fg-subtle">
+          The reviewer sees the submission + all earlier documents, then forwards
+          it or sends it back — no approve/reject.
+        </p>
       </Field>
 
       <Field label="Instructions">
@@ -1206,32 +1115,18 @@ function ApiConfig({ node, update }) {
         </div>
       </Field>
 
-      <Field label="Data to Send">
-        <label className="flex items-center gap-2 cursor-pointer pt-1 pb-1">
-          <input
-            type="checkbox"
-            checked={node.sendAllData === true || (node.sendAllData === undefined && !node.apiBody?.trim())}
-            onChange={(e) => update({ sendAllData: e.target.checked })}
-            className="w-3.5 h-3.5 text-indigo-600 rounded border-line focus:ring-indigo-500 bg-surface-2"
-          />
-          <span className="text-xs font-medium text-fg">Send entire form data automatically</span>
-        </label>
+      <Field label="Request body">
+        <textarea
+          rows={4}
+          value={node.apiBody || ""}
+          onChange={(e) => update({ apiBody: e.target.value })}
+          placeholder={'{\n  "id": "{{formData.requestId}}",\n  "by": "{{submitter.email}}"\n}'}
+          className={`${inputCls} font-mono text-xs`}
+        />
+        <p className="mt-1 text-[11px] text-fg-subtle">
+          Use {"{{formData.field}}"}, {"{{submitter.email}}"}, {"{{lastApprovalOutcome}}"} to insert live values.
+        </p>
       </Field>
-
-      {!(node.sendAllData === true || (node.sendAllData === undefined && !node.apiBody?.trim())) && (
-        <Field label="Custom Request body">
-          <textarea
-            rows={4}
-            value={node.apiBody || ""}
-            onChange={(e) => update({ apiBody: e.target.value })}
-            placeholder={'{\n  "id": "{{formData.requestId}}",\n  "by": "{{submitter.email}}"\n}'}
-            className={`${inputCls} font-mono text-xs`}
-          />
-          <p className="mt-1 text-[11px] text-fg-subtle">
-            Use {"{{formData.field}}"}, {"{{submitter.email}}"}, {"{{lastApprovalOutcome}}"} to insert live values.
-          </p>
-        </Field>
-      )}
 
       <Field label="Authentication">
         <select
