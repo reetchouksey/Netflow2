@@ -91,6 +91,7 @@ const workflowSchema = new mongoose.Schema({
   orgId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', index: true },
   title: { type: String, required: true },
   description: { type: String },
+  tags: [{ type: String }],
   nodes: [nodeSchema],
   edges: [{
     id: String,
@@ -149,6 +150,7 @@ const workflowSchema = new mongoose.Schema({
     autoPdf: { type: Boolean, default: false }
   },
   department: { type: String },
+  tags: [{ type: String }],
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   version: { type: Number, default: 1 },
   previousVersionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Workflow' }

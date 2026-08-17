@@ -872,7 +872,50 @@ const handleApiNode = async (execution, node, workflow) => {
   const headers = (Array.isArray(cfg.apiHeaders) ? cfg.apiHeaders : [])
     .filter((h) => h && h.key)
     .map((h) => ({ key: h.key, value: interpolate(h.value, vars) }))
-  body = cfg.apiBody ? interpolate(cfg.apiBody, vars) : undefined
+  
+  const sendAllData = cfg.sendAllData === true || (cfg.sendAllData === undefined && !cfg.apiBody?.trim())
+  if (sendAllData) {
+    const rawData = vars.formData || {}
+    const fieldMap = {}
+    
+    try {
+      const Form = require('../models/Form')
+      let formDoc = null
+      if (execution.formResponseId) {
+        const FormResponse = require('../models/FormResponse')
+        const resp = await FormResponse.findById(execution.formResponseId).select('formId').lean()
+        if (resp && resp.formId) formDoc = await Form.findById(resp.formId).select('fields').lean()
+      } else if (workflow.linkedFormId) {
+        formDoc = await Form.findById(workflow.linkedFormId).select('fields').lean()
+      }
+      
+      if (formDoc && Array.isArray(formDoc.fields)) {
+        formDoc.fields.forEach(f => {
+          if (f.id && f.label) fieldMap[f.id] = f.label
+        })
+      }
+    } catch (e) {
+      console.warn('[workflowEngine] Failed to map form fields', e.message)
+    }
+
+    if (workflow && Array.isArray(workflow.nodes)) {
+      workflow.nodes.forEach(n => {
+        const fields = (n.config && Array.isArray(n.config.formFields)) ? n.config.formFields : (Array.isArray(n.formFields) ? n.formFields : null)
+        if (fields) {
+          fields.forEach(f => {
+            if (f.id && f.label) fieldMap[f.id] = f.label
+          })
+        }
+      })
+    }
+    const mappedData = {}
+    for (const [key, val] of Object.entries(rawData)) {
+      mappedData[fieldMap[key] || key] = val
+    }
+    body = JSON.stringify(mappedData)
+  } else {
+    body = cfg.apiBody ? interpolate(cfg.apiBody, vars) : undefined
+  }
 
   let result
   try {

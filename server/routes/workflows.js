@@ -23,6 +23,40 @@ const { DESIGNER_ROLES, isDesigner } = require('../utils/roles')
 const { normalizeLinkedForms, claimLinkedForms } = require('../utils/linkedForms')
 const { isConfigured: llmConfigured, getModel: llmModel, generateJSON, generateText } = require('../utils/llm')
 
+function triggerBackgroundTagging(workflow) {
+  if (!llmConfigured()) return
+  const prompt = `Analyze this workflow named "${workflow.title}" with description "${workflow.description || 'No description'}". Generate 2 to 4 very short, relevant category tags for it. Only return the tags that are highly relevant to the purpose of the workflow.`
+  const schema = {
+    type: 'object',
+    properties: {
+      tags: {
+        type: 'array',
+        items: { type: 'string' }
+      }
+    },
+    required: ['tags']
+  }
+  generateJSON(prompt, schema).then(async (result) => {
+    try {
+      const tagsArray = Array.isArray(result) ? result : Array.isArray(result?.tags) ? result.tags : []
+      if (tagsArray.length > 0) {
+        const freshWorkflow = await Workflow.findById(workflow._id)
+        if (freshWorkflow) {
+          const newTags = tagsArray.map(t => typeof t === 'string' ? t.replace(/^#/, '').trim() : '')
+          const existingTags = freshWorkflow.tags || []
+          const combinedTags = [...new Set([...existingTags, ...newTags])].filter(Boolean)
+          freshWorkflow.tags = combinedTags
+          await freshWorkflow.save()
+        }
+      }
+    } catch (tagErr) {
+      console.error('Background AI tagging failed:', tagErr.message)
+    }
+  }).catch(err => {
+    console.error('AI generation for tags failed:', err.message)
+  })
+}
+
 const router = express.Router()
 
 const isElevated = isDesigner
@@ -473,7 +507,7 @@ router.get('/', protect, async (req, res, next) => {
 router.post('/', protect, roleGuard(...DESIGNER_ROLES), requireCanBuild, requireQuota('workflows'), async (req, res, next) => {
   try {
     const {
-      title, description, nodes, edges, department, linkedFormId, linkedFormIds, access,
+      title, description, nodes, edges, department, tags, linkedFormId, linkedFormIds, access,
       triggerOn, preventDuplicates, notifyOnSlaBreach, advanced, inboundWebhook
     } = req.body
     if (!title) return sendError(res, 'title is required', 'MISSING_FIELDS', 400)
@@ -485,6 +519,7 @@ router.post('/', protect, roleGuard(...DESIGNER_ROLES), requireCanBuild, require
       nodes: Array.isArray(nodes) ? nodes : [],
       edges: Array.isArray(edges) ? edges : [],
       department,
+      tags: Array.isArray(tags) ? tags : [],
       linkedFormId: linked.linkedFormId || undefined,
       linkedFormIds: linked.linkedFormIds,
       access: access || undefined,
@@ -500,6 +535,11 @@ router.post('/', protect, roleGuard(...DESIGNER_ROLES), requireCanBuild, require
     await workflow.save()
     if (linked.linkedFormIds.length) {
       await claimLinkedForms(Workflow, workflow._id, linked.linkedFormIds)
+    }
+
+    // Trigger asynchronous AI tagging immediately on creation if no tags provided
+    if (!workflow.tags || workflow.tags.length === 0) {
+      triggerBackgroundTagging(workflow)
     }
 
     return sendSuccess(res, { workflow: workflow.toObject() }, 201)
@@ -634,9 +674,14 @@ router.put('/:id', protect, roleGuard(...DESIGNER_ROLES), requireCanBuild, async
         await claimLinkedForms(Workflow, existing._id, linked.linkedFormIds)
       }
     }
-    // Merge webhook settings carefully so a partial patch cannot wipe the token.
     if (inboundWebhook !== undefined) applyInboundWebhookPatch(existing, inboundWebhook)
     await existing.save()
+
+    // Trigger AI tagging if no tags exist, regardless of published status
+    if (!existing.tags || existing.tags.length === 0) {
+      triggerBackgroundTagging(existing)
+    }
+
     return sendSuccess(res, { workflow: existing.toObject(), versioned: false })
   } catch (err) {
     next(err)
@@ -663,6 +708,10 @@ router.post('/:id/publish', protect, roleGuard(...DESIGNER_ROLES), requireCanBui
     ensureWebhookToken(workflow)
     workflow.status = 'published'
     await workflow.save()
+
+    // Trigger asynchronous AI tagging
+    triggerBackgroundTagging(workflow)
+
     return sendSuccess(res, { workflow: workflow.toObject() })
   } catch (err) {
     next(err)
