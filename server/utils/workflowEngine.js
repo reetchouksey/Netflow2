@@ -9,6 +9,7 @@ const Task = require('../models/Task')
 const User = require('../models/User')
 const Role = require('../models/Role')
 const Organization = require('../models/Organization')
+const Form = require('../models/Form')
 
 const { getOrgId } = require('../tenancy/tenantContext')
 const { listFor: departmentsFor } = require('./departments')
@@ -97,11 +98,37 @@ const redirectIfOutOfOffice = async (assignedTo) => {
   return { assignedTo, reason: null }
 }
 
+// Find a reference user from the submitted form data
+const resolveFormAutoApprover = async (execution) => {
+  if (!execution?.formResponseId) return { userId: null, reason: null }
+
+  const FormResponse = require('../models/FormResponse')
+  const formResponse = await FormResponse.findById(execution.formResponseId).lean()
+  if (!formResponse || !formResponse.formData) return { userId: null, reason: null }
+
+  const form = await Form.findById(formResponse.formId).lean()
+  if (!form || !form.fields) return { userId: null, reason: null }
+
+  // Find the first field marked as referenceUser
+  const refField = form.fields.find(f => f.referenceUser)
+  if (!refField) return { userId: null, reason: null }
+
+  const userName = formResponse.formData[refField.id]
+  if (!userName) return { userId: null, reason: null }
+
+  // Lookup the user by exact name
+  const user = await User.findOne({ name: userName, isActive: true }).lean()
+  if (user) {
+    return { userId: user._id, reason: `Auto-routed to ${user.name} — selected in the form field "${refField.label}".` }
+  }
+  return { userId: null, reason: `${userName} was selected in the form but is not an active user.` }
+}
+
 // Resolve a semantic approver token using submitter context. Returns a User _id
 // or null if the token is not recognised / no matching user exists. Tokens are
 // case- and whitespace-insensitive ("Direct manager", "direct_manager", and
 // "DIRECT MANAGER" all resolve identically).
-const resolveSemanticApprover = async (rawToken, submitter) => {
+const resolveSemanticApprover = async (rawToken, submitter, execution) => {
   const token = normaliseToken(rawToken)
   if (!token) return null
 
@@ -356,10 +383,15 @@ const resolveAssignee = async (execution, node, workflow) => {
   // each with an active-check + escalation up that submitter's chain.
   if (!assignedTo && node.config?.approverRole) {
     const token = normaliseToken(node.config.approverRole)
-    if (token === 'direct_manager' || token === 'hr_partner') {
-      const routed = token === 'direct_manager'
-        ? await resolveDirectManager(submitter)
-        : await resolveHrPartner(submitter)
+    if (token === 'direct_manager' || token === 'hr_partner' || token === 'form_auto') {
+      let routed = { userId: null, reason: null }
+      if (token === 'direct_manager') {
+        routed = await resolveDirectManager(submitter)
+      } else if (token === 'hr_partner') {
+        routed = await resolveHrPartner(submitter)
+      } else if (token === 'form_auto') {
+        routed = await resolveFormAutoApprover(execution)
+      }
       if (routed.userId) {
         assignedTo = routed.userId
         routingReason = routed.reason
@@ -372,7 +404,7 @@ const resolveAssignee = async (execution, node, workflow) => {
         })
       }
     } else {
-      assignedTo = await resolveSemanticApprover(node.config.approverRole, submitter)
+      assignedTo = await resolveSemanticApprover(node.config.approverRole, submitter, execution)
     }
   }
 
@@ -840,50 +872,7 @@ const handleApiNode = async (execution, node, workflow) => {
   const headers = (Array.isArray(cfg.apiHeaders) ? cfg.apiHeaders : [])
     .filter((h) => h && h.key)
     .map((h) => ({ key: h.key, value: interpolate(h.value, vars) }))
-  
-  const sendAllData = cfg.sendAllData === true || (cfg.sendAllData === undefined && !cfg.apiBody?.trim())
-  if (sendAllData) {
-    const rawData = vars.formData || {}
-    const fieldMap = {}
-    
-    try {
-      const Form = require('../models/Form')
-      let formDoc = null
-      if (execution.formResponseId) {
-        const FormResponse = require('../models/FormResponse')
-        const resp = await FormResponse.findById(execution.formResponseId).select('formId').lean()
-        if (resp && resp.formId) formDoc = await Form.findById(resp.formId).select('fields').lean()
-      } else if (workflow.linkedFormId) {
-        formDoc = await Form.findById(workflow.linkedFormId).select('fields').lean()
-      }
-      
-      if (formDoc && Array.isArray(formDoc.fields)) {
-        formDoc.fields.forEach(f => {
-          if (f.id && f.label) fieldMap[f.id] = f.label
-        })
-      }
-    } catch (e) {
-      console.warn('[workflowEngine] Failed to map form fields', e.message)
-    }
-
-    if (workflow && Array.isArray(workflow.nodes)) {
-      workflow.nodes.forEach(n => {
-        const fields = (n.config && Array.isArray(n.config.formFields)) ? n.config.formFields : (Array.isArray(n.formFields) ? n.formFields : null)
-        if (fields) {
-          fields.forEach(f => {
-            if (f.id && f.label) fieldMap[f.id] = f.label
-          })
-        }
-      })
-    }
-    const mappedData = {}
-    for (const [key, val] of Object.entries(rawData)) {
-      mappedData[fieldMap[key] || key] = val
-    }
-    body = JSON.stringify(mappedData)
-  } else {
-    body = cfg.apiBody ? interpolate(cfg.apiBody, vars) : undefined
-  }
+  body = cfg.apiBody ? interpolate(cfg.apiBody, vars) : undefined
 
   let result
   try {
