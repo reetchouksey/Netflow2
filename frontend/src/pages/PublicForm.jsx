@@ -6,10 +6,9 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { API_BASE, toAbsoluteUrl } from '../utils/api'
-import { formsStore } from '../lib/formsStore'
-import { fieldMaxMb, MAX_UPLOAD_MB } from '../utils/uploads'
+import { fieldMaxMb } from '../utils/uploads'
 import { fieldDomId, focusFirstError, isFieldVisible, isSignatureEmpty, SignaturePad, stripHiddenValues, UploadProgress, validateField, ReferenceUserSelect } from '../components/FormFields'
-import { limitBanner } from '../lib/limitFeedback'
+import { MAX_UPLOAD_MB } from '../utils/uploads'
 
 const inputCls =
   'w-full px-3 py-2 text-sm rounded-md border border-line bg-surface text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition'
@@ -52,6 +51,7 @@ function FileField({ token, value, onChange, maxMb }) {
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(null)
   const [uploadError, setUploadError] = useState('')
+  const [useCamera, setUseCamera] = useState(false)
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0]
@@ -79,14 +79,46 @@ function FileField({ token, value, onChange, maxMb }) {
 
   const current = value && typeof value === 'object' && value.url ? value : null
 
+  if (useCamera) {
+    return (
+      <div className="space-y-2">
+        <PublicCameraCapture
+          token={token}
+          value={value}
+          onChange={(val) => {
+            onChange(val)
+            if (val) setUseCamera(false)
+          }}
+          autoStart={true}
+          inlineMode={true}
+          onCancel={() => setUseCamera(false)}
+        />
+      </div>
+    )
+  }
+
   return (
     <div>
-      <input
-        type="file"
-        onChange={handleFile}
-        disabled={uploading}
-        className="block w-full text-sm text-fg-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-info-subtle file:text-info-fg hover:file:brightness-95 disabled:opacity-60"
-      />
+      <div className="flex items-center gap-3">
+        <input
+          type="file"
+          onChange={handleFile}
+          disabled={uploading}
+          className="block w-full text-sm text-fg-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-info-subtle file:text-info-fg hover:file:brightness-95 disabled:opacity-60"
+        />
+        <button
+          type="button"
+          onClick={() => setUseCamera(true)}
+          disabled={uploading}
+          className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-surface-2 text-fg hover:bg-surface-3 transition border border-line disabled:opacity-60"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+          </svg>
+          Camera
+        </button>
+      </div>
       {!uploading && !uploadError && <p className="mt-1 text-xs text-fg-subtle">Max {maxMb} MB</p>}
       {uploading && <UploadProgress percent={progress} />}
       {uploadError && <p className="mt-1 text-xs text-danger-fg">{uploadError}</p>}
@@ -191,6 +223,231 @@ function GridField({ field, value, onChange }) {
   )
 }
 
+// Camera field for public forms: uses publicUpload // Similar to CameraCapture in FormFields, but wired to use the public API
+function PublicCameraCapture({ token, value, onChange, autoStart, inlineMode = false, onCancel }) {
+  const videoRef = React.useRef(null)
+  const canvasRef = React.useRef(null)
+  const [streaming, setStreaming] = useState(false)
+  const [isStarting, setIsStarting] = useState(false)
+  const [cameraError, setCameraError] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+  const [facingMode, setFacingMode] = useState('environment')
+  const streamRef = React.useRef(null)
+  const isMounted = React.useRef(true)
+
+  useEffect(() => {
+    if (streaming && isMounted.current) {
+      startCamera()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [facingMode])
+
+  useEffect(() => {
+    isMounted.current = true
+    return () => {
+      isMounted.current = false
+    }
+  }, [])
+
+  const current = value && typeof value === 'object' && value.url ? value : null
+
+  const startCamera = async () => {
+    setCameraError('')
+    setIsStarting(true)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode } })
+      if (!isMounted.current) {
+        stream.getTracks().forEach(t => t.stop())
+        return
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop())
+      }
+      streamRef.current = stream
+      setStreaming(true)
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        videoRef.current.play().catch(console.error)
+      }
+    } catch {
+      if (isMounted.current) {
+        setCameraError('Could not access camera. Please allow camera permission or use the file fallback.')
+      }
+    } finally {
+      if (isMounted.current) {
+        setIsStarting(false)
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (streaming && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current
+      videoRef.current.play().catch(console.error)
+    }
+  }, [streaming])
+
+  useEffect(() => {
+    if (autoStart && !current) {
+      startCamera()
+    }
+    
+    // Cleanup camera stream on unmount
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop())
+        streamRef.current = null
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop())
+      streamRef.current = null
+    }
+    setStreaming(false)
+  }
+
+  const handleCapture = () => {
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    if (!video || !canvas) return
+    canvas.width = video.videoWidth || 640
+    canvas.height = video.videoHeight || 480
+    canvas.getContext('2d').drawImage(video, 0, 0)
+    stopCamera()
+    canvas.toBlob(async (blob) => {
+      if (!blob) { setUploadError('Failed to capture image'); return }
+      const file = new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' })
+      setUploading(true)
+      setUploadError('')
+      try {
+        const saved = await publicUpload(token, file, MAX_UPLOAD_MB)
+        onChange(saved)
+      } catch (err) {
+        setUploadError(err.message || 'Upload failed')
+      } finally {
+        setUploading(false)
+      }
+    }, 'image/jpeg', 0.92)
+  }
+
+  const handleRetake = () => { onChange(null); startCamera() }
+
+  const handleFallbackFile = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    setUploadError('')
+    try {
+      const saved = await publicUpload(token, file, MAX_UPLOAD_MB)
+      onChange(saved)
+    } catch (err) {
+      setUploadError(err.message || 'Upload failed')
+    } finally { setUploading(false) }
+  }
+
+  const supportsCamera = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia
+
+  return (
+    <div className="space-y-2">
+      <canvas ref={canvasRef} className="hidden" />
+      {current && !streaming ? (
+        <div>
+          <img src={toAbsoluteUrl(current.url)} alt="Captured" className="w-full max-h-60 object-cover rounded-lg border border-line shadow-sm" />
+          <button type="button" onClick={handleRetake} className="mt-2 text-xs font-semibold text-indigo-600 hover:text-indigo-700 underline">Retake Photo</button>
+        </div>
+      ) : streaming ? (
+        <div className="relative">
+          <video ref={videoRef} autoPlay playsInline muted className="w-full max-h-60 object-cover rounded-lg border border-line shadow-sm bg-black" />
+          <button
+            type="button"
+            onClick={() => setFacingMode(prev => prev === 'environment' ? 'user' : 'environment')}
+            className="absolute top-2 right-2 bg-gray-900/50 hover:bg-gray-900/80 text-white p-2 rounded-full backdrop-blur-sm transition"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 512 512">
+              <path d="M350.54,148,318.22,100.86A32,32,0,0,0,291.83,88H220.17a32,32,0,0,0-26.39,12.86L161.46,148H88a40,40,0,0,0-40,40V384a40,40,0,0,0,40,40H424a40,40,0,0,0,40-40V188A40,40,0,0,0,424,148Z" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="32"/>
+              <polyline points="124 256 160 220 196 256" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="32"/>
+              <path d="M160,220V296a64,64,0,0,0,64,64h60" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="32"/>
+              <polyline points="388 336 352 372 316 336" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="32"/>
+              <path d="M352,372V296a64,64,0,0,0-64-64H228" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="32"/>
+            </svg>
+          </button>
+          <button type="button" onClick={handleCapture} disabled={uploading} className="mt-2 w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow transition disabled:opacity-50">
+            {uploading ? 'Uploading…' : ' Capture Photo'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              stopCamera()
+              if (onCancel) onCancel()
+            }}
+            className="mt-1 w-full py-1.5 text-xs text-fg-muted hover:text-fg border border-line rounded-lg transition"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {isStarting ? (
+            <div className="w-full py-8 border-2 border-dashed border-line rounded-xl text-fg-muted flex flex-col items-center justify-center gap-3">
+              <svg className="w-6 h-6 animate-spin text-indigo-500" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span className="text-sm font-medium animate-pulse">Requesting camera access...</span>
+              {inlineMode && onCancel && (
+                <button type="button" onClick={onCancel} className="mt-2 px-3 py-1 text-xs font-medium text-fg-muted hover:text-fg border border-line rounded-lg transition">
+                  Cancel
+                </button>
+              )}
+            </div>
+          ) : supportsCamera ? (
+            <button
+              type="button"
+              onClick={startCamera}
+              disabled={uploading}
+              className="w-full py-8 border-2 border-dashed border-line rounded-xl text-fg-muted hover:border-indigo-400 hover:text-indigo-600 transition flex flex-col items-center justify-center gap-2 group"
+            >
+              <svg className="w-8 h-8 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+              </svg>
+              <span className="text-sm font-medium">{cameraError ? 'Retry Camera' : 'Open Camera'}</span>
+            </button>
+          ) : null}
+          {inlineMode && onCancel && !isStarting && (
+            <button type="button" onClick={onCancel} className="w-full py-2 text-xs font-medium text-fg-muted hover:text-fg border border-line rounded-lg transition">
+              Cancel Camera
+            </button>
+          )}
+          {!inlineMode && (
+            <label className="block text-xs text-fg-muted text-center cursor-pointer">
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleFallbackFile}
+                disabled={uploading}
+                className="hidden"
+              />
+              <span className="underline hover:text-fg transition">
+                {supportsCamera ? 'Or upload from device' : 'Upload a photo'}
+              </span>
+            </label>
+          )}
+        </div>
+      )}
+      {cameraError && <p className="text-xs text-danger-fg">{cameraError}</p>}
+      {uploadError && <p className="text-xs text-danger-fg">{uploadError}</p>}
+      {uploading && <p className="text-xs text-fg-muted animate-pulse">Uploading photo…</p>}
+    </div>
+  )
+}
+
 function FieldRow({ token, field, value, onChange, error }) {
   const cls = `${inputCls} ${error ? inputErrorCls : ''}`
   const inputId = fieldDomId(field.id)
@@ -247,6 +504,8 @@ function FieldRow({ token, field, value, onChange, error }) {
             ))}
           </div>
         )
+      case 'camera':
+        return <PublicCameraCapture token={token} value={value} onChange={onChange} />
       case 'grid':
         return <GridField field={field} value={value} onChange={onChange} />
       case 'repeater':
@@ -386,10 +645,11 @@ function PublicForm() {
       // Only send currently-visible fields (a value entered then hidden by a
       // rule change must not leak into the response).
       const payload = stripHiddenValues(visibleFields, values)
+      const uploadedPayload = await api.uploadPendingFiles(payload)
       const res = await fetch(`${API_BASE}/api/public/forms/${token}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formData: payload, submitter: { name, email } })
+        body: JSON.stringify({ formData: uploadedPayload, submitter: { name, email } })
       })
       await readJson(res)
       setDone(true)

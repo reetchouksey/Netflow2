@@ -134,6 +134,80 @@ function PublishSuccessModal({ open, name, webhookUrl, secret, onClose, onGoToLi
   )
 }
 
+function TagInput({ tags = [], onChange, inputValue, onInputChange, placeholder, className, id }) {
+  const [internalInput, setInternalInput] = useState('')
+  
+  const isControlled = inputValue !== undefined && onInputChange !== undefined
+  const input = isControlled ? inputValue : internalInput
+  const setInput = isControlled ? onInputChange : setInternalInput
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault()
+      addTag()
+    } else if (e.key === 'Backspace' && !input && tags.length > 0) {
+      onChange(tags.slice(0, -1))
+    }
+  }
+
+  const addTag = () => {
+    const parts = input.split(',').map(t => t.trim().replace(/^#/, '')).filter(Boolean)
+    if (parts.length === 0) {
+      setInput('')
+      return
+    }
+    const newTags = [...tags]
+    let changed = false
+    for (const p of parts) {
+      if (!newTags.includes(p)) {
+        newTags.push(p)
+        changed = true
+      }
+    }
+    if (changed) {
+      onChange(newTags)
+    }
+    setInput('')
+  }
+
+  const removeTag = (indexToRemove) => {
+    onChange(tags.filter((_, i) => i !== indexToRemove))
+  }
+
+  return (
+    <div className={`flex flex-wrap items-center gap-2 p-2 bg-surface-2/50 backdrop-blur-sm border border-line rounded-xl focus-within:ring-2 focus-within:ring-indigo-500/50 focus-within:bg-surface transition-all duration-300 min-h-[46px] ${className || ''}`}>
+      {tags.map((tag, i) => (
+        <span 
+          key={i} 
+          className="group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/60 dark:bg-black/20 backdrop-blur-md border border-white/50 dark:border-white/10 text-fg text-[13px] font-medium shadow-sm hover:-translate-y-0.5 hover:shadow-md hover:bg-white/80 dark:hover:bg-black/40 transition-all duration-300 ease-out cursor-default"
+        >
+          {tag}
+          <button
+            type="button"
+            onClick={() => removeTag(i)}
+            className="hover:bg-black/5 dark:hover:bg-white/10 rounded-full p-0.5 transition-colors text-fg-muted group-hover:text-danger-fg focus:outline-none focus:ring-2 focus:ring-danger-fg/50"
+            aria-label={`Remove ${tag}`}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </span>
+      ))}
+      <input
+        id={id}
+        type="text"
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={handleKeyDown}
+        onBlur={addTag}
+        placeholder={tags.length === 0 ? placeholder : ''}
+        className="flex-1 min-w-[120px] bg-transparent text-sm text-fg focus:outline-none px-1 py-1 placeholder:text-fg-subtle"
+      />
+    </div>
+  )
+}
+
 const TEMPLATES = [
   {
     id: 'leave',
@@ -922,7 +996,7 @@ function Step3Settings({ data, setData, forms, editId }) {
             />
           </div>
           <div>
-            <FieldLabel htmlFor="wf-category">Category</FieldLabel>
+            <FieldLabel htmlFor="wf-category">Category (Department)</FieldLabel>
             <select
               id="wf-category"
               value={settings.category}
@@ -933,6 +1007,17 @@ function Step3Settings({ data, setData, forms, editId }) {
                 <option key={c}>{c}</option>
               ))}
             </select>
+          </div>
+          <div>
+            <FieldLabel htmlFor="wf-tags" hint="Press Enter or comma to add">Tags</FieldLabel>
+            <TagInput
+              id="wf-tags"
+              tags={settings.tags || []}
+              onChange={(tags) => update({ tags })}
+              inputValue={settings.tagInput || ''}
+              onInputChange={(tagInput) => update({ tagInput })}
+              placeholder="e.g. Urgent, Setup, HR"
+            />
           </div>
         </div>
       </Section>
@@ -1690,7 +1775,7 @@ function NewWorkflow() {
   const forms = useForms()
   const orgDepartments = useDepartmentNames()
   // Read once, before any state initialiser looks at it.
-  const restoredDraft = useRef(isEditMode ? null : readDraft()).current
+  const [restoredDraft] = useState(() => isEditMode ? null : readDraft())
   // Edit mode starts at the canvas (step 2); create mode starts at template picker (step 1).
   // After publishing with inbound webhook, we reopen settings so the URL is copyable.
   const [step, setStep] = useState(
@@ -1709,6 +1794,7 @@ function NewWorkflow() {
 
   // --- AI Builder State ---
   const [aiAvailable, setAiAvailable] = useState(false)
+  // eslint-disable-next-line no-unused-vars
   const [aiStatusReady, setAiStatusReady] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
   const [aiBusy, setAiBusy] = useState(false)
@@ -1730,7 +1816,9 @@ function NewWorkflow() {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (location.state?.openSettings) setStep(3)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (location.state?.publishSuccess) setPublishSuccess(location.state.publishSuccess)
   }, [location.state])
 
@@ -1859,6 +1947,7 @@ function NewWorkflow() {
             name: workflow.title || '',
             description: workflow.description || '',
             category: workflow.department || d.settings.category,
+            tags: workflow.tags || [],
             linkedFormIds: (() => {
               if (Array.isArray(workflow.linkedFormIds) && workflow.linkedFormIds.length) {
                 return workflow.linkedFormIds.map(String)
@@ -1958,6 +2047,7 @@ function NewWorkflow() {
   useEffect(() => {
     const snapshot = JSON.stringify({ step, data })
     if (pristineRef.current === null) {
+      // eslint-disable-next-line react-hooks/immutability
       pristineRef.current = snapshot
       return
     }
@@ -1986,7 +2076,17 @@ function NewWorkflow() {
     return {
       name: settings.name.trim(),
       description: settings.description,
-      category: settings.category,
+      department: settings.category,
+      tags: (() => {
+        const currentTags = [...(settings.tags || [])]
+        if (settings.tagInput) {
+          const parts = settings.tagInput.split(',').map(t => t.trim().replace(/^#/, '')).filter(Boolean)
+          for (const p of parts) {
+            if (!currentTags.includes(p)) currentTags.push(p)
+          }
+        }
+        return currentTags
+      })(),
       linkedFormIds: (() => {
         const ids = settings.linkedFormIds?.length
           ? settings.linkedFormIds

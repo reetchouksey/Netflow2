@@ -14,6 +14,7 @@ import { createDraftStore, useBeforeUnloadWarning } from '../utils/localDraft'
 import { useFocusTrap, useScrollLock } from '../utils/a11y'
 
 const draftStore = createDraftStore('netflow.form.draft.v1')
+
 const AI_EXAMPLE_PROMPTS = [
   'Leave request with type, dates, and reason',
   'Expense claim with amount, receipts, and cost center',
@@ -88,6 +89,13 @@ const FIELD_TYPES = [
       columns: [{ id: 'c1', label: 'Column 1', type: 'text' }],
     },
   },
+  {
+    type: 'camera',
+    label: 'Camera',
+    tile: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-300',
+    chip: 'bg-cyan-50 text-cyan-800 border-cyan-200 hover:bg-cyan-100 dark:bg-cyan-500/15 dark:text-cyan-300 dark:border-cyan-500/30',
+    defaults: { label: 'Take a photo', required: false },
+  },
 ]
 
 function FieldTypeIcon({ type, className = 'w-4 h-4' }) {
@@ -155,6 +163,13 @@ function FieldTypeIcon({ type, className = 'w-4 h-4' }) {
           <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm0 4h16M4 14h16M10 4v16" />
         </svg>
       )
+    case 'camera':
+      return (
+        <svg {...props}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+        </svg>
+      )
     default:
       return (
         <svg {...props}>
@@ -212,6 +227,8 @@ const subtitleFor = (f) => {
       const n = (f.columns || []).length
       return `Table · ${n} column${n === 1 ? '' : 's'}`
     }
+    case 'camera':
+      return `Camera · ${f.required ? 'Required' : 'Optional'}`
     default:
       return f.type
   }
@@ -1044,7 +1061,19 @@ function PreviewField({ field }) {
       return (
         <div>
           {label}
-          <input type="file" className="block w-full text-sm text-fg-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+          <div className="flex items-center gap-3">
+            <input type="file" className="block w-full text-sm text-fg-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+            <button
+              type="button"
+              className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-surface-2 text-fg border border-line"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+              </svg>
+              Camera
+            </button>
+          </div>
           <p className="mt-1 text-xs text-fg-subtle">{field.fileTypes || 'Any file'} up to {fieldMaxMb(field)} MB</p>
         </div>
       )
@@ -1077,6 +1106,20 @@ function PreviewField({ field }) {
           <p className="mt-1.5 text-[11px] text-fg-subtle">
             Submitters can type a name in a signature font or upload an image.
           </p>
+        </div>
+      )
+    case 'camera':
+      return (
+        <div>
+          {label}
+          <div className="w-full py-6 border-2 border-dashed border-line rounded-xl text-fg-muted bg-surface-2 flex flex-col items-center justify-center gap-2">
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+            </svg>
+            <span className="text-xs font-medium">Camera field</span>
+          </div>
+          <p className="mt-1 text-[11px] text-fg-subtle">Respondents will see a live camera feed or file upload option.</p>
         </div>
       )
     case 'radio':
