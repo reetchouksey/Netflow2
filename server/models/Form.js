@@ -12,7 +12,7 @@ const formSchema = new mongoose.Schema({
     id: { type: String, required: true },
     type: {
       type: String,
-      enum: ['number', 'text', 'dropdown', 'date', 'file', 'checkbox', 'signature', 'repeater', 'textarea', 'radio', 'grid', 'camera'],
+      enum: ['number', 'text', 'dropdown', 'date', 'file', 'checkbox', 'signature', 'repeater', 'textarea', 'radio', 'grid'],
       required: true
     },
     label: { type: String, required: true },
@@ -39,7 +39,8 @@ const formSchema = new mongoose.Schema({
       max: { type: Number },
       pattern: { type: String },
       patternLabel: { type: String }
-    }
+    },
+    referenceUser: { type: Boolean, default: false }
   }],
   status: {
     type: String,
