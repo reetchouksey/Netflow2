@@ -14,7 +14,6 @@ import { createDraftStore, useBeforeUnloadWarning } from '../utils/localDraft'
 import { useFocusTrap, useScrollLock } from '../utils/a11y'
 
 const draftStore = createDraftStore('netflow.form.draft.v1')
-
 const AI_EXAMPLE_PROMPTS = [
   'Leave request with type, dates, and reason',
   'Expense claim with amount, receipts, and cost center',
