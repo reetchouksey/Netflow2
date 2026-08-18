@@ -341,7 +341,7 @@ export default function DocumentsDashboard() {
     return typeStr;
   }
 
-  const handleDeleteDoc = async (doc, e) => {
+   const handleDeleteDoc = async (doc, e) => {
     e.stopPropagation()
     const ok = await confirm({
       title: 'Delete Document',
@@ -350,27 +350,32 @@ export default function DocumentsDashboard() {
       danger: true
     })
     if (!ok) return
+    
     try {
-      setLoading(true)
-      const res = await api.delete(`/api/dms/documents/${doc._id}`)
-      if (res) {
-        if (activeDoc?._id === doc._id) {
-          setActiveDoc(null)
-          setActiveDocUrl(null)
-        }
-        await loadData()
+      // 1. Optimistic Update: UI se document turant hata dein bina reload kiye
+      setDocuments(prevDocs => prevDocs.filter(d => d._id !== doc._id))
+      
+      if (activeDoc?._id === doc._id) {
+        setActiveDoc(null)
+        setActiveDocUrl(null)
       }
+
+      // 2. Background me API delete call karein bina Loading spinner dikhaye
+      await api.delete(`/api/dms/documents/${doc._id}`)
+
     } catch (err) {
       console.error("Delete failed", err)
+      // Agar delete fail ho jata hai, to original data wapas laane ke liye reload kar lein
+      loadData() 
+      
       if (err?.code === 'DMS_UNAUTHORIZED' || err.response?.data?.code === 'DMS_UNAUTHORIZED') {
         setNeedsLogin(true)
       } else {
         toast.error(err.response?.data?.error || err.message || "Failed to delete document")
       }
-    } finally {
-      setLoading(false)
     }
   }
+
 
   if (loading) {
     return (
