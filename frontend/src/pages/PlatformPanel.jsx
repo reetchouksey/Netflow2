@@ -412,7 +412,7 @@ function OrgDialog({ org, onClose, onSaved }) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="flex items-center gap-2 text-sm text-fg">
             <input type="checkbox" checked={form.externalUsers} onChange={set('externalUsers')} className="rounded" />
-            Allow external users
+            Allow external domains
           </label>
         </div>
 
