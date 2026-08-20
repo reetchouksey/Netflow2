@@ -82,6 +82,7 @@ Field = {
 Rules:
 - Use "text" with "multiline": true for paragraph/long answers (e.g. reason, comments). There is no "textarea" type.
 - For email/phone/short answers use "type": "text".
+- IMPORTANT: Use "type": "number" for any costs, amounts, quantities, or numeric identifiers (e.g., Aadhar Number, SSN).
 - dropdown and radio MUST include a non-empty "options" array.
 - grid MUST include a non-empty "columns" array.
 - Keep it concise: at most 15 fields. Choose sensible "required" flags.
