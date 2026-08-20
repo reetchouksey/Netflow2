@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { workflowsStore } from '../lib/workflowsStore'
 import { useDepartmentNames } from '../lib/departmentsStore'
-import { useForms } from '../lib/formsStore'
+import { useForms, formsStore } from '../lib/formsStore'
 import { api } from '../utils/api'
 import NodeTypesSidebar from './WorkflowCanvas/NodeTypesSidebar'
 import WorkflowEditor from './WorkflowCanvas/WorkflowEditor'
@@ -845,9 +845,9 @@ function Section({ title, description, icon, children }) {
   )
 }
 
-function FieldLabel({ htmlFor, children, hint }) {
+function FieldLabel({ htmlFor, children, hint, className = '' }) {
   return (
-    <div className="mb-1.5">
+    <div className={`mb-1.5 ${className}`}>
       <label htmlFor={htmlFor} className="block text-sm font-medium text-fg">
         {children}
       </label>
@@ -902,18 +902,67 @@ function Step3Settings({ data, setData, forms, editId }) {
   const updateWebhook = (patch) =>
     update({ inboundWebhook: { ...(settings.inboundWebhook || {}), ...patch } })
 
-  // Active users for the "Specific people" initiator picker.
   const [users, setUsers] = useState([])
   const [deliveries, setDeliveries] = useState([])
   const [dlq, setDlq] = useState([])
   const [showSecret, setShowSecret] = useState(false)
+  const [aiStatus, setAiStatus] = useState(null)
+  const [isGeneratingForm, setIsGeneratingForm] = useState(false)
+
   useEffect(() => {
     let cancelled = false
     fetchAllUsers({ isActive: true })
       .then((d) => { if (!cancelled) setUsers(d.users || []) })
       .catch(() => {})
+      
+    api.get('/api/workflows/ai-status')
+      .then((res) => { if (!cancelled) setAiStatus(res) })
+      .catch(() => {})
+      
     return () => { cancelled = true }
   }, [])
+
+  const generateFormWithAI = async () => {
+    if (!settings.name) return toast.error('Please enter a workflow name first.')
+    setIsGeneratingForm(true)
+    try {
+      const draft = await api.post('/api/forms/ai-draft', { prompt: `Create a form for a workflow named: ${settings.name}` })
+
+      const newFieldId = () =>
+        typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+
+      const fieldsWithIds = (draft.fields || []).map(f => ({
+        ...f,
+        id: f.id || newFieldId()
+      }))
+
+      const newForm = await formsStore.add({
+        name: draft.title || `${settings.name} Form`,
+        description: draft.description || '',
+        category: settings.category || '',
+        fields: fieldsWithIds
+      })
+
+      if (newForm && newForm.id) {
+        await formsStore.publish(newForm.id)
+        
+        const linkedIds = settings.linkedFormIds?.length
+          ? settings.linkedFormIds.map(String)
+          : (settings.linkedFormId ? [String(settings.linkedFormId)] : [])
+        
+        const nextIds = [...linkedIds, String(newForm.id)]
+        update({ linkedFormIds: nextIds, linkedFormId: nextIds[0] || null })
+        toast.success('Form automatically generated, published, and linked!')
+      }
+    } catch (err) {
+      console.error('Auto-generate error:', err)
+      toast.error(err.message || 'Failed to auto-generate form.')
+    } finally {
+      setIsGeneratingForm(false)
+    }
+  }
 
   useEffect(() => {
     if (!editId || !settings.inboundWebhook?.enabled) return
@@ -1009,7 +1058,7 @@ function Step3Settings({ data, setData, forms, editId }) {
             </select>
           </div>
           <div>
-            <FieldLabel htmlFor="wf-tags" hint="Press Enter or comma to add">Tags</FieldLabel>
+            <FieldLabel htmlFor="wf-tags" >Tags</FieldLabel>
             <TagInput
               id="wf-tags"
               tags={settings.tags || []}
@@ -1032,7 +1081,27 @@ function Step3Settings({ data, setData, forms, editId }) {
       >
         <div className="space-y-5">
           <div>
-            <FieldLabel htmlFor="wf-linked-forms">Linked forms</FieldLabel>
+            <div className="flex items-center justify-between mb-1.5">
+              <FieldLabel htmlFor="wf-linked-forms" className="mb-0">Linked forms</FieldLabel>
+              {aiStatus?.aiConfigured && (
+                <button
+                  type="button"
+                  onClick={generateFormWithAI}
+                  disabled={isGeneratingForm || !settings.name}
+                  className="text-[13px] font-medium flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 disabled:opacity-50 transition -mt-1.5"
+                >
+                  {isGeneratingForm ? (
+                    <>
+                      <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Generating...
+                    </>
+                  ) : '✨ Auto-generate Form'}
+                </button>
+              )}
+            </div>
             {(() => {
               const linkedIds = settings.linkedFormIds?.length
                 ? settings.linkedFormIds.map(String)

@@ -41,7 +41,7 @@ const FIELD_TYPES = [
     label: 'Date',
     tile: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300',
     chip: 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30',
-    defaults: { label: 'Pick a date', required: false },
+    defaults: { label: 'Pick a date', required: false, includeTime: false },
   },
   {
     type: 'file',
@@ -55,7 +55,7 @@ const FIELD_TYPES = [
     label: 'Checkbox',
     tile: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300',
     chip: 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30',
-    defaults: { label: 'Check this box', required: false },
+    defaults: { label: 'Check this box', required: false, options: ['Option 1', 'Option 2'], layout: 'vertical' },
   },
   {
     type: 'signature',
@@ -76,7 +76,7 @@ const FIELD_TYPES = [
     label: 'Radio',
     tile: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300',
     chip: 'bg-indigo-50 text-indigo-800 border-indigo-200 hover:bg-indigo-100 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-500/30',
-    defaults: { label: 'Choose one', required: false, options: ['Option 1', 'Option 2'] },
+    defaults: { label: 'Choose one', required: false, options: ['Option 1', 'Option 2'], layout: 'vertical' },
   },
   {
     type: 'grid',
@@ -95,6 +95,13 @@ const FIELD_TYPES = [
     tile: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-300',
     chip: 'bg-cyan-50 text-cyan-800 border-cyan-200 hover:bg-cyan-100 dark:bg-cyan-500/15 dark:text-cyan-300 dark:border-cyan-500/30',
     defaults: { label: 'Take a photo', required: false },
+  },
+  {
+    type: 'heading',
+    label: 'Heading',
+    tile: 'bg-slate-100 text-slate-700 dark:bg-slate-500/20 dark:text-slate-300',
+    chip: 'bg-slate-50 text-slate-800 border-slate-200 hover:bg-slate-100 dark:bg-slate-500/15 dark:text-slate-300 dark:border-slate-500/30',
+    defaults: { label: 'Section Heading', placeholder: 'Optional description or instructions' },
   },
 ]
 
@@ -168,6 +175,12 @@ function FieldTypeIcon({ type, className = 'w-4 h-4' }) {
         <svg {...props}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
           <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+        </svg>
+      )
+    case 'heading':
+      return (
+        <svg {...props}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
         </svg>
       )
     default:
@@ -556,7 +569,7 @@ function FieldSettings({ field, fields = [], onChange, onDelete }) {
         <input id="fs-label" type="text" value={field.label} onChange={(e) => update({ label: e.target.value })} className={inputCls} />
       </div>
 
-      {(field.type === 'text' || field.type === 'dropdown' || field.type === 'number') && (
+      {(field.type === 'text' || field.type === 'dropdown' || field.type === 'number' || field.type === 'heading') && (
         <div className="mb-3">
           <label htmlFor="fs-placeholder" className="block text-xs font-medium text-fg mb-1">Placeholder</label>
           <input id="fs-placeholder" type="text" value={field.placeholder || ''} onChange={(e) => update({ placeholder: e.target.value })} className={inputCls} />
@@ -586,8 +599,36 @@ function FieldSettings({ field, fields = [], onChange, onDelete }) {
         </>
       )}
 
-      {(field.type === 'dropdown' || field.type === 'radio') && (
-        <OptionsEditor key={field.id} field={field} update={update} />
+      {field.type === 'date' && (
+        <label className="flex items-center gap-2 mb-3 text-sm text-fg">
+          <input
+            type="checkbox"
+            checked={!!field.includeTime}
+            onChange={(e) => update({ includeTime: e.target.checked })}
+            className="w-4 h-4 rounded border-line text-indigo-600 focus:ring-indigo-400"
+          />
+          Include time
+        </label>
+      )}
+
+      {(field.type === 'dropdown' || field.type === 'radio' || field.type === 'checkbox') && (
+        <>
+          <OptionsEditor key={field.id} field={field} update={update} />
+          {(field.type === 'radio' || field.type === 'checkbox') && (
+            <div className="mb-3">
+              <label htmlFor="fs-layout" className="block text-xs font-medium text-fg mb-1">Layout</label>
+              <select
+                id="fs-layout"
+                value={field.layout || 'vertical'}
+                onChange={(e) => update({ layout: e.target.value })}
+                className={inputCls}
+              >
+                <option value="vertical">Vertical</option>
+                <option value="horizontal">Horizontal</option>
+              </select>
+            </div>
+          )}
+        </>
       )}
 
       {field.type === 'grid' && (
@@ -694,18 +735,22 @@ function FieldSettings({ field, fields = [], onChange, onDelete }) {
         </>
       )}
 
-      <ValidationEditor field={field} update={update} />
+      {field.type !== 'heading' && (
+        <>
+          <ValidationEditor field={field} update={update} />
 
-      <label className="flex items-center gap-2 mb-2 text-sm text-fg">
-        <input
-          type="checkbox"
-          checked={!!field.required}
-          onChange={(e) => update({ required: e.target.checked })}
-          className="w-4 h-4 rounded border-line text-indigo-600 focus:ring-indigo-400"
-        />
-        Required field
-      </label>
-      <ConditionalLogicEditor field={field} fields={fields} update={update} />
+          <label className="flex items-center gap-2 mb-2 text-sm text-fg">
+            <input
+              type="checkbox"
+              checked={!!field.required}
+              onChange={(e) => update({ required: e.target.checked })}
+              className="w-4 h-4 rounded border-line text-indigo-600 focus:ring-indigo-400"
+            />
+            Required field
+          </label>
+          <ConditionalLogicEditor field={field} fields={fields} update={update} />
+        </>
+      )}
 
       <button
         type="button"

@@ -84,8 +84,8 @@ export const authStore = {
     emit()
     return data.user
   },
-  async logout() {
-    try { await api.post('/api/auth/logout') } catch { /* ignore */ }
+  async logout(allDevices = false) {
+    try { await api.post('/api/auth/logout', { allDevices }) } catch { /* ignore */ }
     clearToken()
     currentUser = null
     emit()

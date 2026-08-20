@@ -227,6 +227,15 @@ function GridField({ field, value, onChange }) {
 }
 
 function FieldRow({ field, value, onChange, error }) {
+  if (field.type === 'heading') {
+    return (
+      <div data-field-row={field.id} className="pt-4 pb-2 border-b border-line mb-4">
+        <h3 className="text-lg font-semibold text-fg">{field.label}</h3>
+        {field.placeholder && <p className="text-sm text-fg-muted mt-1">{field.placeholder}</p>}
+      </div>
+    )
+  }
+
   const cls = `${inputCls} ${error ? inputErrorCls : ''}`
   // Same wiring as the shared FieldRow: the label points at the control and
   // focusFirstError finds it by this id after a failed submit.
@@ -267,7 +276,7 @@ function FieldRow({ field, value, onChange, error }) {
         return (
           <input
             {...a11y}
-            type="date"
+            type={field.includeTime ? "datetime-local" : "date"}
             value={value ?? ''}
             onChange={(e) => onChange(e.target.value)}
             className={cls}
@@ -288,6 +297,32 @@ function FieldRow({ field, value, onChange, error }) {
           </select>
         )
       case 'checkbox':
+        if (field.options && field.options.length > 0) {
+          const selectedValues = Array.isArray(value) ? value : []
+          return (
+            <div className={field.layout === 'horizontal' ? "flex flex-wrap gap-x-6 gap-y-2" : "space-y-1.5"} role="group" aria-labelledby={labelId}>
+              {field.options.map((opt, i) => (
+                <label key={opt} className="flex items-center gap-2 text-sm text-fg">
+                  <input
+                    id={i === 0 ? inputId : undefined}
+                    type="checkbox"
+                    value={opt}
+                    checked={selectedValues.includes(opt)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        onChange([...selectedValues, opt])
+                      } else {
+                        onChange(selectedValues.filter((v) => v !== opt))
+                      }
+                    }}
+                    className="w-4 h-4 rounded border-line text-indigo-600 focus:ring-indigo-400"
+                  />
+                  <span>{opt}</span>
+                </label>
+              ))}
+            </div>
+          )
+        }
         return (
           <label className="flex items-center gap-2 text-sm text-fg">
             <input
@@ -312,7 +347,7 @@ function FieldRow({ field, value, onChange, error }) {
 
       case 'radio':
         return (
-          <div className="space-y-1.5" role="radiogroup" aria-labelledby={labelId} aria-describedby={errorId}>
+          <div className={field.layout === 'horizontal' ? "flex flex-wrap gap-x-6 gap-y-2" : "space-y-1.5"} role="radiogroup" aria-labelledby={labelId} aria-describedby={errorId}>
             {(field.options || []).map((opt, i) => (
               <label key={opt} className="flex items-center gap-2 text-sm text-fg">
                 <input
@@ -479,13 +514,14 @@ function FillForm() {
           }
           continue
         }
-        const isEmpty = f.type === 'signature'
+          const isEmpty = f.type === 'signature'
           ? isSignatureEmpty(v)
           : (
             v === undefined ||
             v === null ||
             v === '' ||
-            (f.type === 'checkbox' && v === false)
+            (f.type === 'checkbox' && f.options && f.options.length > 0 && (!Array.isArray(v) || v.length === 0)) ||
+            (f.type === 'checkbox' && (!f.options || f.options.length === 0) && v === false)
           )
         if (isEmpty) {
           errs[f.id] = `${f.label} is required`

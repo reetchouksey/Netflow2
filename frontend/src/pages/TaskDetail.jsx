@@ -173,7 +173,6 @@ function SubmissionDetails({ task }) {
                     <span className="text-fg">{row.value}</span>
                   )
                 ) : row.isSignature ? (
-
                   <SignatureMark signature={row.value} />
                 ) : (
                   row.value
@@ -535,7 +534,7 @@ function PriorDocuments({ task }) {
 // Read-only label→value grid for a submitted form. File fields are skipped here
 // because they already render as attachments / "Documents from previous steps".
 function SubmittedFormFields({ fields, data }) {
-  const list = (fields || []).filter((f) => f.type !== 'file')
+  const list = (fields || []).filter((f) => f.type !== 'file' && f.type !== 'heading')
   if (!list.length) return null
   return (
     <dl className="divide-y divide-line">

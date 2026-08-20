@@ -757,10 +757,7 @@ function UserMenu({ user, displayName, chipPrimary, chipSecondary, avatarSeed })
     return () => document.removeEventListener('keydown', onKey)
   }, [open])
 
-  const handleLogout = async () => {
-    await authStore.logout()
-    navigate('/login')
-  }
+
 
   return (
     <div ref={wrapRef} data-tour="user-menu" className="relative">
@@ -806,7 +803,7 @@ function UserMenu({ user, displayName, chipPrimary, chipSecondary, avatarSeed })
           <div className="my-1 h-px bg-surface-3" />
           <button
             role="menuitem"
-            onClick={handleLogout}
+            onClick={() => { setOpen(false); authStore.logout(false).then(() => navigate('/login')) }}
             className="w-full text-left px-3 py-2 text-sm text-fg hover:bg-danger-subtle hover:text-danger-fg focus:bg-danger-subtle focus:text-danger-fg focus:outline-none"
           >
             Sign out

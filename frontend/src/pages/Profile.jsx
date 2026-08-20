@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import { api } from '../utils/api'
-import { useUser, initials, ROLE_LABELS } from '../utils/auth'
+import { authStore, useUser, initials, ROLE_LABELS } from '../utils/auth'
 import { isOrgAdmin, isPlatformShell } from '../utils/permissions'
 import { Skeleton } from '../components/Skeleton'
 import { AlertBanner } from '../components/Alert'
@@ -208,6 +208,7 @@ function AdminShortcutsCard() {
 }
 
 function Profile() {
+  const navigate = useNavigate()
   const cached = useUser()
   const platform = isPlatformShell(cached)
   const orgAdmin = isOrgAdmin(cached)
@@ -401,12 +402,20 @@ function Profile() {
     <AppShell
       title="My profile"
       actions={
-        <Link
-          to="/change-password"
-          className="px-4 py-2 rounded-lg border border-line hover:bg-surface-2 text-sm font-medium text-fg transition"
-        >
-          Change password
-        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => authStore.logout(true).then(() => navigate('/login'))}
+            className="px-4 py-2 rounded-lg border border-danger-subtle bg-danger-subtle hover:bg-danger-subtle/80 text-sm font-medium text-danger-fg transition"
+          >
+            Sign out of all devices
+          </button>
+          <Link
+            to="/change-password"
+            className="px-4 py-2 rounded-lg border border-line hover:bg-surface-2 text-sm font-medium text-fg transition"
+          >
+            Change password
+          </Link>
+        </div>
       }
       mainClass="flex-1 min-h-0 flex flex-col p-4 md:p-6 pb-24 md:pb-6 overflow-hidden"
     >
