@@ -14,20 +14,25 @@ const NVIDIA_BASE = 'https://integrate.api.nvidia.com/v1'
 // whichever key is present (NVIDIA preferred).
 const getProvider = () => {
   const p = (process.env.LLM_PROVIDER || '').toLowerCase()
-  if (p === 'nvidia' || p === 'gemini') return p
+  if (p === 'nvidia' || p === 'gemini' || p === 'anthropic') return p
+  if (process.env.ANTHROPIC_API_KEY) return 'anthropic'
   if (process.env.NVIDIA_API_KEY) return 'nvidia'
   return 'gemini'
 }
 
-const getApiKey = () =>
-  getProvider() === 'nvidia'
-    ? (process.env.NVIDIA_API_KEY || '')
-    : (process.env.GEMINI_API_KEY || '')
+const getApiKey = () => {
+  const p = getProvider()
+  if (p === 'anthropic') return process.env.ANTHROPIC_API_KEY || ''
+  if (p === 'nvidia') return process.env.NVIDIA_API_KEY || ''
+  return process.env.GEMINI_API_KEY || ''
+}
 
-const getModel = () =>
-  getProvider() === 'nvidia'
-    ? (process.env.NVIDIA_MODEL || 'meta/llama-3.3-70b-instruct')
-    : (process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite')
+const getModel = () => {
+  const p = getProvider()
+  if (p === 'anthropic') return process.env.ANTHROPIC_MODEL || 'claude-sonnet-5'
+  if (p === 'nvidia') return process.env.NVIDIA_MODEL || 'meta/llama-3.3-70b-instruct'
+  return process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite'
+}
 
 const isConfigured = () => Boolean(getApiKey())
 
@@ -118,11 +123,48 @@ const callNvidia = async ({ prompt, system, temperature, json, timeoutMs, maxTok
   throw lastErr
 }
 
-const call = (args) => (getProvider() === 'nvidia' ? callNvidia(args) : callGemini(args))
+const callAnthropic = async ({ prompt, system, temperature, json, timeoutMs, maxTokens }) => {
+  const key = process.env.ANTHROPIC_API_KEY || ''
+  if (!key) throw new Error('ANTHROPIC_API_KEY is not set')
+  
+  const body = {
+    model: getModel(),
+    max_tokens: maxTokens || 2048,
+    messages: [{ role: 'user', content: prompt }]
+  }
+  if (system) body.system = system
 
-// Lists models the key can access. Doubles as a cheap key-validity check.
+  const out = await httpJson('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  }, timeoutMs)
+  
+  const parts = out?.content || []
+  return parts.filter(p => p.type === 'text').map(p => p.text || '').join('').trim()
+}
+
+const call = (args) => {
+  const p = getProvider()
+  if (p === 'anthropic') return callAnthropic(args)
+  if (p === 'nvidia') return callNvidia(args)
+  return callGemini(args)
+}
+
 const listModels = async () => {
-  if (getProvider() === 'nvidia') {
+  const p = getProvider()
+  if (p === 'anthropic') {
+    // Anthropic API doesn't have a standardized /models list endpoint that works the same way
+    // without an explicit API check, we just return the configured model.
+    const key = process.env.ANTHROPIC_API_KEY || ''
+    if (!key) throw new Error('ANTHROPIC_API_KEY is not set')
+    return [{ name: getModel(), displayName: getModel(), methods: ['chat'] }]
+  }
+  if (p === 'nvidia') {
     const key = process.env.NVIDIA_API_KEY || ''
     if (!key) throw new Error('NVIDIA_API_KEY is not set')
     const out = await httpJson(`${NVIDIA_BASE}/models`, {
