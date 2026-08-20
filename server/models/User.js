@@ -43,6 +43,8 @@ const userSchema = new mongoose.Schema({
   // password reset, deactivation, role change). Tokens embed this value ("tv")
   // and are rejected by the auth middleware once it no longer matches.
   tokenVersion: { type: Number, default: 0 },
+  // Active session IDs to allow logging out from a single device.
+  activeSessions: { type: [String], default: [] },
   // Licensing: may this user create/edit forms and workflows? Deliberately a
   // per-user grant rather than a role check, because plans sell "1 builder"
   // while roles are global and shared across tenants. The Org Admin decides

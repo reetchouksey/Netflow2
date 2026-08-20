@@ -102,7 +102,7 @@ const cleanOptions = (arr) => {
   return out
 }
 
-const AI_TYPES = new Set(['text', 'dropdown', 'date', 'file', 'checkbox', 'signature', 'number', 'radio', 'grid'])
+const AI_TYPES = new Set(['text', 'dropdown', 'date', 'file', 'checkbox', 'signature', 'number', 'radio', 'grid', 'heading'])
 const GRID_CELL_TYPES = new Set(['text', 'number', 'date', 'dropdown'])
 
 // Coerce raw LLM JSON into the builder's field shape. NEVER trust the model:
@@ -130,7 +130,8 @@ function sanitizeAiFields(raw) {
     } else if (type === 'dropdown' || type === 'radio') {
       const options = cleanOptions(f.options)
       if (options.length === 0) options.push('Option 1', 'Option 2')
-      const field = { type, label, required, options }
+      const layout = f.layout === 'horizontal' ? 'horizontal' : 'vertical'
+      const field = { type, label, required, options, layout }
       if (type === 'dropdown') field.placeholder = asStr(f.placeholder, 120) || 'Choose...'
       out.push(field)
     } else if (type === 'file') {
@@ -150,8 +151,19 @@ function sanitizeAiFields(raw) {
       }
       if (columns.length === 0) columns.push({ id: 'c1', label: 'Column 1', type: 'text' })
       out.push({ type, label, required, columns })
+    } else if (type === 'checkbox') {
+      const layout = f.layout === 'horizontal' ? 'horizontal' : 'vertical'
+      const field = { type, label, required, layout }
+      if (f.options && Array.isArray(f.options) && f.options.length > 0) {
+        field.options = cleanOptions(f.options)
+      }
+      out.push(field)
+    } else if (type === 'heading') {
+      out.push({ type, label, placeholder: asStr(f.placeholder, 1000) })
+    } else if (type === 'date') {
+      out.push({ type, label, required, includeTime: !!f.includeTime })
     } else {
-      // date, checkbox, signature — no extra props.
+      // signature — no extra props.
       out.push({ type, label, required })
     }
     if (out.length >= 25) break
