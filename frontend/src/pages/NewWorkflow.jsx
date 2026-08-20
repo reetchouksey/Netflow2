@@ -908,6 +908,10 @@ function Step3Settings({ data, setData, forms, editId }) {
   const [showSecret, setShowSecret] = useState(false)
   const [aiStatus, setAiStatus] = useState(null)
   const [isGeneratingForm, setIsGeneratingForm] = useState(false)
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false)
+  const [aiModalTab, setAiModalTab] = useState('auto')
+  const [aiPrompt, setAiPrompt] = useState('')
+  const [aiDraft, setAiDraft] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -922,25 +926,42 @@ function Step3Settings({ data, setData, forms, editId }) {
     return () => { cancelled = true }
   }, [])
 
-  const generateFormWithAI = async () => {
-    if (!settings.name) return toast.error('Please enter a workflow name first.')
+  const handleGeneratePreview = async () => {
+    const finalPrompt = aiModalTab === 'auto' 
+      ? `Create a form for a workflow named: ${settings.name || 'Workflow'}`
+      : aiPrompt
+
+    if (!finalPrompt.trim()) return toast.error('Please enter a prompt first.')
+
     setIsGeneratingForm(true)
     try {
-      const draft = await api.post('/api/forms/ai-draft', { prompt: `Create a form for a workflow named: ${settings.name}` })
+      const draft = await api.post('/api/forms/ai-draft', { prompt: finalPrompt })
+      setAiDraft(draft)
+    } catch (err) {
+      console.error('Auto-generate error:', err)
+      toast.error(err.message || 'Failed to auto-generate form preview.')
+    } finally {
+      setIsGeneratingForm(false)
+    }
+  }
 
+  const handleApproveAndPublish = async () => {
+    if (!aiDraft) return
+    setIsGeneratingForm(true)
+    try {
       const newFieldId = () =>
         typeof crypto !== 'undefined' && crypto.randomUUID
           ? crypto.randomUUID()
           : `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
 
-      const fieldsWithIds = (draft.fields || []).map(f => ({
+      const fieldsWithIds = (aiDraft.fields || []).map(f => ({
         ...f,
         id: f.id || newFieldId()
       }))
 
       const newForm = await formsStore.add({
-        name: draft.title || `${settings.name} Form`,
-        description: draft.description || '',
+        name: aiDraft.title || `${settings.name || 'Workflow'} Form`,
+        description: aiDraft.description || '',
         category: settings.category || '',
         fields: fieldsWithIds
       })
@@ -955,10 +976,13 @@ function Step3Settings({ data, setData, forms, editId }) {
         const nextIds = [...linkedIds, String(newForm.id)]
         update({ linkedFormIds: nextIds, linkedFormId: nextIds[0] || null })
         toast.success('Form automatically generated, published, and linked!')
+        setIsAiModalOpen(false)
+        setAiDraft(null)
+        setAiPrompt('')
       }
     } catch (err) {
-      console.error('Auto-generate error:', err)
-      toast.error(err.message || 'Failed to auto-generate form.')
+      console.error('Publish error:', err)
+      toast.error(err.message || 'Failed to publish form.')
     } finally {
       setIsGeneratingForm(false)
     }
@@ -1086,19 +1110,11 @@ function Step3Settings({ data, setData, forms, editId }) {
               {aiStatus?.aiConfigured && (
                 <button
                   type="button"
-                  onClick={generateFormWithAI}
-                  disabled={isGeneratingForm || !settings.name}
+                  onClick={() => setIsAiModalOpen(true)}
+                  disabled={!settings.name}
                   className="text-[13px] font-medium flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 disabled:opacity-50 transition -mt-1.5"
                 >
-                  {isGeneratingForm ? (
-                    <>
-                      <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Generating...
-                    </>
-                  ) : '✨ Auto-generate Form'}
+                  ✨ Auto-generate Form
                 </button>
               )}
             </div>
@@ -1620,6 +1636,110 @@ function Step3Settings({ data, setData, forms, editId }) {
           />
         </div>
       </Section>
+
+      {isAiModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-surface border border-line rounded-lg shadow-xl w-full max-w-xl flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-line">
+              <h3 className="text-lg font-medium text-fg">AI Form Generator</h3>
+              <button onClick={() => setIsAiModalOpen(false)} className="text-fg-muted hover:text-fg">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto">
+              {!aiDraft ? (
+                <>
+                  <div className="flex border-b border-line mb-4">
+                    <button 
+                      onClick={() => setAiModalTab('auto')}
+                      className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${aiModalTab === 'auto' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-fg-muted hover:text-fg'}`}
+                    >
+                      Auto-Generate (Fast)
+                    </button>
+                    <button 
+                      onClick={() => setAiModalTab('custom')}
+                      className={`ml-6 pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${aiModalTab === 'custom' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-fg-muted hover:text-fg'}`}
+                    >
+                      Custom Prompt
+                    </button>
+                  </div>
+                  {aiModalTab === 'auto' ? (
+                    <p className="text-sm text-fg-muted mb-4">
+                      The AI will automatically generate a form based on the workflow name: <br/><strong>{settings.name || '(No name set)'}</strong>
+                    </p>
+                  ) : (
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-fg mb-1">Detailed Requirements</label>
+                      <textarea 
+                        value={aiPrompt}
+                        onChange={(e) => setAiPrompt(e.target.value)}
+                        placeholder="e.g., Create a KYC form with Aadhar Number, Full Name, and a grid for address history..."
+                        className="w-full h-32 px-3 py-2 text-sm bg-surface border border-line rounded-md focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none resize-none text-fg"
+                      />
+                    </div>
+                  )}
+                  <div className="flex justify-end gap-3 mt-6">
+                    <button onClick={() => setIsAiModalOpen(false)} className="px-4 py-2 text-sm font-medium text-fg-muted hover:text-fg">Cancel</button>
+                    <button 
+                      onClick={handleGeneratePreview}
+                      disabled={isGeneratingForm || (aiModalTab === 'custom' && !aiPrompt.trim())}
+                      className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {isGeneratingForm && (
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                      )}
+                      Generate Preview
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="mb-4">
+                    <h4 className="font-medium text-fg text-base">{aiDraft.title}</h4>
+                    {aiDraft.description && <p className="text-sm text-fg-muted mt-1">{aiDraft.description}</p>}
+                  </div>
+                  <div className="border border-line rounded-md divide-y divide-line max-h-[40vh] overflow-y-auto">
+                    {(aiDraft.fields || []).length === 0 ? (
+                      <div className="p-4 text-sm text-fg-muted italic">No fields generated.</div>
+                    ) : (
+                      aiDraft.fields.map((f, i) => (
+                        <div key={i} className="p-3 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm text-fg">{f.label}</span>
+                            {f.required && <span className="text-danger-fg text-xs">*</span>}
+                          </div>
+                          <span className="text-xs px-2 py-1 bg-surface-2 rounded-full text-fg-muted border border-line capitalize">
+                            {f.type}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="flex justify-between items-center mt-6 pt-4 border-t border-line">
+                    <button 
+                      onClick={() => setAiDraft(null)}
+                      disabled={isGeneratingForm}
+                      className="px-4 py-2 text-sm font-medium text-fg border border-line hover:bg-surface-2 rounded-md"
+                    >
+                      Retry (Edit Prompt)
+                    </button>
+                    <button 
+                      onClick={handleApproveAndPublish}
+                      disabled={isGeneratingForm}
+                      className="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {isGeneratingForm && (
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                      )}
+                      Approve & Publish
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -2415,6 +2535,7 @@ function NewWorkflow() {
             )}
           </>
         )}
+
       </main>
 
       <footer data-tour="workflow-builder-actions" className="h-16 shrink-0 bg-surface border-t border-line px-6 flex items-center justify-end">
