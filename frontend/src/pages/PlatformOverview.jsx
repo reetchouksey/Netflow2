@@ -88,7 +88,7 @@ function PlatformKpiCard({ label, value, foot, icon: Icon, tone = 'indigo' }) {
   }
   const t = tones[tone] || tones.indigo
   return (
-    <div className="relative bg-surface border border-line rounded-xl p-5 shadow-sm overflow-hidden">
+    <div className="relative bg-surface border border-line rounded-xl p-4 shadow-sm overflow-hidden">
       <span className={`absolute left-0 top-0 bottom-0 w-0.5 ${t.accent}`} aria-hidden="true" />
       <div className="flex items-start gap-3.5">
         <span className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${t.icon}`}>
@@ -422,7 +422,7 @@ export default function PlatformOverview() {
           </AlertBanner>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
           <PlatformKpiCard
             label="Organizations"
             value={loading ? '—' : stats.total}
@@ -443,36 +443,6 @@ export default function PlatformOverview() {
             foot={loading ? '' : `${stats.pct(stats.suspended)}% of the fleet`}
             icon={IconBan}
             tone="danger"
-          />
-          <PlatformKpiCard
-            label="Builders"
-            value={loading ? '—' : stats.totalBuilders}
-            foot={loading ? '' : 'Seats currently granted'}
-            icon={IconWrench}
-            tone="slate"
-          />
-          <PlatformKpiCard
-            label="Storage"
-            value={loading ? '—' : formatMb(stats.storageUsedMb)}
-            foot={loading ? '' : (
-              stats.storageFromDms
-                ? (
-                    stats.storageLimitMb > 0
-                      ? `BaseLayer DMS · ${formatMb(stats.storageLimitMb)} capacity · ${stats.dmsDocumentCount ?? 0} docs`
-                      : `BaseLayer DMS · ${stats.dmsDocumentCount ?? 0} document${stats.dmsDocumentCount === 1 ? '' : 's'}`
-                  )
-                : (
-                    stats.storageLimitMb > 0
-                      ? `${formatMb(stats.storageLimitMb)} licensed · ${Math.min(100, Math.round((stats.storageUsedMb / stats.storageLimitMb) * 100))}% used`
-                      : 'Across every organization'
-                  )
-            )}
-            icon={IconStorage}
-            tone={
-              !loading && stats.storageLimitMb > 0 && (stats.storageUsedMb / stats.storageLimitMb) >= 0.9
-                ? 'danger'
-                : 'slate'
-            }
           />
         </div>
 
