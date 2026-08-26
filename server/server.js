@@ -151,6 +151,7 @@ app.use('/api/team', require('./routes/team'))
 // Routes — M3
 app.use('/api/tasks', require('./routes/tasks'))
 app.use('/api/notifications', require('./routes/notifications'))
+app.use('/api/broadcasts', require('./routes/broadcasts'))
 app.use('/api/audit-logs', require('./routes/auditLogs'))
 app.use('/api/analytics', require('./routes/analytics'))
 
