@@ -9,6 +9,7 @@ const qrcode = require('qrcode')
 const User = require('../models/User')
 const Role = require('../models/Role')
 const Organization = require('../models/Organization')
+const AuditLog = require('../models/AuditLog')
 const { protect } = require('../middleware/auth')
 const { authLimiter } = require('../middleware/rateLimit')
 const { sendSuccess, sendError } = require('../utils/apiResponse')
@@ -272,6 +273,18 @@ router.post('/login', authLimiter, async (req, res, next) => {
 
     const token = await createSessionAndSignToken(user)
     const userPayload = user.toJSON()
+
+    // Audit the login
+    await AuditLog.create({
+      orgId: user.orgId,
+      action: 'user_logged_in',
+      performedBy: user._id,
+      targetEntity: 'System Login',
+      department: user.department,
+      ipAddress: req.ip,
+      detail: `User ${user.email} logged in successfully.`
+    }).catch(() => {})
+
     if (user.orgId) {
       const orgDoc = await Organization.findById(user.orgId).select('name integrations').lean()
       if (orgDoc) {
@@ -382,6 +395,18 @@ router.post('/mfa/verify', authLimiter, async (req, res, next) => {
     await user.save({ validateBeforeSave: false })
 
     const token = await createSessionAndSignToken(user)
+
+    // Audit the login
+    await AuditLog.create({
+      orgId: user.orgId,
+      action: 'user_logged_in',
+      performedBy: user._id,
+      targetEntity: 'System Login',
+      department: user.department,
+      ipAddress: req.ip,
+      detail: `User ${user.email} logged in successfully.`
+    }).catch(() => {})
+
     return sendSuccess(res, { token, user: user.toJSON() })
   } catch (err) {
     next(err)

@@ -76,7 +76,8 @@ Field = {
   "options"?: string[],          // dropdown, radio (2+ options)
   "fileTypes"?: string,          // file, e.g. "PDF / DOCX"
   "maxSize"?: number,            // file, in MB (1-50)
-  "columns"?: { "label": string, "type": "text"|"number"|"date"|"dropdown", "options"?: string[] }[] // grid only
+  "columns"?: { "label": string, "type": "text"|"number"|"date"|"dropdown", "options"?: string[] }[], // grid only
+  "page"?: number                // pagination: page number (1, 2, etc.)
 }
 
 Rules:
@@ -86,6 +87,7 @@ Rules:
 - dropdown and radio MUST include a non-empty "options" array.
 - grid MUST include a non-empty "columns" array.
 - Keep it concise: at most 15 fields. Choose sensible "required" flags.
+- Support pagination by setting "page" (starting at 1) if the prompt specifically asks to add pages or split the form.
 - Return JSON only.`
 
 const asStr = (v, max = 200) => String(v ?? '').trim().slice(0, max)
@@ -119,6 +121,20 @@ function sanitizeAiFields(raw) {
     let type = asStr(f.type, 20).toLowerCase()
 
     // Map common synonyms onto builder types.
+    if (type === 'email' || type === 'tel' || type === 'phone' || type === 'url' || type === 'string') {
+      type = 'text'
+    } else if (type === 'select' || type === 'choice' || type === 'options') {
+      type = 'dropdown'
+    } else if (type === 'datetime' || type === 'time') {
+      type = 'date'
+    } else if (type === 'upload' || type === 'attachment') {
+      type = 'file'
+    } else if (type === 'integer' || type === 'float' || type === 'decimal' || type === 'currency') {
+      type = 'number'
+    } else if (type === 'boolean' || type === 'toggle' || type === 'switch') {
+      type = 'checkbox'
+    }
+
     if (['textarea', 'paragraph', 'longtext', 'long_text'].includes(type)) {
       out.push({ type: 'text', label, required, multiline: true, maxLength: null, placeholder: asStr(f.placeholder, 120) })
     } else if (!AI_TYPES.has(type)) {
@@ -167,6 +183,10 @@ function sanitizeAiFields(raw) {
       // signature — no extra props.
       out.push({ type, label, required })
     }
+
+    const pageNum = Math.max(1, num(f.page) || 1)
+    if (out.length > 0) out[out.length - 1].page = pageNum
+
     if (out.length >= 25) break
   }
   return out

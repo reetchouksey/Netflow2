@@ -42,7 +42,8 @@ const formSchema = new mongoose.Schema({
       pattern: { type: String },
       patternLabel: { type: String }
     },
-    referenceUser: { type: Boolean, default: false }
+    referenceUser: { type: Boolean, default: false },
+    page: { type: Number, default: 1 }
   }],
   status: {
     type: String,

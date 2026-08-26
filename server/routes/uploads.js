@@ -89,7 +89,8 @@ router.post('/', protect, async (req, res, next) => {
               org: req.organization,
               // Department-based folder routing: route the file into the user's
               // department sub-folder inside the org's DMS root, e.g. "acme/hr".
-              department: req.user.department || null,
+              // If not for an open task, it's a temporary upload (Two-Stage Upload), so place in 'staging'.
+              department: forTask ? (req.user.department || null) : 'staging',
               orgSubdomain: req.organization?.subdomain || null,
               ref: {
                 id: provisionalId,

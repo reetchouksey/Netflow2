@@ -70,6 +70,7 @@ router.get('/:orgId/:filename', async (req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff')
     res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox")
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
+    res.removeHeader('X-Frame-Options') // Allow embedding in our frontend iframe during split-screen preview
     // A capability URL is stable for the life of the file, so it can be cached —
     // privately, because the file itself is not public.
     res.setHeader('Cache-Control', 'private, max-age=3600')

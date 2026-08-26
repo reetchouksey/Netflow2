@@ -91,7 +91,7 @@ async function summariseActions(baseQuery) {
 router.get(
   '/',
   protect,
-  roleGuard('Admin', 'CEO', 'Manager', 'HR', 'VP'),
+  roleGuard('Admin', 'CEO'),
   async (req, res, next) => {
     try {
       const { search, action, status, department, from, to } = req.query

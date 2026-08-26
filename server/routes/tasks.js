@@ -635,6 +635,22 @@ router.post('/:id/approve', protect, async (req, res, next) => {
     }
 
     task.status = 'approved'
+
+    // Finalize staging attachments (Two-Stage Upload Architecture)
+    try {
+      const attachments = task.attachments || []
+      const dms = require('../services/dmsClient')
+      for (const file of attachments) {
+         if (file.dmsDocId && file.dmsFolder === 'staging') {
+            await dms.postEvent(file.dmsDocId, {
+               type: 'finalized_from_staging',
+               detail: 'Task approved. File finalized to permanent archive.',
+               meta: { folder: req.user.department || 'archive' }
+            }, { org: req.organization }).catch(() => {})
+         }
+      }
+    } catch(e) { console.error('Failed to finalize files from staging', e) }
+
     await task.save()
 
     emitForTask(task, {
@@ -746,6 +762,22 @@ router.post('/:id/submit', protect, async (req, res, next) => {
       comment: comment || undefined
     })
     task.status = 'completed'
+
+    // Finalize staging attachments (Two-Stage Upload Architecture)
+    try {
+      const attachments = task.attachments || []
+      const dms = require('../services/dmsClient')
+      for (const file of attachments) {
+         if (file.dmsDocId && file.dmsFolder === 'staging') {
+            await dms.postEvent(file.dmsDocId, {
+               type: 'finalized_from_staging',
+               detail: 'Task completed. File finalized to permanent archive.',
+               meta: { folder: req.user.department || 'archive' }
+            }, { org: req.organization }).catch(() => {})
+         }
+      }
+    } catch(e) { console.error('Failed to finalize files from staging', e) }
+
     await task.save()
 
     emitForTask(task, {
@@ -920,6 +952,24 @@ router.post('/:id/reject', protect, async (req, res, next) => {
     }
 
     task.status = 'rejected'
+    
+    // Rejected Vault: Document the move to the Rejected Vault
+    try {
+      const attachments = task.attachments || []
+      const dms = require('../services/dmsClient')
+      for (const file of attachments) {
+         if (file.dmsDocId) {
+            await dms.postEvent(file.dmsDocId, {
+               type: 'moved_to_rejected_vault',
+               detail: 'Task was rejected. File moved to Rejected Vault.',
+               meta: { folder: 'rejected' }
+            }, { org: req.organization }).catch(() => {})
+         }
+      }
+    } catch(e) {
+      console.error('Failed to update Rejected Vault', e)
+    }
+
     await task.save()
 
     emitForTask(task, {
