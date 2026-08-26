@@ -12,7 +12,7 @@ import {
   Gauge, KeyRound, Fingerprint, UsersRound, FolderLock, ScrollText, Users, MonitorCog,
   Landmark, ChevronRight, X
 } from 'lucide-react';
-import { AreaChart, Area, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 
 export default function BusinessLandingPage() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -604,27 +604,7 @@ export default function BusinessLandingPage() {
                 <div className="rounded-2xl border border-slate-200 bg-white p-5">
                   <div className="flex items-center justify-between"><div><span className="text-[8px] font-extrabold uppercase tracking-[0.14em] text-slate-400">SLA performance</span><h3 className="mt-1 font-['Manrope','DM_Sans',sans-serif] text-lg font-extrabold">Completion trend</h3></div><span className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[8px] font-bold text-slate-500"><CalendarDays className="size-3" />12 weeks</span></div>
                   <div className="chart-wrap mt-6 h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={chartData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
-                        <defs>
-                          <linearGradient id="colorSlaMain" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#5368F5" stopOpacity={0.28}/>
-                            <stop offset="100%" stopColor="#5368F5" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="4 4" vertical={true} horizontal={true} stroke="#e2e8f0" />
-                        <Area 
-                          type="monotone" 
-                          dataKey="value" 
-                          stroke="#5368F5" 
-                          strokeWidth={2.5} 
-                          fillOpacity={1} 
-                          fill="url(#colorSlaMain)" 
-                          dot={{ r: 4.5, fill: '#5368F5', strokeWidth: 0 }}
-                          activeDot={{ r: 6, fill: '#5368F5', stroke: '#ffffff', strokeWidth: 2 }}
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
+                    <img src="/sla-completion-trend.png" alt="SLA Completion Trend" className="h-full w-full object-cover rounded-xl" />
                   </div>
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-3">
