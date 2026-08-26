@@ -8,7 +8,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/docs': {
-        target: 'http://localhost:5174',
+        target: 'http://[::1]:5174',
         changeOrigin: true
       }
     }
