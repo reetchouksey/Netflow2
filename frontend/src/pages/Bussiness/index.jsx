@@ -12,7 +12,7 @@ import {
   Gauge, KeyRound, Fingerprint, UsersRound, FolderLock, ScrollText, Users, MonitorCog,
   Landmark, ChevronRight, X
 } from 'lucide-react';
-import { AreaChart, Area, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 export default function BusinessLandingPage() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -22,7 +22,7 @@ export default function BusinessLandingPage() {
   const [solutionTab, setSolutionTab] = useState('hr');
   const [isExiting, setIsExiting] = useState(false);
   const navigate = useNavigate();
-
+  
   const user = useUser();
   const token = getToken();
   const isAuthenticated = Boolean(user && token);
@@ -34,7 +34,7 @@ export default function BusinessLandingPage() {
 
   const revealRefs = useRef([]);
   revealRefs.current = [];
-
+  
   const addToRevealRefs = (el) => {
     if (el && !revealRefs.current.includes(el)) {
       revealRefs.current.push(el);
@@ -52,7 +52,7 @@ export default function BusinessLandingPage() {
     }, { threshold: 0.12 });
 
     revealRefs.current.forEach((el) => observer.observe(el));
-
+    
     return () => observer.disconnect();
   }, []);
 
@@ -258,11 +258,11 @@ export default function BusinessLandingPage() {
                       </div>
 
                       <svg className="pointer-events-none absolute left-0 top-10 h-[220px] w-full" viewBox="0 0 540 220" fill="none" preserveAspectRatio="none" aria-hidden="true">
-                        <path d="M128 92 C170 92 178 92 205 92" stroke="#a6b1c0" strokeWidth="2" strokeDasharray="5 5" />
-                        <path d="M335 92 C375 92 365 54 408 54" stroke="#5368F5" strokeWidth="2" />
-                        <path d="M335 92 C375 92 365 166 408 166" stroke="#5368F5" strokeWidth="2" />
-                        <circle cx="128" cy="92" r="3.5" fill="#5368F5" />
-                        <circle cx="335" cy="92" r="3.5" fill="#5368F5" />
+                        <path d="M128 92 C170 92 178 92 205 92" stroke="#a6b1c0" strokeWidth="2" strokeDasharray="5 5"/>
+                        <path d="M335 92 C375 92 365 54 408 54" stroke="#5368F5" strokeWidth="2"/>
+                        <path d="M335 92 C375 92 365 166 408 166" stroke="#5368F5" strokeWidth="2"/>
+                        <circle cx="128" cy="92" r="3.5" fill="#5368F5"/>
+                        <circle cx="335" cy="92" r="3.5" fill="#5368F5"/>
                       </svg>
 
                       <div className="absolute bottom-3 left-3 right-3 grid grid-cols-3 gap-2 rounded-xl border border-slate-200 bg-white/95 p-2.5 shadow-lg backdrop-blur">
@@ -429,10 +429,10 @@ export default function BusinessLandingPage() {
                     <span className="mb-3 grid size-8 place-items-center rounded-lg bg-emerald-50 text-emerald-600"><BadgeCheck className="size-4" /></span><strong className="block text-xs text-[#091322]">Manager approval</strong><small className="mt-1 block text-[8px] text-slate-400">1 day decision SLA</small>
                   </div>
                   <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 1000 546" preserveAspectRatio="none" fill="none">
-                    <path d="M190 255 C260 255 275 255 350 255" stroke="#9ba7b8" strokeWidth="2" strokeDasharray="7 7" />
-                    <path d="M500 255 C610 255 650 155 800 155" stroke="#5368F5" strokeWidth="2" />
-                    <path d="M500 255 C610 255 650 365 800 365" stroke="#5368F5" strokeWidth="2" />
-                    <circle cx="190" cy="255" r="5" fill="#5368F5" /><circle cx="500" cy="255" r="5" fill="#5368F5" />
+                    <path d="M190 255 C260 255 275 255 350 255" stroke="#9ba7b8" strokeWidth="2" strokeDasharray="7 7"/>
+                    <path d="M500 255 C610 255 650 155 800 155" stroke="#5368F5" strokeWidth="2"/>
+                    <path d="M500 255 C610 255 650 365 800 365" stroke="#5368F5" strokeWidth="2"/>
+                    <circle cx="190" cy="255" r="5" fill="#5368F5"/><circle cx="500" cy="255" r="5" fill="#5368F5"/>
                   </svg>
                   <span className="absolute left-[64%] top-[156px] rounded-md border border-slate-200 bg-white px-2 py-1 text-[7px] font-extrabold text-emerald-600 shadow-sm">YES</span>
                   <span className="absolute left-[64%] top-[349px] rounded-md border border-slate-200 bg-white px-2 py-1 text-[7px] font-extrabold text-slate-500 shadow-sm">NO</span>
@@ -456,8 +456,8 @@ export default function BusinessLandingPage() {
                           <AreaChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
                             <defs>
                               <linearGradient id="colorSla" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="#5368F5" stopOpacity={0.28} />
-                                <stop offset="100%" stopColor="#5368F5" stopOpacity={0} />
+                                <stop offset="0%" stopColor="#5368F5" stopOpacity={0.28}/>
+                                <stop offset="100%" stopColor="#5368F5" stopOpacity={0}/>
                               </linearGradient>
                             </defs>
                             <Area type="monotone" dataKey="value" stroke="#5368F5" strokeWidth={2.5} fillOpacity={1} fill="url(#colorSla)" />
@@ -603,16 +603,28 @@ export default function BusinessLandingPage() {
               <div className="reveal overflow-hidden rounded-[1.75rem] border border-slate-200 bg-[#F3F6F7] p-4 shadow-[0_20px_70px_rgba(9,19,34,0.10)] sm:p-6" ref={addToRevealRefs}>
                 <div className="rounded-2xl border border-slate-200 bg-white p-5">
                   <div className="flex items-center justify-between"><div><span className="text-[8px] font-extrabold uppercase tracking-[0.14em] text-slate-400">SLA performance</span><h3 className="mt-1 font-['Manrope','DM_Sans',sans-serif] text-lg font-extrabold">Completion trend</h3></div><span className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[8px] font-bold text-slate-500"><CalendarDays className="size-3" />12 weeks</span></div>
-                  <div className="mt-6 h-64 overflow-hidden rounded-xl bg-white">
-                    <img
-                      src="/sla-completion-trend.png"
-                      alt="SLA completion trend rising over twelve weeks with two brief dips before a strong finish"
-                      width="1774"
-                      height="887"
-                      loading="lazy"
-                      decoding="async"
-                      className="h-full w-full object-contain object-center lg:object-cover"
-                    />
+                  <div className="chart-wrap mt-6 h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={chartData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                        <defs>
+                          <linearGradient id="colorSlaMain" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#5368F5" stopOpacity={0.28}/>
+                            <stop offset="100%" stopColor="#5368F5" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="4 4" vertical={true} horizontal={true} stroke="#e2e8f0" />
+                        <Area 
+                          type="monotone" 
+                          dataKey="value" 
+                          stroke="#5368F5" 
+                          strokeWidth={2.5} 
+                          fillOpacity={1} 
+                          fill="url(#colorSlaMain)" 
+                          dot={{ r: 4.5, fill: '#5368F5', strokeWidth: 0 }}
+                          activeDot={{ r: 6, fill: '#5368F5', stroke: '#ffffff', strokeWidth: 2 }}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
                   </div>
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-3">
@@ -754,7 +766,7 @@ export default function BusinessLandingPage() {
 
       {/* Demo modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md" role="dialog" aria-modal="true" onClick={(e) => { if (e.target === e.currentTarget) setIsModalOpen(false) }}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md" role="dialog" aria-modal="true" onClick={(e) => { if(e.target === e.currentTarget) setIsModalOpen(false) }}>
           <div className="max-h-[calc(100vh-2rem)] w-full max-w-xl overflow-auto rounded-[1.75rem] bg-white shadow-2xl">
             <div className="flex items-start justify-between border-b border-slate-200 px-5 py-5 sm:px-7">
               <div><span className="mb-2 inline-flex rounded-md bg-indigo-50 px-2 py-1 text-[8px] font-extrabold uppercase tracking-wider text-[#5368F5]">Tailored to your process</span><h2 className="font-['Manrope','DM_Sans',sans-serif] text-2xl font-extrabold tracking-tight">See NetFlow in action</h2><p className="mt-1 text-xs text-slate-500">Tell us what your team wants to automate.</p></div>
