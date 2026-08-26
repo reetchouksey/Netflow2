@@ -58,6 +58,9 @@ const ACTION_FILTERS = [
     { value: 'department_deleted',   label: 'Department deleted' },
     { value: 'org_settings_updated', label: 'Organization settings updated' }
   ] },
+  { group: 'Security', options: [
+    { value: 'user_logged_in', label: 'User logged in' }
+  ] },
   { group: 'Integrations', options: [
     { value: 'webhook_called',   label: 'Webhook sent' },
     { value: 'webhook_received', label: 'Webhook received' }
@@ -93,6 +96,7 @@ const ACTION_DOT = {
   department_renamed:  'bg-sky-500',
   department_deleted:  'bg-fg-subtle',
   org_settings_updated: 'bg-indigo-500',
+  user_logged_in:      'bg-blue-600',
   webhook_called:      'bg-cyan-500',
   webhook_received:    'bg-cyan-600',
   org_created:         'bg-emerald-500',
@@ -144,26 +148,10 @@ function ActionBadge({ action }) {
 
 function StatusCard({ label, value, hint, tone = 'neutral', icon, active, onClick, loading }) {
   const tones = {
-    neutral: {
-      icon: 'bg-surface-2 text-fg-muted ring-line',
-      value: 'text-fg',
-      active: 'border-indigo-300 ring-2 ring-indigo-100 dark:ring-indigo-500/20',
-    },
-    success: {
-      icon: 'bg-success-subtle text-success-fg ring-success-line',
-      value: 'text-success-fg',
-      active: 'border-success-line ring-2 ring-success-subtle',
-    },
-    danger: {
-      icon: 'bg-danger-subtle text-danger-fg ring-danger-line',
-      value: 'text-danger-fg',
-      active: 'border-danger-line ring-2 ring-danger-subtle',
-    },
-    warning: {
-      icon: 'bg-warning-subtle text-warning-fg ring-warning-line',
-      value: 'text-warning-fg',
-      active: 'border-warning-line ring-2 ring-warning-subtle',
-    },
+    neutral: 'text-fg-muted hover:text-fg',
+    success: 'text-success-fg',
+    danger: 'text-danger-fg',
+    warning: 'text-warning-fg',
   }
   const t = tones[tone] || tones.neutral
   const Comp = onClick ? 'button' : 'div'
@@ -171,24 +159,20 @@ function StatusCard({ label, value, hint, tone = 'neutral', icon, active, onClic
     <Comp
       type={onClick ? 'button' : undefined}
       onClick={onClick}
-      className={`rounded-xl border bg-surface px-4 py-3.5 shadow-sm flex items-start gap-3 text-left transition w-full ${
-        active ? t.active : 'border-line hover:border-indigo-200'
-      } ${onClick ? 'cursor-pointer' : ''}`}
+      className={`flex flex-col items-start px-4 border-l first:border-l-0 border-line/50 transition w-full ${onClick ? 'cursor-pointer' : ''} ${active ? 'opacity-100' : 'opacity-70 hover:opacity-100'}`}
     >
-      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ring-1 ${t.icon}`}>
-        {icon}
+      <div className="flex items-center gap-2 mb-1">
+        <span className={t}>{icon}</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-fg-subtle">{label}</span>
       </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">{label}</p>
-        {loading ? (
-          <Skeleton className="h-7 w-16 mt-1.5" />
-        ) : (
-          <p className={`mt-1 text-2xl font-semibold tabular-nums tracking-tight ${t.value}`}>
-            {value}
-          </p>
-        )}
-        {hint ? <p className="mt-0.5 text-[11px] text-fg-muted truncate">{hint}</p> : null}
-      </div>
+      {loading ? (
+        <Skeleton className="h-6 w-16" />
+      ) : (
+        <div className="flex items-baseline gap-2">
+          <span className={`text-xl font-bold tabular-nums tracking-tight ${t}`}>{value}</span>
+          {hint && <span className="text-[10px] text-fg-muted hidden lg:inline-block">{hint}</span>}
+        </div>
+      )}
     </Comp>
   )
 }
@@ -369,47 +353,49 @@ function AuditLog() {
       mainClass="flex-1 min-h-0 flex flex-col p-4 md:p-6 pb-24 md:pb-6 overflow-hidden"
     >
       <div className="flex-1 min-h-0 flex flex-col gap-4 w-full">
-        <div className="shrink-0 grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatusCard
-            label="All activity"
-            value={summary.total.toLocaleString()}
-            hint="Matching search & department"
-            tone="neutral"
-            loading={loading && !logs.length}
-            active={!statusFilter && !actionFilter}
-            onClick={() => { setStatusFilter(''); setActionFilter(''); setPage(1) }}
-            icon={<IconAll className="w-5 h-5" />}
-          />
-          <StatusCard
-            label="Approved"
-            value={summary.success.toLocaleString()}
-            hint="Approvals & completions"
-            tone="success"
-            loading={loading && !logs.length}
-            active={statusFilter === 'success'}
-            onClick={() => selectStatus('success')}
-            icon={<IconSuccess className="w-5 h-5" />}
-          />
-          <StatusCard
-            label="Rejected"
-            value={summary.rejected.toLocaleString()}
-            hint="Rejected & changes requested"
-            tone="danger"
-            loading={loading && !logs.length}
-            active={statusFilter === 'rejected'}
-            onClick={() => selectStatus('rejected')}
-            icon={<IconRejected className="w-5 h-5" />}
-          />
-          <StatusCard
-            label="Alerts"
-            value={summary.alerts.toLocaleString()}
-            hint="Failures, escalations, deletions"
-            tone="warning"
-            loading={loading && !logs.length}
-            active={statusFilter === 'alerts'}
-            onClick={() => selectStatus('alerts')}
-            icon={<IconAlert className="w-5 h-5" />}
-          />
+        <div className="shrink-0 flex items-center justify-between bg-surface-2 border border-line rounded-lg px-2 py-3 shadow-sm">
+          <div className="flex w-full">
+            <StatusCard
+              label="All activity"
+              value={summary.total.toLocaleString()}
+              hint="Matching search & department"
+              tone="neutral"
+              loading={loading && !logs.length}
+              active={!statusFilter && !actionFilter}
+              onClick={() => { setStatusFilter(''); setActionFilter(''); setPage(1) }}
+              icon={<IconAll className="w-4 h-4" />}
+            />
+            <StatusCard
+              label="Approved"
+              value={summary.success.toLocaleString()}
+              hint="Approvals & completions"
+              tone="success"
+              loading={loading && !logs.length}
+              active={statusFilter === 'success'}
+              onClick={() => selectStatus('success')}
+              icon={<IconSuccess className="w-4 h-4" />}
+            />
+            <StatusCard
+              label="Rejected"
+              value={summary.rejected.toLocaleString()}
+              hint="Rejected & changes requested"
+              tone="danger"
+              loading={loading && !logs.length}
+              active={statusFilter === 'rejected'}
+              onClick={() => selectStatus('rejected')}
+              icon={<IconRejected className="w-4 h-4" />}
+            />
+            <StatusCard
+              label="Alerts"
+              value={summary.alerts.toLocaleString()}
+              hint="Failures, escalations, deletions"
+              tone="warning"
+              loading={loading && !logs.length}
+              active={statusFilter === 'alerts'}
+              onClick={() => selectStatus('alerts')}
+              icon={<IconAlert className="w-4 h-4" />}
+            />
+          </div>
         </div>
 
         <div className="flex-1 min-h-0 flex flex-col bg-surface border border-line rounded-xl shadow-sm overflow-hidden">
@@ -525,19 +511,19 @@ function AuditLog() {
                   </colgroup>
                   <thead className="sticky top-0 z-10">
                     <tr className="text-left text-[11px] font-semibold tracking-wider text-fg-subtle uppercase border-b border-line bg-surface-2/95 backdrop-blur-sm">
-                      <th scope="col" className="px-5 py-3 font-semibold">When</th>
-                      <th scope="col" className="px-4 py-3 font-semibold">Actor</th>
-                      <th scope="col" className="px-4 py-3 font-semibold">Action</th>
-                      <th scope="col" className="px-4 py-3 font-semibold">Target & detail</th>
-                      <th scope="col" className="px-5 py-3 font-semibold">Department</th>
+                      <th scope="col" className="px-4 py-2 font-semibold">When</th>
+                      <th scope="col" className="px-4 py-2 font-semibold">Actor</th>
+                      <th scope="col" className="px-4 py-2 font-semibold">Action</th>
+                      <th scope="col" className="px-4 py-2 font-semibold">Target & detail</th>
+                      <th scope="col" className="px-4 py-2 font-semibold">Department</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-line">
                     {logs.map((l) => {
                       const dept = entryDepartment(l)
                       return (
-                        <tr key={l._id} className="hover:bg-surface-2/50 transition align-top">
-                          <td className="px-5 py-3.5">
+                        <tr key={l._id} className="even:bg-surface-2/30 hover:bg-surface-2 transition align-top">
+                          <td className="px-4 py-2">
                             <time
                               dateTime={isoAttr(l.createdAt)}
                               title={isoAttr(l.createdAt)}
@@ -547,31 +533,31 @@ function AuditLog() {
                             </time>
                             <span className="text-[11px] text-fg-subtle">{relativeTime(l.createdAt)}</span>
                           </td>
-                          <td className="px-4 py-3.5">
+                          <td className="px-4 py-2">
                             <p className="font-semibold text-fg truncate">{actorName(l)}</p>
                             {l.performedBy?.email && (
                               <p className="text-[11px] text-fg-subtle truncate">{l.performedBy.email}</p>
                             )}
                           </td>
-                          <td className="px-4 py-3.5">
+                          <td className="px-4 py-2">
                             <ActionBadge action={l.action} />
                           </td>
-                          <td className="px-4 py-3.5 min-w-0">
+                          <td className="px-4 py-2 min-w-0">
                             {l.targetEntity ? (
                               <p className="font-medium text-fg truncate" title={l.targetEntity}>{l.targetEntity}</p>
                             ) : (
                               <p className="text-fg-subtle">—</p>
                             )}
                             {l.detail && (
-                              <p className="mt-0.5 text-xs text-fg-muted line-clamp-2 whitespace-pre-wrap break-words">
+                              <p className="mt-0.5 text-[11px] leading-tight text-fg-muted line-clamp-2 whitespace-pre-wrap break-words">
                                 {l.detail}
                               </p>
                             )}
                             {l.ipAddress && (
-                              <p className="mt-0.5 text-[11px] text-fg-subtle tabular-nums">IP {l.ipAddress}</p>
+                              <p className="mt-0.5 text-[10px] text-fg-subtle tabular-nums">IP: {l.ipAddress}</p>
                             )}
                           </td>
-                          <td className="px-5 py-3.5">
+                          <td className="px-4 py-2">
                             {dept ? (
                               <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-surface-3 text-fg-muted">
                                 {dept}

@@ -166,7 +166,7 @@ function App() {
       {/* Tour lives at app root so it survives Form/Workflow builders (no AppShell). */}
       <AuthenticatedTourHost />
       <Routes>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/" element={<Business />} />
         {/* Self-registration disabled — only admins create users via the Admin Panel.
             /register now falls through to the catch-all below and redirects to /login. */}
         {/* <Route path="/register" element={<PublicOnly><Register /></PublicOnly>} /> */}

@@ -12,6 +12,7 @@ import { AlertBanner } from '../components/Alert'
 import { Skeleton } from '../components/Skeleton'
 import { createDraftStore, useBeforeUnloadWarning } from '../utils/localDraft'
 import { useFocusTrap, useScrollLock } from '../utils/a11y'
+import { X } from 'lucide-react'
 
 const draftStore = createDraftStore('netflow.form.draft.v1')
 
@@ -300,6 +301,7 @@ function FieldCard({
   onDuplicate,
   onDelete,
   onDragStart,
+  onDragEnter,
   onDragOver,
   onDragLeave,
   onDrop,
@@ -310,6 +312,7 @@ function FieldCard({
   return (
     <div
       onClick={() => onSelect(field.id)}
+      onDragEnter={(e) => onDragEnter(e, field.id)}
       onDragOver={(e) => onDragOver(e, field.id)}
       onDragLeave={() => onDragLeave(field.id)}
       onDrop={(e) => onDrop(e, field.id)}
@@ -329,8 +332,8 @@ function FieldCard({
       )}
 
       {/* drag handle — initiates the reorder drag */}
-      <button
-        type="button"
+      <div
+        role="button"
         draggable
         onDragStart={(e) => onDragStart(e, field.id)}
         onClick={(e) => e.stopPropagation()}
@@ -343,7 +346,7 @@ function FieldCard({
           <circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" />
           <circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" />
         </svg>
-      </button>
+      </div>
 
       <span
         className={`mt-0.5 w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
@@ -567,6 +570,11 @@ function FieldSettings({ field, fields = [], onChange, onDelete }) {
       <div className="mb-3">
         <label htmlFor="fs-label" className="block text-xs font-medium text-fg mb-1">Field label</label>
         <input id="fs-label" type="text" value={field.label} onChange={(e) => update({ label: e.target.value })} className={inputCls} />
+      </div>
+
+      <div className="mb-3">
+        <label htmlFor="fs-page" className="block text-xs font-medium text-fg mb-1">Page number</label>
+        <input id="fs-page" type="number" min={1} value={field.page || 1} onChange={(e) => update({ page: Math.max(1, Number(e.target.value)) })} className={inputCls} />
       </div>
 
       {(field.type === 'text' || field.type === 'dropdown' || field.type === 'number' || field.type === 'heading') && (
@@ -1296,6 +1304,8 @@ function NewForm() {
     // Prefer first AI-seeded field so the inspector is useful immediately.
     return null
   })
+  const [activePage, setActivePage] = useState(1)
+  const totalPages = Math.max(1, activePage, ...fields.map(f => f.page || 1))
   const [previewOpen, setPreviewOpen] = useState(false)
   const [dragOver, setDragOver] = useState(false)
 
@@ -1398,11 +1408,44 @@ function NewForm() {
     const def = FIELD_TYPES.find((t) => t.type === type)
     if (!def) return
     const id = newFieldId()
-    const newField = { id, type, ...def.defaults, label: def.defaults.label }
+    const newField = { id, type, ...def.defaults, label: def.defaults.label, page: activePage }
     if (Array.isArray(def.defaults.options)) newField.options = [...def.defaults.options]
     if (type === 'grid') newField.columns = freshColumns(def.defaults.columns)
     setFields((prev) => (atEnd ? [...prev, newField] : [newField, ...prev]))
     setSelectedId(id)
+  }
+
+  const deletePage = async (pageNum) => {
+    if (totalPages <= 1) return // Cannot delete the only page
+    
+    // Check if page has fields
+    const hasFields = fields.some(f => (f.page || 1) === pageNum)
+    if (hasFields) {
+      const ok = await confirm({
+        title: 'Delete page?',
+        message: 'This page contains fields. Are you sure you want to permanently delete this page and all its fields?',
+        confirmLabel: 'Delete page',
+        danger: true
+      })
+      if (!ok) return
+    }
+
+    // Remove fields on the deleted page, and shift fields on subsequent pages down
+    setFields(prev => prev
+      .filter(f => (f.page || 1) !== pageNum)
+      .map(f => {
+        const p = f.page || 1
+        if (p > pageNum) {
+          return { ...f, page: p - 1 }
+        }
+        return f
+      })
+    )
+
+    // Adjust active page if needed
+    if (activePage >= pageNum) {
+      setActivePage(Math.max(1, activePage - 1))
+    }
   }
 
   // Turn a plain-English description into fields via the server's Gemini client,
@@ -1417,6 +1460,7 @@ function NewForm() {
       const incoming = (res.fields || []).map((f) => ({
         ...f,
         id: newFieldId(),
+        page: activePage,
         columns: f.type === 'grid' ? freshColumns(f.columns) : f.columns,
       }))
       if (!incoming.length) {
@@ -1549,12 +1593,19 @@ function NewForm() {
     setDraggingId(id)
   }
 
-  const handleReorderOver = (e, overId) => {
-    // Only react to OUR drag, not the "drop a new palette field" drag.
-    if (!draggingId || draggingId === overId) return
+  const handleReorderEnter = (e, overId) => {
     if (!e.dataTransfer.types.includes(REORDER_MIME)) return
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
+  }
+
+  const handleReorderOver = (e, overId) => {
+    if (!e.dataTransfer.types.includes(REORDER_MIME)) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    
+    // Don't draw the blue drop indicator line if hovering over itself
+    if (draggingId === overId) return 
     const rect = e.currentTarget.getBoundingClientRect()
     const isAbove = (e.clientY - rect.top) < rect.height / 2
     setDropTarget({ id: overId, position: isAbove ? 'before' : 'after' })
@@ -1565,7 +1616,8 @@ function NewForm() {
   }
 
   const handleReorderDrop = (e, overId) => {
-    if (!draggingId || draggingId === overId) {
+    const droppedId = e.dataTransfer.getData(REORDER_MIME) || draggingId;
+    if (!droppedId || droppedId === overId) {
       setDraggingId(null)
       setDropTarget(null)
       return
@@ -1573,14 +1625,18 @@ function NewForm() {
     e.preventDefault()
     e.stopPropagation()
 
-    const fromIdx = fields.findIndex((f) => f.id === draggingId)
+    const fromIdx = fields.findIndex((f) => f.id === droppedId)
     let toIdx = fields.findIndex((f) => f.id === overId)
     if (fromIdx === -1 || toIdx === -1) {
       setDraggingId(null)
       setDropTarget(null)
       return
     }
-    const position = dropTarget?.id === overId ? dropTarget.position : 'after'
+    
+    const rect = e.currentTarget.getBoundingClientRect()
+    const isAbove = (e.clientY - rect.top) < rect.height / 2
+    const position = isAbove ? 'before' : 'after'
+    
     if (position === 'after') toIdx += 1
     // Removing the source first shifts later indices down by one.
     if (fromIdx < toIdx) toIdx -= 1
@@ -2021,24 +2077,72 @@ function NewForm() {
 
           <div
             onDragOver={(e) => {
+              if (!e.dataTransfer.types.includes('application/x-field-type')) return
               e.preventDefault()
               e.dataTransfer.dropEffect = 'copy'
               setDragOver(true)
             }}
             onDragLeave={() => setDragOver(false)}
             onDrop={(e) => {
+              if (!e.dataTransfer.types.includes('application/x-field-type')) return
               e.preventDefault()
               setDragOver(false)
               const type = e.dataTransfer.getData('application/x-field-type')
               if (type) addField(type, false)
             }}
-            className={`rounded-xl border transition ${
+            className={`rounded-xl border transition flex-1 flex flex-col ${
               dragOver
                 ? 'border-indigo-400 bg-indigo-50/50 dark:bg-indigo-500/10 ring-2 ring-indigo-500/20'
                 : 'border-line bg-surface shadow-sm'
             }`}
           >
-            {fields.length === 0 ? (
+            {/* Page Tabs */}
+            <div className="flex items-center gap-6 px-4 pt-3 border-b border-line overflow-x-auto bg-surface rounded-t-xl">
+              {Array.from({ length: totalPages }).map((_, i) => {
+                const pageNum = i + 1
+                return (
+                  <div 
+                    key={pageNum} 
+                    className={`flex items-center gap-1.5 pb-2.5 border-b-2 transition ${
+                      activePage === pageNum
+                        ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                        : 'border-transparent text-fg-muted hover:text-fg hover:border-line'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setActivePage(pageNum)}
+                      className="text-sm font-medium whitespace-nowrap focus:outline-none"
+                    >
+                      Page {pageNum}
+                    </button>
+                    {totalPages > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => deletePage(pageNum)}
+                        className={`p-0.5 rounded-full transition focus:outline-none ${
+                          activePage === pageNum 
+                            ? 'text-indigo-400 hover:text-red-500 hover:bg-red-500/10' 
+                            : 'text-fg-muted/50 hover:text-red-500 hover:bg-red-500/10'
+                        }`}
+                        title="Delete this page"
+                      >
+                        <X className="w-3.5 h-3.5" strokeWidth={2.5} />
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+              <button
+                type="button"
+                onClick={() => setActivePage(totalPages + 1)}
+                className="pb-2.5 text-sm font-medium whitespace-nowrap transition text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+              >
+                + Add Page
+              </button>
+            </div>
+
+            {fields.filter(f => (f.page || 1) === activePage).length === 0 ? (
               <div className="px-6 py-16 text-center">
                 <div className="mx-auto w-12 h-12 rounded-xl bg-surface-2 border border-line flex items-center justify-center text-fg-muted mb-3">
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
@@ -2048,8 +2152,8 @@ function NewForm() {
                 <p className="text-sm font-semibold text-fg">Add fields</p>
               </div>
             ) : (
-              <div className="p-3 sm:p-4 space-y-2">
-                {fields.map((f, idx) => (
+              <div className="p-3 sm:p-4 space-y-2 flex-1">
+                {fields.filter(f => (f.page || 1) === activePage).map((f, idx) => (
                   <FieldCard
                     key={f.id}
                     field={f}
@@ -2061,6 +2165,7 @@ function NewForm() {
                     onDuplicate={duplicateField}
                     onDelete={deleteField}
                     onDragStart={handleReorderStart}
+                    onDragEnter={handleReorderEnter}
                     onDragOver={handleReorderOver}
                     onDragLeave={handleReorderLeave}
                     onDrop={handleReorderDrop}

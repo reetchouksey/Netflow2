@@ -17,6 +17,7 @@ import AssistantWidget from './AssistantWidget'
 import LicenceBanner from './LicenceBanner'
 import NotificationsBell from './NotificationsBell'
 import DmsProviderWidget from './DmsProviderWidget'
+import BroadcastBanner from './BroadcastBanner'
 
 // ---------- left rail ----------------------------------------------------
 // Four shells. Items without `visible` are always shown inside that shell.
@@ -138,6 +139,15 @@ function visibleSections(user) {
       ...section,
       items: section.items.filter(item => item.key !== 's3-storage')
     })).filter(section => section.items.length > 0)
+  }
+
+  // Remove Audit Logs for non-Admins/CEOs if in OPS shell
+  const role = user?.role?.name
+  if (shell === SHELL.OPS && role !== 'CEO' && role !== 'Admin') {
+     sections = sections.map(section => ({
+        ...section,
+        items: section.items.filter(item => item.key !== 'audit')
+     }))
   }
 
   return sections
@@ -880,6 +890,7 @@ export default function AppShell({
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <TopBar user={user} onToggleSidebar={toggleNav} sidebarOpen={navOpen} />
+        <BroadcastBanner />
 
         <main id="main-content" data-tour="main-content" tabIndex={-1} className={`${mainClass} focus:outline-none`}>
           {/* Above the page title: a read-only workspace is context for whatever
@@ -1010,4 +1021,3 @@ function IconIntegration(p) { return (
 function IconBilling(p) { return (
   <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
 )}
-

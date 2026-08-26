@@ -1159,16 +1159,16 @@ function ViewToggle({ value, onChange }) {
 }
 
 export default function PlatformPanel() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [orgs, setOrgs] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [dialog, setDialog] = useState(null)      // null | 'create' | org object
+  const [dialog, setDialog] = useState(() => searchParams.get('new') === '1' ? 'create' : null)
   const [busyId, setBusyId] = useState(null)
   const [creds, setCreds] = useState(null)        // one-time creds modal
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [storageTarget, setStorageTarget] = useState(null)
   // ?q= lets the global search box land on a specific tenant.
-  const [searchParams] = useSearchParams()
   const [search, setSearch] = useState(() => searchParams.get('q') || '')
   const [statusFilter, setStatusFilter] = useState('all')
   const [planFilter, setPlanFilter] = useState('all')
@@ -1201,6 +1201,17 @@ export default function PlatformPanel() {
     const q = searchParams.get('q')
     if (q) setSearch(q)
   }, [searchParams])
+
+  useEffect(() => {
+    if (searchParams.get('new') !== '1') return
+    const timer = setTimeout(() => {
+      setDialog('create')
+      const next = new URLSearchParams(searchParams)
+      next.delete('new')
+      setSearchParams(next, { replace: true })
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [searchParams, setSearchParams])
 
   // The list is small enough to filter client-side, and matching the Admin
   // panel's search box keeps the two panels feeling like the same product.

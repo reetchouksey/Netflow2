@@ -912,6 +912,12 @@ function Step3Settings({ data, setData, forms, editId }) {
   const [aiModalTab, setAiModalTab] = useState('auto')
   const [aiPrompt, setAiPrompt] = useState('')
   const [aiDraft, setAiDraft] = useState(null)
+  const [aiPreviewActivePage, setAiPreviewActivePage] = useState(1)
+  const [editingIndex, setEditingIndex] = useState(null)
+  const [editDraft, setEditDraft] = useState({})
+  const [addingNew, setAddingNew] = useState(false)
+  const [newField, setNewField] = useState({ label: '', type: 'text', required: false })
+  const [undoQueue, setUndoQueue] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -1637,109 +1643,343 @@ function Step3Settings({ data, setData, forms, editId }) {
         </div>
       </Section>
 
-      {isAiModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-surface border border-line rounded-lg shadow-xl w-full max-w-xl flex flex-col max-h-[90vh]">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-line">
-              <h3 className="text-lg font-medium text-fg">AI Form Generator</h3>
-              <button onClick={() => setIsAiModalOpen(false)} className="text-fg-muted hover:text-fg">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div className="p-6 overflow-y-auto">
-              {!aiDraft ? (
-                <>
-                  <div className="flex border-b border-line mb-4">
-                    <button 
-                      onClick={() => setAiModalTab('auto')}
-                      className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${aiModalTab === 'auto' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-fg-muted hover:text-fg'}`}
-                    >
-                      Auto-Generate (Fast)
-                    </button>
-                    <button 
-                      onClick={() => setAiModalTab('custom')}
-                      className={`ml-6 pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${aiModalTab === 'custom' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-fg-muted hover:text-fg'}`}
-                    >
-                      Custom Prompt
-                    </button>
-                  </div>
-                  {aiModalTab === 'auto' ? (
-                    <p className="text-sm text-fg-muted mb-4">
-                      The AI will automatically generate a form based on the workflow name: <br/><strong>{settings.name || '(No name set)'}</strong>
-                    </p>
-                  ) : (
-                    <div className="mb-4">
-                      <label className="block text-sm font-medium text-fg mb-1">Detailed Requirements</label>
-                      <textarea 
-                        value={aiPrompt}
-                        onChange={(e) => setAiPrompt(e.target.value)}
-                        placeholder="e.g., Create a KYC form with Aadhar Number, Full Name, and a grid for address history..."
-                        className="w-full h-32 px-3 py-2 text-sm bg-surface border border-line rounded-md focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none resize-none text-fg"
-                      />
-                    </div>
+      {isAiModalOpen && (() => {
+        const FIELD_TYPES = ['text','number','date','dropdown','radio','textarea','checkbox','file','email','phone']
+
+        const handleDeleteField = (idx) => {
+          const removed = aiDraft.fields[idx]
+          setAiDraft(prev => ({ ...prev, fields: prev.fields.filter((_, i) => i !== idx) }))
+          if (editingIndex === idx) { setEditingIndex(null); setEditDraft({}) }
+          // undo toast
+          const toastId = toast(
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-fg">Field <strong>{removed.label}</strong> removed.</span>
+              <button
+                className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 underline whitespace-nowrap"
+                onClick={() => {
+                  setAiDraft(prev => ({
+                    ...prev,
+                    fields: [...prev.fields.slice(0, idx), removed, ...prev.fields.slice(idx)]
+                  }))
+                  toast.dismiss(toastId)
+                }}
+              >Undo</button>
+            </div>,
+            { duration: 5000 }
+          )
+        }
+
+        const handleStartEdit = (idx) => {
+          setEditingIndex(idx)
+          setEditDraft({ ...aiDraft.fields[idx] })
+          setAddingNew(false)
+        }
+
+        const handleSaveEdit = (idx) => {
+          if (!editDraft.label?.trim()) return
+          setAiDraft(prev => ({
+            ...prev,
+            fields: prev.fields.map((f, i) => i === idx ? { ...f, ...editDraft } : f)
+          }))
+          setEditingIndex(null)
+          setEditDraft({})
+        }
+
+        const handleAddField = () => {
+          if (!newField.label?.trim()) return
+          const maxP = Math.max(1, ...(aiDraft?.fields || []).map(f => f.page || 1))
+          setAiDraft(prev => ({ ...prev, fields: [...(prev.fields || []), { ...newField, page: maxP, id: `f_${Date.now()}` }] }))
+          setNewField({ label: '', type: 'text', required: false })
+          setAddingNew(false)
+          setAiPreviewActivePage(maxP)
+        }
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="bg-surface border border-line rounded-lg shadow-xl w-full max-w-xl flex flex-col max-h-[90vh]">
+
+              {/* ── Header ── */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-line flex-shrink-0">
+                <div className="flex items-center gap-1.5 text-sm">
+                  <span className="font-semibold text-fg text-base">AI Form Generator</span>
+                  {aiDraft && (
+                    <>
+                      <svg className="w-3.5 h-3.5 text-fg-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                      <span className="text-fg-muted font-medium">Preview</span>
+                    </>
                   )}
-                  <div className="flex justify-end gap-3 mt-6">
-                    <button onClick={() => setIsAiModalOpen(false)} className="px-4 py-2 text-sm font-medium text-fg-muted hover:text-fg">Cancel</button>
-                    <button 
-                      onClick={handleGeneratePreview}
-                      disabled={isGeneratingForm || (aiModalTab === 'custom' && !aiPrompt.trim())}
-                      className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md disabled:opacity-50 flex items-center gap-2"
-                    >
-                      {isGeneratingForm && (
-                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                      )}
-                      Generate Preview
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="mb-4">
-                    <h4 className="font-medium text-fg text-base">{aiDraft.title}</h4>
-                    {aiDraft.description && <p className="text-sm text-fg-muted mt-1">{aiDraft.description}</p>}
-                  </div>
-                  <div className="border border-line rounded-md divide-y divide-line max-h-[40vh] overflow-y-auto">
-                    {(aiDraft.fields || []).length === 0 ? (
-                      <div className="p-4 text-sm text-fg-muted italic">No fields generated.</div>
+                </div>
+                <button onClick={() => { setIsAiModalOpen(false); setEditingIndex(null); setAddingNew(false) }} className="text-fg-muted hover:text-fg transition-colors rounded-md p-1 hover:bg-surface-2">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+
+              {/* ── Body ── */}
+              <div className="p-6 overflow-y-auto flex-1">
+                {!aiDraft ? (
+                  /* ── PROMPT SCREEN ── */
+                  <>
+                    <div className="flex border-b border-line mb-4">
+                      <button
+                        onClick={() => setAiModalTab('auto')}
+                        className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${aiModalTab === 'auto' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-fg-muted hover:text-fg'}`}
+                      >Auto-Generate (Fast)</button>
+                      <button
+                        onClick={() => setAiModalTab('custom')}
+                        className={`ml-6 pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${aiModalTab === 'custom' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-fg-muted hover:text-fg'}`}
+                      >Custom Prompt</button>
+                    </div>
+                    {aiModalTab === 'auto' ? (
+                      <p className="text-sm text-fg-muted mb-4">
+                        The AI will automatically generate a form based on the workflow name:<br />
+                        <strong className="text-fg">{settings.name || '(No name set)'}</strong>
+                      </p>
                     ) : (
-                      aiDraft.fields.map((f, i) => (
-                        <div key={i} className="p-3 flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-sm text-fg">{f.label}</span>
-                            {f.required && <span className="text-danger-fg text-xs">*</span>}
-                          </div>
-                          <span className="text-xs px-2 py-1 bg-surface-2 rounded-full text-fg-muted border border-line capitalize">
-                            {f.type}
-                          </span>
-                        </div>
-                      ))
+                      <div className="mb-4">
+                        <label className="block text-sm font-medium text-fg mb-1">Detailed Requirements</label>
+                        <textarea
+                          value={aiPrompt}
+                          onChange={(e) => setAiPrompt(e.target.value)}
+                          placeholder="e.g., Create a KYC form with Aadhar Number, Full Name, and a grid for address history..."
+                          className="w-full h-32 px-3 py-2 text-sm bg-surface border border-line rounded-md focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none resize-none text-fg"
+                        />
+                      </div>
                     )}
-                  </div>
-                  <div className="flex justify-between items-center mt-6 pt-4 border-t border-line">
-                    <button 
-                      onClick={() => setAiDraft(null)}
-                      disabled={isGeneratingForm}
-                      className="px-4 py-2 text-sm font-medium text-fg border border-line hover:bg-surface-2 rounded-md"
-                    >
-                      Retry (Edit Prompt)
-                    </button>
-                    <button 
-                      onClick={handleApproveAndPublish}
-                      disabled={isGeneratingForm}
-                      className="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md disabled:opacity-50 flex items-center gap-2"
-                    >
-                      {isGeneratingForm && (
-                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    <div className="flex justify-end gap-3 mt-6">
+                      <button onClick={() => setIsAiModalOpen(false)} className="px-4 py-2 text-sm font-medium text-fg-muted hover:text-fg">Cancel</button>
+                      <button
+                        onClick={handleGeneratePreview}
+                        disabled={isGeneratingForm || (aiModalTab === 'custom' && !aiPrompt.trim())}
+                        className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md disabled:opacity-50 flex items-center gap-2 transition-colors"
+                      >
+                        {isGeneratingForm && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>}
+                        Generate Preview
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  /* ── EDITABLE PREVIEW SCREEN ── */
+                  <>
+                    {/* Form title + subtitle */}
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <h4 className="font-semibold text-fg text-base leading-tight">{aiDraft.title}</h4>
+                        {aiDraft.description && <p className="text-xs text-fg-muted mt-0.5">Generated fields preview <span className="text-indigo-500 font-medium">(Editable)</span></p>}
+                      </div>
+                      {/* + Add Field button */}
+                      <button
+                        onClick={() => { 
+                          setAddingNew(true); 
+                          setEditingIndex(null);
+                          const maxP = Math.max(1, ...(aiDraft?.fields || []).map(f => f.page || 1))
+                          setAiPreviewActivePage(maxP)
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 border border-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950 rounded-full transition-colors whitespace-nowrap ml-4 flex-shrink-0"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+                        Add Field
+                      </button>
+                    </div>
+
+                    {/* Fields list */}
+                    {(() => {
+                      const totalAiPages = Math.max(1, ...(aiDraft.fields || []).map(f => f.page || 1))
+                      const pageFields = (aiDraft.fields || []).map((f, i) => ({ ...f, originalIndex: i })).filter(f => (f.page || 1) === aiPreviewActivePage)
+
+                      return (
+                        <>
+                          {totalAiPages > 1 && (
+                            <div className="flex px-4 border-b border-line mb-3 overflow-x-auto no-scrollbar gap-4">
+                              {Array.from({ length: totalAiPages }, (_, i) => i + 1).map(p => (
+                                <button
+                                  key={p}
+                                  onClick={() => { setAiPreviewActivePage(p); setEditingIndex(null) }}
+                                  className={`py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                                    aiPreviewActivePage === p
+                                      ? 'border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-300'
+                                      : 'border-transparent text-fg-muted hover:text-fg hover:border-line'
+                                  }`}
+                                >
+                                  Page {p}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          <div className="border border-line rounded-lg overflow-hidden max-h-[42vh] overflow-y-auto">
+                            {pageFields.length === 0 && !addingNew ? (
+                              <div className="p-6 text-sm text-fg-muted italic text-center">No fields on this page. Click <strong>+ Add Field</strong> to add one.</div>
+                            ) : (
+                              <div className="divide-y divide-line">
+                                {pageFields.map((f) => {
+                                  const i = f.originalIndex
+                                  return (
+                                    <div key={i}>
+                                      {/* Field row */}
+                                      <div className={`px-4 py-3 flex items-center justify-between group transition-colors ${editingIndex === i ? 'bg-indigo-50 dark:bg-indigo-950/40' : 'hover:bg-surface-2'}`}>
+                                        <div className="flex items-center gap-2 min-w-0">
+                                          <span className="font-medium text-sm text-fg truncate">{f.label}</span>
+                                          {f.required && <span className="text-red-500 text-xs font-bold flex-shrink-0">*</span>}
+                                        </div>
+                                        <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                                          <span className="text-xs px-2 py-0.5 bg-surface-2 rounded-full text-fg-muted border border-line capitalize font-medium">{f.type}</span>
+                                          {/* Edit button */}
+                                          <button
+                                            onClick={() => editingIndex === i ? (setEditingIndex(null), setEditDraft({})) : handleStartEdit(i)}
+                                            title="Edit field"
+                                            className={`p-1.5 rounded-md transition-colors ${
+                                              editingIndex === i
+                                                ? 'text-indigo-600 bg-indigo-100 dark:bg-indigo-900'
+                                                : 'text-fg-muted hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950 opacity-0 group-hover:opacity-100'
+                                            }`}
+                                          >
+                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                          </button>
+                                          {/* Delete button */}
+                                          <button
+                                            onClick={() => handleDeleteField(i)}
+                                            title="Delete field"
+                                            className="p-1.5 rounded-md text-fg-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950 transition-colors opacity-0 group-hover:opacity-100"
+                                          >
+                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      {/* Inline Edit Expand */}
+                                      {editingIndex === i && (
+                                        <div className="px-4 py-4 bg-indigo-50/60 dark:bg-indigo-950/30 border-t border-indigo-100 dark:border-indigo-900">
+                                          <div className="grid grid-cols-2 gap-3 mb-3">
+                                            <div>
+                                              <label className="block text-xs font-medium text-fg-muted mb-1">Label</label>
+                                              <input
+                                                autoFocus
+                                                value={editDraft.label || ''}
+                                                onChange={e => setEditDraft(d => ({ ...d, label: e.target.value }))}
+                                                className="w-full px-2.5 py-1.5 text-sm bg-surface border border-line rounded-md focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none text-fg"
+                                                placeholder="Field label"
+                                              />
+                                            </div>
+                                            <div>
+                                              <label className="block text-xs font-medium text-fg-muted mb-1">Type</label>
+                                              <select
+                                                value={editDraft.type || 'text'}
+                                                onChange={e => setEditDraft(d => ({ ...d, type: e.target.value }))}
+                                                className="w-full px-2.5 py-1.5 text-sm bg-surface border border-line rounded-md focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none text-fg capitalize"
+                                              >
+                                                {FIELD_TYPES.map(t => <option key={t} value={t} className="capitalize">{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+                                              </select>
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center justify-between">
+                                            <label className="flex items-center gap-2 cursor-pointer select-none">
+                                              <input
+                                                type="checkbox"
+                                                checked={!!editDraft.required}
+                                                onChange={e => setEditDraft(d => ({ ...d, required: e.target.checked }))}
+                                                className="w-3.5 h-3.5 rounded accent-indigo-600"
+                                              />
+                                              <span className="text-xs text-fg-muted font-medium">Required</span>
+                                            </label>
+                                            <div className="flex gap-2">
+                                              <button
+                                                onClick={() => { setEditingIndex(null); setEditDraft({}) }}
+                                                className="px-3 py-1 text-xs font-medium text-fg-muted border border-line rounded-md hover:bg-surface-2 transition-colors"
+                                              >Cancel</button>
+                                              <button
+                                                onClick={() => handleSaveEdit(i)}
+                                                disabled={!editDraft.label?.trim()}
+                                                className="px-3 py-1 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-md disabled:opacity-40 transition-colors"
+                                              >Save</button>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )
+                                })}
+
+                          {/* Add Field inline form */}
+                          {addingNew && (
+                            <div className="px-4 py-4 bg-green-50/60 dark:bg-green-950/20 border-t border-green-100 dark:border-green-900">
+                              <p className="text-xs font-semibold text-green-700 dark:text-green-400 mb-3">New Field</p>
+                              <div className="grid grid-cols-2 gap-3 mb-3">
+                                <div>
+                                  <label className="block text-xs font-medium text-fg-muted mb-1">Label</label>
+                                  <input
+                                    autoFocus
+                                    value={newField.label}
+                                    onChange={e => setNewField(f => ({ ...f, label: e.target.value }))}
+                                    className="w-full px-2.5 py-1.5 text-sm bg-surface border border-line rounded-md focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none text-fg"
+                                    placeholder="e.g. Invoice Number"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-fg-muted mb-1">Type</label>
+                                  <select
+                                    value={newField.type}
+                                    onChange={e => setNewField(f => ({ ...f, type: e.target.value }))}
+                                    className="w-full px-2.5 py-1.5 text-sm bg-surface border border-line rounded-md focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none text-fg"
+                                  >
+                                    {FIELD_TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+                                  </select>
+                                </div>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <label className="flex items-center gap-2 cursor-pointer select-none">
+                                  <input
+                                    type="checkbox"
+                                    checked={newField.required}
+                                    onChange={e => setNewField(f => ({ ...f, required: e.target.checked }))}
+                                    className="w-3.5 h-3.5 rounded accent-green-600"
+                                  />
+                                  <span className="text-xs text-fg-muted font-medium">Required</span>
+                                </label>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => { setAddingNew(false); setNewField({ label: '', type: 'text', required: false }) }}
+                                    className="px-3 py-1 text-xs font-medium text-fg-muted border border-line rounded-md hover:bg-surface-2 transition-colors"
+                                  >Cancel</button>
+                                  <button
+                                    onClick={handleAddField}
+                                    disabled={!newField.label.trim()}
+                                    className="px-3 py-1 text-xs font-semibold text-white bg-green-600 hover:bg-green-700 rounded-md disabled:opacity-40 transition-colors"
+                                  >Add</button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       )}
-                      Approve & Publish
-                    </button>
-                  </div>
-                </>
-              )}
+                    </div>
+                  </>
+                )
+              })()}
+
+                    {/* Footer actions */}
+                    <div className="flex justify-between items-center mt-5 pt-4 border-t border-line">
+                      <button
+                        onClick={() => { setAiDraft(null); setEditingIndex(null); setAddingNew(false) }}
+                        disabled={isGeneratingForm}
+                        className="px-4 py-2 text-sm font-medium text-fg border border-line hover:bg-surface-2 rounded-md transition-colors"
+                      >
+                        Back to Prompt
+                      </button>
+                      <button
+                        onClick={handleApproveAndPublish}
+                        disabled={isGeneratingForm || (aiDraft.fields || []).length === 0}
+                        className="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md disabled:opacity-50 flex items-center gap-2 transition-colors"
+                      >
+                        {isGeneratingForm && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>}
+                        Approve & Publish
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
     </div>
   )
 }
@@ -2537,7 +2777,8 @@ function NewWorkflow() {
         )}
 
       </main>
-<footer data-tour="workflow-builder-actions" className="h-16 shrink-0 bg-surface border-t border-line px-6 flex items-center justify-end">
+
+      <footer data-tour="workflow-builder-actions" className="h-16 shrink-0 bg-surface border-t border-line px-6 flex items-center justify-end">
         <div className="flex items-center gap-2">
           {step > 1 && (
             <button

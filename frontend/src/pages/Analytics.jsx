@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import AppShell from '../components/AppShell'
 import { api } from '../utils/api'
+import { useUser } from '../utils/auth'
 import { useDepartmentNames } from '../lib/departmentsStore'
 import { Skeleton } from '../components/Skeleton'
 import { AlertBanner } from '../components/Alert'
@@ -328,6 +329,7 @@ function IconAlert(props) {
 }
 
 function Analytics() {
+  const user = useUser()
   const [range, setRange] = useState(RANGES[1])
   const [department, setDepartment] = useState('')
   const orgDepartments = useDepartmentNames()
@@ -548,15 +550,21 @@ function Analytics() {
 
   const actions = (
     <>
-      <select
-        value={department}
-        onChange={(e) => setDepartment(e.target.value)}
-        aria-label="Filter by department"
-        className={selectCls}
-      >
-        <option value="">{scope?.reach === 'team' ? 'My team' : 'All departments'}</option>
-        {orgDepartments.map((d) => <option key={d} value={d}>{d}</option>)}
-      </select>
+        {scope?.reach === 'team' ? (
+          <div className="px-3 py-1.5 rounded-md border border-line bg-surface-2/50 text-sm font-medium text-fg-muted min-w-[140px] text-center truncate">
+            {user?.department || 'My team'}
+          </div>
+        ) : (
+          <select
+            className="px-3 py-1.5 rounded-md border border-line bg-surface text-sm font-medium text-fg min-w-[140px] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+            value={department}
+            onChange={(e) => setDepartment(e.target.value)}
+            aria-label="Filter by department"
+          >
+            <option value="">All departments</option>
+            {orgDepartments.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+        )}
       <select
         value={range.label}
         onChange={(e) => setRange(RANGES.find((r) => r.label === e.target.value) || RANGES[1])}

@@ -9,6 +9,7 @@ import { API_BASE, toAbsoluteUrl } from '../utils/api'
 import { fieldMaxMb } from '../utils/uploads'
 import { fieldDomId, focusFirstError, isFieldVisible, isSignatureEmpty, SignaturePad, stripHiddenValues, UploadProgress, validateField, ReferenceUserSelect } from '../components/FormFields'
 import { MAX_UPLOAD_MB } from '../utils/uploads'
+import { FilePreviewPane } from '../components/FilePreviewPane'
 
 const inputCls =
   'w-full px-3 py-2 text-sm rounded-md border border-line bg-surface text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition'
@@ -47,7 +48,7 @@ function publicUpload(token, file, maxMb, onProgress) {
 }
 
 // --- field renderers (mirrors FillForm, but uploads via the public route) ---
-function FileField({ token, value, onChange, maxMb }) {
+function FileField({ token, value, onChange, maxMb, onRequestPreview }) {
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(null)
   const [uploadError, setUploadError] = useState('')
@@ -123,11 +124,27 @@ function FileField({ token, value, onChange, maxMb }) {
       {uploading && <UploadProgress percent={progress} />}
       {uploadError && <p className="mt-1 text-xs text-danger-fg">{uploadError}</p>}
       {current && !uploading && (
-        <p className="mt-1 text-xs text-success-fg">
-          Uploaded:{' '}
-          <a href={toAbsoluteUrl(current.url)} target="_blank" rel="noreferrer" className="underline hover:brightness-110">
-            {current.name}
-          </a>
+        <p className="mt-1 text-xs flex flex-wrap items-center gap-x-2 gap-y-1 text-success-fg">
+          <span>
+            Uploaded:{' '}
+            <a href={toAbsoluteUrl(current.url)} target="_blank" rel="noreferrer" className="underline hover:brightness-110">
+              {current.name}
+            </a>
+          </span>
+          {onRequestPreview && (current.mime?.startsWith('image/') || current.mime === 'application/pdf' || current.name?.match(/\.(pdf|jpe?g|png|webp|gif)$/i)) && (
+            <button
+              type="button"
+              onClick={() => onRequestPreview(current)}
+              className="text-fg-muted hover:text-indigo-600 transition flex items-center gap-1 bg-surface-2 px-2 py-0.5 rounded border border-line"
+              title="Preview file"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+              Preview
+            </button>
+          )}
         </p>
       )}
     </div>
@@ -448,7 +465,7 @@ function PublicCameraCapture({ token, value, onChange, autoStart, inlineMode = f
   )
 }
 
-function FieldRow({ token, field, value, onChange, error }) {
+function FieldRow({ token, field, value, onChange, error, onRequestPreview }) {
   const cls = `${inputCls} ${error ? inputErrorCls : ''}`
   const inputId = fieldDomId(field.id)
   const labelId = `${inputId}-label`
@@ -492,7 +509,7 @@ function FieldRow({ token, field, value, onChange, error }) {
           />
         )
       case 'file':
-        return <FileField token={token} value={value} onChange={onChange} maxMb={fieldMaxMb(field)} />
+        return <FileField token={token} value={value} onChange={onChange} maxMb={fieldMaxMb(field)} onRequestPreview={onRequestPreview} />
       case 'radio':
         return (
           <div className="space-y-1.5" role="radiogroup" aria-labelledby={labelId} aria-describedby={errorId}>
@@ -596,15 +613,52 @@ function PublicForm() {
     [form, values]
   )
 
+  const pages = useMemo(() => {
+    const maxPage = visibleFields.reduce((max, f) => Math.max(max, f.page || 1), 1)
+    const p = []
+    for (let i = 1; i <= maxPage; i++) {
+      const pageFields = visibleFields.filter(f => (f.page || 1) === i)
+      if (pageFields.length > 0) p.push(pageFields)
+    }
+    if (p.length === 0) p.push([])
+    return p
+  }, [visibleFields])
+
+  const [currentPage, setCurrentPage] = useState(0)
+  const [previewFile, setPreviewFile] = useState(null)
+  
+  const availableDocs = useMemo(() => {
+    const docs = []
+    if (!form?.fields) return docs
+    for (const f of form.fields) {
+      const v = values[f.id]
+      if (v && typeof v === 'object' && v.url && (v.mime?.startsWith('image/') || v.mime === 'application/pdf' || v.name?.match(/\.(pdf|jpe?g|png|webp|gif)$/i))) {
+        docs.push({ ...v, fieldLabel: f.label })
+      }
+    }
+    return docs
+  }, [form, values])
+
+  useEffect(() => {
+    if (currentPage >= pages.length) {
+      setCurrentPage(Math.max(0, pages.length - 1))
+    }
+  }, [pages.length, currentPage])
+
   const setFieldValue = (fieldId, v) => {
     setValues((prev) => ({ ...prev, [fieldId]: v }))
     setFieldErrors((prev) => (prev[fieldId] ? { ...prev, [fieldId]: '' } : prev))
     setSubmitError('')
+
+    // Feature: File Preview Split Screen
+    if (v && typeof v === 'object' && v.url && (v.mime?.startsWith('image/') || v.mime === 'application/pdf')) {
+      setPreviewFile(v)
+    }
   }
 
-  const validate = () => {
+  const validate = (fieldsToValidate) => {
     const errs = {}
-    for (const f of visibleFields) {
+    for (const f of fieldsToValidate) {
       const v = values[f.id]
       if (f.required) {
         if (f.type === 'grid') {
@@ -630,13 +684,41 @@ function PublicForm() {
     return errs
   }
 
+  const handleNext = () => {
+    setSubmitError('')
+    const errs = validate(pages[currentPage])
+    setFieldErrors(errs)
+    if (Object.keys(errs).length > 0) {
+      focusFirstError(pages[currentPage], errs)
+      return
+    }
+    setCurrentPage((p) => p + 1)
+  }
+
+  const handlePrev = () => {
+    setSubmitError('')
+    setCurrentPage((p) => Math.max(0, p - 1))
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     setSubmitError('')
-    const errs = validate()
+
+    if (currentPage < pages.length - 1) {
+      handleNext()
+      return
+    }
+
+    const errs = validate(visibleFields.filter(f => f.type !== 'page_break'))
     setFieldErrors(errs)
     if (Object.keys(errs).length > 0) {
-      focusFirstError(visibleFields, errs)
+      const errPageIdx = pages.findIndex(p => p.some(f => errs[f.id]))
+      if (errPageIdx !== -1 && errPageIdx !== currentPage) {
+        setCurrentPage(errPageIdx)
+        setTimeout(() => focusFirstError(pages[errPageIdx], errs), 0)
+      } else {
+        focusFirstError(pages[currentPage], errs)
+      }
       return
     }
 
@@ -710,29 +792,46 @@ function PublicForm() {
 
   return (
     <Page>
-      <div className="bg-surface border border-line rounded-lg overflow-hidden">
-        <div className="border-t-4 border-indigo-600 px-6 pt-5 pb-4 border-b border-line">
-          <h1 className="text-xl font-semibold text-fg">{form.title}</h1>
-          {form.description && <p className="text-sm text-fg-muted mt-1 whitespace-pre-wrap">{form.description}</p>}
-        </div>
+      <div className="flex flex-col lg:flex-row gap-6 relative">
+        
+        {/* Form Container */}
+        <div className="flex-1 transition-all duration-300">
+          <div className="bg-surface border border-line rounded-lg overflow-hidden">
+            <div className="border-t-4 border-indigo-600 px-6 pt-5 pb-4 border-b border-line">
+              <h1 className="text-xl font-semibold text-fg">{form.title}</h1>
+              {form.description && <p className="text-sm text-fg-muted mt-1 whitespace-pre-wrap">{form.description}</p>}
+            </div>
 
-        <form onSubmit={handleSubmit} noValidate className="p-6 space-y-5">
+            <form onSubmit={handleSubmit} noValidate className="p-6 space-y-5">
           {visibleFields.length === 0 ? (
             <p className="text-sm text-fg-muted text-center py-4">This form has no fields to fill.</p>
           ) : (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-2 border-b border-line">
-                <div>
-                  <label htmlFor="public-submitter-name" className="block text-sm font-medium text-fg mb-1">Your name <span className="text-fg-subtle font-normal">(optional)</span></label>
-                  <input id="public-submitter-name" name="name" autoComplete="name" type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="e.g. Acme Supplies Ltd." />
+              {currentPage === 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-2 border-b border-line">
+                  <div>
+                    <label htmlFor="public-submitter-name" className="block text-sm font-medium text-fg mb-1">Your name <span className="text-fg-subtle font-normal">(optional)</span></label>
+                    <input id="public-submitter-name" name="name" autoComplete="name" type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="e.g. Acme Supplies Ltd." />
+                  </div>
+                  <div>
+                    <label htmlFor="public-submitter-email" className="block text-sm font-medium text-fg mb-1">Your email <span className="text-fg-subtle font-normal">(optional)</span></label>
+                    <input id="public-submitter-email" name="email" autoComplete="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} placeholder="you@company.com" />
+                  </div>
                 </div>
-                <div>
-                  <label htmlFor="public-submitter-email" className="block text-sm font-medium text-fg mb-1">Your email <span className="text-fg-subtle font-normal">(optional)</span></label>
-                  <input id="public-submitter-email" name="email" autoComplete="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} placeholder="you@company.com" />
-                </div>
-              </div>
+              )}
 
-              {visibleFields.map((f) => (
+              {pages.length > 1 && (
+                <div className="mb-4 flex items-center justify-between text-xs font-medium text-fg-subtle uppercase tracking-wider">
+                  <span>Page {currentPage + 1} of {pages.length}</span>
+                  <div className="flex gap-1">
+                    {pages.map((_, i) => (
+                      <span key={i} className={`h-1.5 w-6 rounded-full transition-colors ${i === currentPage ? 'bg-indigo-500' : i < currentPage ? 'bg-indigo-200 dark:bg-indigo-900/30' : 'bg-line'}`} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {pages[currentPage]?.map((f) => (
                 <FieldRow
                   key={f.id}
                   token={token}
@@ -740,6 +839,7 @@ function PublicForm() {
                   value={values[f.id]}
                   onChange={(v) => setFieldValue(f.id, v)}
                   error={fieldErrors[f.id]}
+                  onRequestPreview={(file) => setPreviewFile(file)}
                 />
               ))}
             </>
@@ -750,17 +850,40 @@ function PublicForm() {
           )}
 
           {visibleFields.length > 0 && (
-            <div className="flex items-center justify-end pt-2 border-t border-line">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-line">
+              {currentPage > 0 && (
+                <button
+                  type="button"
+                  onClick={handlePrev}
+                  className="px-5 py-2 rounded-md border border-line hover:bg-surface-2 text-sm font-medium text-fg transition mr-auto"
+                >
+                  Previous
+                </button>
+              )}
               <button
                 type="submit"
                 disabled={submitting}
                 className="px-5 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium shadow-sm transition"
               >
-                {submitting ? 'Submitting…' : 'Submit'}
+                {currentPage < pages.length - 1 ? 'Next' : (submitting ? 'Submitting…' : 'Submit')}
               </button>
             </div>
           )}
         </form>
+      </div>
+      </div>
+
+      {/* File Preview Sidebar (Option B) */}
+        {previewFile && (
+          <div className="hidden lg:block w-[40%] xl:w-[45%] shrink-0 self-stretch">
+            <FilePreviewPane 
+              file={previewFile} 
+              onClose={() => setPreviewFile(null)}
+              availableDocs={availableDocs}
+              onSelect={(file) => setPreviewFile(file)}
+            />
+          </div>
+        )}
       </div>
     </Page>
   )

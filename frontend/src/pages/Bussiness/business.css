@@ -1,0 +1,123 @@
+.grid-paper {
+  background-image: radial-gradient(rgba(105, 120, 140, .28) .7px, transparent .7px);
+  background-size: 18px 18px;
+}
+
+.grid-dark {
+  background-image:
+    linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+  background-size: 42px 42px;
+}
+
+.hero-glow {
+  background:
+    radial-gradient(circle at 16% 26%, rgba(201,245,93,.18), transparent 29%),
+    radial-gradient(circle at 86% 16%, rgba(83,104,245,.20), transparent 32%);
+}
+
+.workflow-connector {
+  position: absolute;
+  height: 2px;
+  transform-origin: left center;
+  background: linear-gradient(90deg, #7e8ba0, #5368f5);
+}
+
+.workflow-connector::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-top: 2px solid #5368f5;
+  border-right: 2px solid #5368f5;
+  transform: rotate(45deg);
+}
+
+.flow-port::before,
+.flow-port::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  border: 2px solid white;
+  border-radius: 999px;
+  background: #95a0b2;
+  transform: translateY(-50%);
+  box-shadow: 0 0 0 1px #c7d0da;
+}
+
+.flow-port::before { left: -5px; }
+.flow-port::after { right: -5px; }
+.no-left-port::before { display: none; }
+.no-right-port::after { display: none; }
+
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { scrollbar-width: none; }
+
+details summary::-webkit-details-marker { display: none; }
+details[open] .faq-plus { transform: rotate(45deg); background: #091322; color: white; }
+
+.reveal { opacity: 0; transform: translateY(22px); transition: opacity .65s ease, transform .65s ease; }
+.reveal.is-visible { opacity: 1; transform: translateY(0); }
+
+.chart-wrap canvas, .chart-wrap .recharts-wrapper { width: 100% !important; height: 100% !important; }
+
+@keyframes pulseSoft {
+  0%, 100% { opacity: 0.45; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+@keyframes floatSoft {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.animate-pulse-soft {
+  animation: pulseSoft 2.8s ease-in-out infinite;
+}
+
+.animate-float-soft {
+  animation: floatSoft 5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto !important; }
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  .reveal { opacity: 1; transform: none; }
+}
+
+/* Cinematic Page Exit Transition */
+.page-exit-active {
+  pointer-events: none;
+}
+
+.page-exit-active > header {
+  animation: slideDownFadeOut 0.5s cubic-bezier(0.8, 0, 0.2, 1) forwards;
+}
+
+.page-exit-active > main > section:nth-child(1) {
+  animation: slideDownFadeOut 0.6s cubic-bezier(0.8, 0, 0.2, 1) 0.1s forwards;
+}
+
+.page-exit-active > main > section:nth-child(n+2) {
+  animation: slideDownFadeOut 0.6s cubic-bezier(0.8, 0, 0.2, 1) 0.15s forwards;
+}
+
+.page-exit-active > div:first-child {
+  /* Announcement bar */
+  animation: slideDownFadeOut 0.4s cubic-bezier(0.8, 0, 0.2, 1) forwards;
+}
+
+@keyframes slideDownFadeOut {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(40px) scale(0.98);
+  }
+}

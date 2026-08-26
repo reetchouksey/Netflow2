@@ -11,6 +11,7 @@ import { formsStore } from '../lib/formsStore'
 import { fieldMaxMb, MAX_UPLOAD_MB } from '../utils/uploads'
 import { fieldDomId, focusFirstError, isFieldVisible, isSignatureEmpty, SignaturePad, stripHiddenValues, UploadProgress, validateField, CameraCapture, ReferenceUserSelect } from '../components/FormFields'
 import { limitBanner } from '../lib/limitFeedback'
+import { FilePreviewPane } from '../components/FilePreviewPane'
 
 const inputCls =
   'w-full px-3 py-2 text-sm rounded-md border border-line bg-surface text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition'
@@ -43,7 +44,7 @@ function buildUserPrefill(fields, me) {
 
 // Uploads the chosen file to /api/uploads and stores { name, url, mime, size }
 // as the field value, so the approver can later open the actual attachment.
-function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB }) {
+function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB, onRequestPreview }) {
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(null)
   const [uploadError, setUploadError] = useState('')
@@ -122,11 +123,27 @@ function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB }) {
       {uploading && <UploadProgress percent={progress} />}
       {uploadError && <p className="mt-1 text-xs text-danger-fg">{uploadError}</p>}
       {current && !uploading && (
-        <p className="mt-1 text-xs text-success-fg">
-          Uploaded:{' '}
-          <a href={toAbsoluteUrl(current.url)} target="_blank" rel="noreferrer" className="underline hover:brightness-110">
-            {current.name}
-          </a>
+        <p className="mt-1 text-xs flex flex-wrap items-center gap-x-2 gap-y-1 text-success-fg">
+          <span>
+            Uploaded:{' '}
+            <a href={toAbsoluteUrl(current.url)} target="_blank" rel="noreferrer" className="underline hover:brightness-110">
+              {current.name}
+            </a>
+          </span>
+          {onRequestPreview && (current.mime?.startsWith('image/') || current.mime === 'application/pdf' || current.name?.match(/\.(pdf|jpe?g|png|webp|gif)$/i)) && (
+            <button
+              type="button"
+              onClick={() => onRequestPreview(current)}
+              className="text-fg-muted hover:text-indigo-600 transition flex items-center gap-1 bg-surface-2 px-2 py-0.5 rounded border border-line"
+              title="Preview file"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+              Preview
+            </button>
+          )}
         </p>
       )}
     </div>
@@ -226,7 +243,7 @@ function GridField({ field, value, onChange }) {
   )
 }
 
-function FieldRow({ field, value, onChange, error }) {
+function FieldRow({ field, value, onChange, error, onRequestPreview }) {
   if (field.type === 'heading') {
     return (
       <div data-field-row={field.id} className="pt-4 pb-2 border-b border-line mb-4">
@@ -343,7 +360,7 @@ function FieldRow({ field, value, onChange, error }) {
           />
         )
       case 'file':
-        return <FileField value={value} onChange={onChange} maxMb={fieldMaxMb(field)} />
+        return <FileField value={value} onChange={onChange} maxMb={fieldMaxMb(field)} onRequestPreview={onRequestPreview} />
 
       case 'radio':
         return (
@@ -427,6 +444,7 @@ function FillForm() {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
   const [result, setResult] = useState(null)
+  const [previewFile, setPreviewFile] = useState(null)
 
   const [draftRestored, setDraftRestored] = useState(false)
   const [savingDraft, setSavingDraft] = useState(false)
@@ -436,6 +454,18 @@ function FillForm() {
   const me = useUser()
   const prefilled = useRef(false)
   const draftLoaded = useRef(false)
+
+  const availableDocs = useMemo(() => {
+    const docs = []
+    if (!form?.fields) return docs
+    for (const f of form.fields) {
+      const v = values[f.id]
+      if (v && typeof v === 'object' && v.url && (v.mime?.startsWith('image/') || v.mime === 'application/pdf' || v.name?.match(/\.(pdf|jpe?g|png|webp|gif)$/i))) {
+        docs.push({ ...v, fieldLabel: f.label })
+      }
+    }
+    return docs
+  }, [form, values])
 
   useEffect(() => {
     let cancelled = false
@@ -491,16 +521,39 @@ function FillForm() {
     return form.fields.filter((f) => f.type !== 'repeater' && isFieldVisible(f, values))
   }, [form, values])
 
+  const pages = useMemo(() => {
+    const maxPage = visibleFields.reduce((max, f) => Math.max(max, f.page || 1), 1)
+    const p = []
+    for (let i = 1; i <= maxPage; i++) {
+      const pageFields = visibleFields.filter(f => (f.page || 1) === i)
+      if (pageFields.length > 0) p.push(pageFields)
+    }
+    if (p.length === 0) p.push([])
+    return p
+  }, [visibleFields])
+
+  const [currentPage, setCurrentPage] = useState(0)
+  useEffect(() => {
+    if (currentPage >= pages.length) {
+      setCurrentPage(Math.max(0, pages.length - 1))
+    }
+  }, [pages.length, currentPage])
+
   const setFieldValue = (fieldId, v) => {
     setValues((prev) => ({ ...prev, [fieldId]: v }))
     setFieldErrors((prev) => (prev[fieldId] ? { ...prev, [fieldId]: '' } : prev))
     setSubmitError('')
     if (draftSavedAt) setDraftSavedAt(null)
+
+    // Feature: File Preview Split Screen
+    if (v && typeof v === 'object' && v.url && (v.mime?.startsWith('image/') || v.mime === 'application/pdf')) {
+      setPreviewFile(v)
+    }
   }
 
-  const validate = () => {
+  const validate = (fieldsToValidate) => {
     const errs = {}
-    for (const f of visibleFields) {
+    for (const f of fieldsToValidate) {
       const v = values[f.id]
       if (f.required) {
         if (f.type === 'grid') {
@@ -535,13 +588,41 @@ function FillForm() {
     return errs
   }
 
+  const handleNext = () => {
+    setSubmitError('')
+    const errs = validate(pages[currentPage])
+    setFieldErrors(errs)
+    if (Object.keys(errs).length > 0) {
+      focusFirstError(pages[currentPage], errs)
+      return
+    }
+    setCurrentPage((p) => p + 1)
+  }
+
+  const handlePrev = () => {
+    setSubmitError('')
+    setCurrentPage((p) => Math.max(0, p - 1))
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     setSubmitError('')
-    const errs = validate()
+
+    if (currentPage < pages.length - 1) {
+      handleNext()
+      return
+    }
+
+    const errs = validate(visibleFields.filter(f => f.type !== 'page_break'))
     setFieldErrors(errs)
     if (Object.keys(errs).length > 0) {
-      focusFirstError(visibleFields, errs)
+      const errPageIdx = pages.findIndex(p => p.some(f => errs[f.id]))
+      if (errPageIdx !== -1 && errPageIdx !== currentPage) {
+        setCurrentPage(errPageIdx)
+        setTimeout(() => focusFirstError(pages[errPageIdx], errs), 0)
+      } else {
+        focusFirstError(pages[currentPage], errs)
+      }
       return
     }
 
@@ -693,7 +774,10 @@ function FillForm() {
         </button>
       }
     >
-      <form onSubmit={handleSubmit} noValidate className="max-w-xl mx-auto bg-surface border border-line rounded-lg p-6 space-y-5">
+      <div className="flex flex-col lg:flex-row gap-6 relative">
+        {/* Form Container */}
+        <div className="flex-1 transition-all duration-300">
+          <form onSubmit={handleSubmit} noValidate className={`${previewFile ? 'w-full' : 'max-w-xl mx-auto'} bg-surface border border-line rounded-lg p-6 space-y-5`}>
         {draftRestored && (
           <div className="flex items-center justify-between gap-3 p-3 rounded-md bg-warning-subtle border border-warning-line text-sm text-warning-fg">
             <span>We restored your saved draft. Pick up where you left off.</span>
@@ -724,13 +808,25 @@ function FillForm() {
           </div>
         )}
 
-        {visibleFields.map((f) => (
+        {pages.length > 1 && (
+          <div className="mb-4 flex items-center justify-between text-xs font-medium text-fg-subtle uppercase tracking-wider">
+            <span>Page {currentPage + 1} of {pages.length}</span>
+            <div className="flex gap-1">
+              {pages.map((_, i) => (
+                <span key={i} className={`h-1.5 w-6 rounded-full transition-colors ${i === currentPage ? 'bg-indigo-500' : i < currentPage ? 'bg-indigo-200 dark:bg-indigo-900/30' : 'bg-line'}`} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {pages[currentPage]?.map((f) => (
           <FieldRow
             key={f.id}
             field={f}
             value={values[f.id]}
             onChange={(v) => setFieldValue(f.id, v)}
             error={fieldErrors[f.id]}
+            onRequestPreview={(file) => setPreviewFile(file)}
           />
         ))}
 
@@ -748,13 +844,24 @@ function FillForm() {
           {draftSavedAt && !savingDraft && (
             <span className="mr-auto text-xs text-success-fg">Draft saved</span>
           )}
-          <button
-            type="button"
-            onClick={() => navigate('/forms')}
-            className="px-4 py-2 rounded-md border border-line hover:bg-surface-2 text-sm font-medium text-fg transition"
-          >
-            Cancel
-          </button>
+          {currentPage > 0 && (
+            <button
+              type="button"
+              onClick={handlePrev}
+              className="px-4 py-2 rounded-md border border-line hover:bg-surface-2 text-sm font-medium text-fg transition mr-auto"
+            >
+              Previous
+            </button>
+          )}
+          {currentPage === 0 && (
+            <button
+              type="button"
+              onClick={() => navigate('/forms')}
+              className="px-4 py-2 rounded-md border border-line hover:bg-surface-2 text-sm font-medium text-fg transition"
+            >
+              Cancel
+            </button>
+          )}
           <button
             type="button"
             onClick={handleSaveDraft}
@@ -768,10 +875,29 @@ function FillForm() {
             disabled={submitting || visibleFields.length === 0}
             className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium shadow-sm transition"
           >
-            {submitting ? 'Submitting…' : 'Submit'}
+            {currentPage < pages.length - 1 ? 'Next' : (submitting ? 'Submitting…' : 'Submit')}
           </button>
         </div>
-      </form>
+        {savingDraft && (
+          <p className="mt-4 text-center text-xs font-medium text-fg-subtle animate-pulse">
+            Saving draft...
+          </p>
+        )}
+          </form>
+        </div>
+
+        {/* File Preview Sidebar (Option B: Contextual Slide-out with Sticky positioning) */}
+        {previewFile && (
+          <div className="hidden lg:block w-[40%] xl:w-[45%] shrink-0 self-stretch">
+            <FilePreviewPane 
+              file={previewFile} 
+              onClose={() => setPreviewFile(null)}
+              availableDocs={availableDocs}
+              onSelect={(file) => setPreviewFile(file)}
+            />
+          </div>
+        )}
+      </div>
     </AppShell>
   )
 }
