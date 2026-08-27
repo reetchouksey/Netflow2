@@ -125,7 +125,7 @@ export default function BusinessLandingPage() {
             <a href="#solutions" className="text-sm font-semibold text-slate-600 transition hover:text-[#091322]">Solutions</a>
             <a href="#security" className="text-sm font-semibold text-slate-600 transition hover:text-[#091322]">Security</a>
             <a href="#resources" className="text-sm font-semibold text-slate-600 transition hover:text-[#091322]">Resources</a>
-            {/* <a href="/docs/" className="text-sm font-semibold text-slate-600 transition hover:text-[#5368F5]">Documentation</a> */}
+           <a href="/docs/" className="text-sm font-semibold text-slate-600 transition hover:text-[#5368F5]">Documentation</a>
           </div>
 
           <div className="flex items-center gap-2">
