@@ -72,7 +72,7 @@ export const formsStore = {
   },
   async remove(id) {
     await api.delete(`/api/forms/${id}`)
-    cache = cache.filter((f) => f.id !== id)
+    cache = cache.filter((f) => String(f.id) !== String(id) && String(f._raw?._id) !== String(id))
     emit()
   },
   async togglePublished(id) {
@@ -142,4 +142,4 @@ const noopSubscribe = () => () => {}
 // or submit a form, nor does it affect approval routing (that uses each
 // submitter's own manager/HR). "Company-wide" is the default for forms everyone
 // uses (e.g. Leave Request); the rest just tag the owning team.
-export const FORM_CATEGORIES = ['Company-wide', 'HR', 'Finance', 'IT', 'Operations', 'Sales', 'Legal']
+export const FORM_CATEGORIES = ['Company-wide', 'HR', 'Finance', 'IT', 'Operations', 'Sales', 'Legal', 'Corporate']

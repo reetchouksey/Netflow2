@@ -36,7 +36,7 @@ function fmtDayLabel(isoDate) {
 
 
 const RANGE_OPTIONS = [
-  { label: 'Last 7 days',  days: 7  },
+  { label: 'Last 7 days', days: 7 },
   { label: 'Last 30 days', days: 30 },
   { label: 'Last 90 days', days: 90 },
 ]
@@ -46,16 +46,18 @@ const RANGE_OPTIONS = [
 function StatCard5({ icon: Icon, iconBg, iconColor, label, value, hint, help }) {
   return (
     <div
-      className="rounded-xl border border-line bg-surface px-4 py-3.5 shadow-sm flex items-start gap-3"
+      className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs flex flex-col justify-between h-full hover:border-slate-300 dark:hover:border-slate-700 transition"
       title={help || hint || undefined}
     >
-      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ring-1 ring-black/5 dark:ring-white/10 ${iconBg}`}>
-        <Icon className={`w-5 h-5 ${iconColor}`} />
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">{label}</p>
+        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${iconBg}`}>
+          <Icon className={`w-4 h-4 ${iconColor}`} />
+        </div>
       </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">{label}</p>
-        <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-fg leading-none">{value}</p>
-        {hint ? <p className="mt-1.5 text-[11px] text-fg-muted leading-snug line-clamp-2">{hint}</p> : null}
+      <div className="mt-2">
+        <p className="text-2xl sm:text-3xl font-bold tabular-nums tracking-tight text-slate-900 dark:text-white leading-tight">{value}</p>
+        {hint ? <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400 leading-snug line-clamp-2">{hint}</p> : null}
       </div>
     </div>
   )
@@ -168,10 +170,10 @@ function MultiLineChart({ series }) {
   }
 
   const lines = [
-    { key: 'completed',  color: '#22c55e', fill: 'rgba(34,197,94,0.10)',  label: 'Completed',   help: 'Runs that reached the end of the workflow' },
+    { key: 'completed', color: '#22c55e', fill: 'rgba(34,197,94,0.10)', label: 'Completed', help: 'Runs that reached the end of the workflow' },
     { key: 'inProgress', color: '#3b82f6', fill: 'rgba(59,130,246,0.08)', label: 'In progress', help: 'Runs advancing through automatic steps right now' },
-    { key: 'onHold',     color: '#f59e0b', fill: 'rgba(245,158,11,0.08)', label: 'Waiting',     help: 'Runs paused until someone approves or acts' },
-    { key: 'failed',     color: '#ef4444', fill: 'rgba(239,68,68,0.08)',  label: 'Failed',      help: 'Runs that stopped with an error' },
+    { key: 'onHold', color: '#f59e0b', fill: 'rgba(245,158,11,0.08)', label: 'Waiting', help: 'Runs paused until someone approves or acts' },
+    { key: 'failed', color: '#ef4444', fill: 'rgba(239,68,68,0.08)', label: 'Failed', help: 'Runs that stopped with an error' },
   ]
 
   const yTicks = [0, Math.round(maxVal * 0.5), maxVal].map((v) => ({ v, y: y(v) }))
@@ -429,9 +431,9 @@ function TasksOverviewCard({ tasks }) {
       else inProgress++
     }
     return [
-      { label: 'Completed',   value: completed,  color: '#22c55e' },
+      { label: 'Completed', value: completed, color: '#22c55e' },
       { label: 'In Progress', value: inProgress, color: '#3b82f6' },
-      { label: 'To Do',       value: toDo,       color: '#f59e0b' },
+      { label: 'To Do', value: toDo, color: '#f59e0b' },
     ]
   }, [tasks])
   const total = segs.reduce((s, x) => s + x.value, 0)
@@ -492,9 +494,8 @@ function ApprovalRateCard({ approvalRate }) {
               </span>
             ) : (
               <span
-                className={`inline-flex items-center gap-0.5 text-[11px] font-semibold mt-0.5 ${
-                  above ? 'text-success-fg' : 'text-danger-fg'
-                }`}
+                className={`inline-flex items-center gap-0.5 text-[11px] font-semibold mt-0.5 ${above ? 'text-success-fg' : 'text-danger-fg'
+                  }`}
               >
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                   <path strokeLinecap="round" strokeLinejoin="round" d={above ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
@@ -566,13 +567,13 @@ function BuilderDashboard() {
   // chartDays controls only the Workflow Activity chart dropdown.
   const [chartDays, setChartDays] = useState(7)
 
-  const [summary, setSummary]               = useState(null)
+  const [summary, setSummary] = useState(null)
   const [completionSeries, setCompletionSeries] = useState([])
-  const [approvalDist, setApprovalDist]     = useState([])
-  const [activityRaw, setActivityRaw]       = useState([])
+  const [approvalDist, setApprovalDist] = useState([])
+  const [activityRaw, setActivityRaw] = useState([])
   const [activityLoading, setActivityLoading] = useState(true)
-  const [booting, setBooting]               = useState(true)
-  const [statsError, setStatsError]         = useState('')
+  const [booting, setBooting] = useState(true)
+  const [statsError, setStatsError] = useState('')
   const [statsReloadKey, setStatsReloadKey] = useState(0)
 
   // Fetch global stats once on mount (no date filter tied to badge).
@@ -615,11 +616,11 @@ function BuilderDashboard() {
   // Shape the raw activity response into what MultiLineChart expects.
   const activitySeries = useMemo(
     () => activityRaw.map((row) => ({
-      label:      fmtDayLabel(row.isoDate),
-      completed:  row.completed  ?? 0,
+      label: fmtDayLabel(row.isoDate),
+      completed: row.completed ?? 0,
       inProgress: row.inProgress ?? 0,
-      onHold:     row.onHold     ?? 0,
-      failed:     row.failed     ?? 0,
+      onHold: row.onHold ?? 0,
+      failed: row.failed ?? 0,
     })),
     [activityRaw]
   )
@@ -643,13 +644,32 @@ function BuilderDashboard() {
     return Math.round((resolved.filter((t) => t.status === 'Approved').length / resolved.length) * 100)
   }, [approvalDist, tasks])
 
+  const today = new Date()
+  const dateStr = today.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' })
+  const hour = today.getHours()
+  const greetingText = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+
   return (
     <AppShell
-      title={<>Welcome back, {firstName}</>}
-      subtitle={builderView ? 'Workspace workflow health and recent activity' : 'Your requests and approvals at a glance'}
-      mainClass="flex-1 min-h-0 flex flex-col p-4 md:p-6 pb-24 md:pb-6 overflow-hidden"
+      title="Dashboard"
+      mainClass="flex-1 p-4 md:p-6 pb-24 md:pb-6 space-y-5 overflow-y-auto bg-[#e2e8f0] dark:bg-[#0b1120]"
     >
-      <div className="flex-1 min-h-0 flex flex-col gap-4 w-full overflow-hidden">
+      <div className="space-y-5 w-full">
+        <div className="bg-white dark:bg-[#111a2e] border border-slate-100/80 dark:border-white/10 rounded-[20px] px-7 py-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-[26px] font-extrabold text-[#0f172a] dark:text-white tracking-tight leading-none">
+                Welcome back, {firstName}
+              </h1>
+              <span className="px-2.5 py-1 text-[10px] font-bold bg-[#eff4ff] text-[#2563eb] dark:bg-blue-500/10 dark:text-blue-400 rounded-full">
+                Employee
+              </span>
+            </div>
+            <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-2">
+              {greetingText} · {dateStr} — {user?.department || 'Department'} overview — here's what's happening in your department.
+            </p>
+          </div>
+        </div>
         {statsError && (
           <div className="shrink-0">
             <AlertBanner tone="warning" onRetry={() => setStatsReloadKey((k) => k + 1)}>
@@ -718,9 +738,9 @@ function groupRequests(tasks, myId) {
     if (chain.length > 0) {
       const approved = chain.filter((s) => s.status === 'approved').length
       if (chain.some((s) => s.status === 'rejected')) { status = 'Rejected'; progress = 100 }
-      else if (approved === chain.length)             { status = 'Approved'; progress = 100 }
-      else if (approved > 0)                          { status = 'In Review'; progress = Math.round((approved / chain.length) * 100) }
-      else                                            { status = 'Pending';   progress = 0 }
+      else if (approved === chain.length) { status = 'Approved'; progress = 100 }
+      else if (approved > 0) { status = 'In Review'; progress = Math.round((approved / chain.length) * 100) }
+      else { status = 'Pending'; progress = 0 }
     } else {
       const statuses = sorted.map((t) => t.status)
       const approvedCount = statuses.filter((s) => s === 'Approved').length
@@ -764,31 +784,70 @@ const ACTIVITY_VERB = {
   Pending: 'was submitted',
 }
 
+const EmployeeStatCard = ({ title, value, subtitle, icon, tone = 'indigo', valueColor, onClick }) => {
+  const toneMap = {
+    indigo: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400 border border-indigo-100/80 dark:border-indigo-800/50',
+    blue: 'bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400 border border-blue-100/80 dark:border-blue-800/50',
+    amber: 'bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400 border border-amber-100/80 dark:border-amber-800/50',
+    emerald: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-100/80 dark:border-emerald-800/50',
+    rose: 'bg-rose-50 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400 border border-rose-100/80 dark:border-rose-800/50',
+  }
+  const toneClass = toneMap[tone] || toneMap.indigo
+
+  return (
+    <div
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
+      className={`bg-white dark:bg-[#111a2e] rounded-3xl p-4 sm:p-5 shadow-2xs border border-slate-200/80 dark:border-slate-800 flex flex-col justify-between transition w-full min-w-0 min-h-[145px] ${onClick ? 'cursor-pointer hover:shadow-md hover:-translate-y-0.5 hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-150' : ''}`}
+    >
+      <div className="flex items-start justify-between">
+        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs ${toneClass}`}>
+          {React.isValidElement(icon) ? React.cloneElement(icon, { className: 'w-5 h-5' }) : icon}
+        </div>
+      </div>
+      <div className="mt-2.5">
+        <div className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 leading-tight">
+          {title}
+        </div>
+        <div className={`text-2xl font-black tracking-tight mt-1 ${valueColor || 'text-slate-900 dark:text-white'}`}>
+          {value}
+        </div>
+        <div className="text-[11px] font-semibold text-slate-400 dark:text-slate-400 mt-1 leading-tight">
+          {subtitle}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Top 5 stat cards for an employee — all from their own requests.
 function EmployeeStats({ requests, needsAttention, loading }) {
+  const navigate = useNavigate()
   const now = new Date()
   const isThisMonth = (iso) => {
     if (!iso) return false
     const d = new Date(iso)
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
   }
-  const total       = requests.length
-  const submitted   = requests.filter((r) => isThisMonth(r.createdAt)).length
-  const pending     = requests.filter((r) => r.status === 'Pending' || r.status === 'In Review').length
-  const approved    = requests.filter((r) => r.status === 'Approved').length
+  const total = requests.length
+  const submitted = requests.filter((r) => isThisMonth(r.createdAt)).length
+  const pending = requests.filter((r) => r.status === 'Pending' || r.status === 'In Review').length
+  const approved = requests.filter((r) => r.status === 'Approved').length
 
   const cards = [
-    { label: 'My Requests',     value: total,          icon: IconDoc,   iconBg: 'bg-indigo-50 dark:bg-indigo-500/15', iconColor: 'text-indigo-600 dark:text-indigo-300' },
-    { label: 'Submitted (mo.)', value: submitted,      icon: IconSend,  iconBg: 'bg-sky-50 dark:bg-sky-500/15',       iconColor: 'text-sky-600 dark:text-sky-300'       },
-    { label: 'Pending',         value: pending,        icon: IconClock, iconBg: 'bg-warning-subtle', iconColor: 'text-warning-fg' },
-    { label: 'Approved',        value: approved,       icon: IconCheck, iconBg: 'bg-success-subtle', iconColor: 'text-success-fg' },
-    { label: 'Needs Attention', value: needsAttention, icon: IconAlert, iconBg: 'bg-danger-subtle',    iconColor: 'text-danger-fg'    },
+    { title: 'My Requests', value: total, subtitle: 'Total submitted', icon: <IconDoc className="w-5 h-5" />, tone: 'indigo', onClick: () => navigate('/tasks?scope=submitted&filter=All tasks') },
+    { title: 'Submitted (mo.)', value: submitted, subtitle: 'In current month', icon: <IconSend className="w-5 h-5" />, tone: 'blue', onClick: () => navigate('/tasks?scope=submitted&filter=All tasks') },
+    { title: 'Pending', value: pending, subtitle: 'Awaiting action', icon: <IconClock className="w-5 h-5" />, tone: 'amber', onClick: () => navigate('/tasks?scope=submitted&filter=Pending') },
+    { title: 'Approved', value: approved, subtitle: 'Approved vs decided', icon: <IconCheck className="w-5 h-5" />, tone: 'emerald', valueColor: 'text-emerald-700 dark:text-emerald-400', onClick: () => navigate('/tasks?scope=submitted&filter=Approved') },
+    { title: 'Needs Attention', value: needsAttention, subtitle: 'In selected range', icon: <IconAlert className="w-5 h-5" />, tone: 'rose', valueColor: 'text-rose-600 dark:text-rose-400', onClick: () => navigate('/tasks?scope=submitted&filter=Pending') },
   ]
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3.5 sm:gap-4 w-full">
       {loading && requests.length === 0
         ? Array.from({ length: 5 }).map((_, i) => <StatCardSkeleton key={i} />)
-        : cards.map((c) => <StatCard5 key={c.label} {...c} />)}
+        : cards.map((c) => <EmployeeStatCard key={c.title} {...c} />)}
     </div>
   )
 }
@@ -882,20 +941,149 @@ function MyProgressCard({ requests, loading }) {
 // Visual treatment for a single approval-chain node's status.
 function statusVisual(s) {
   switch (s) {
-    case 'approved':  return { ring: 'bg-success-solid border-success-solid text-white', icon: 'check' }
-    case 'rejected':  return { ring: 'bg-danger-solid border-danger-solid text-white',   icon: 'x' }
-    case 'escalated': return { ring: 'bg-orange-500 border-orange-500 text-white',       icon: 'up' }
-    case 'pending':   return { ring: 'bg-info-solid border-info-solid text-white',       icon: 'dot' }
-    default:          return { ring: 'bg-surface border-line text-fg-subtle',        icon: 'dot' }
+    case 'approved': return { ring: 'bg-success-solid border-success-solid text-white', icon: 'check' }
+    case 'rejected': return { ring: 'bg-danger-solid border-danger-solid text-white', icon: 'x' }
+    case 'escalated': return { ring: 'bg-orange-500 border-orange-500 text-white', icon: 'up' }
+    case 'pending': return { ring: 'bg-info-solid border-info-solid text-white', icon: 'dot' }
+    default: return { ring: 'bg-surface border-line text-fg-subtle', icon: 'dot' }
   }
 }
 
 function StepIcon({ kind }) {
   const cls = 'w-2.5 h-2.5'
   if (kind === 'check') return <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-  if (kind === 'x')     return <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" /></svg>
-  if (kind === 'up')    return <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5M5 12l7-7 7 7" /></svg>
+  if (kind === 'x') return <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" /></svg>
+  if (kind === 'up') return <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5M5 12l7-7 7 7" /></svg>
   return <span className="w-1.5 h-1.5 rounded-full bg-current" />
+}
+
+function TrackStatusSelect({ requests, active, onSelect }) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const containerRef = useRef(null)
+  const searchInputRef = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setOpen(false)
+      }
+    }
+    if (open) {
+      document.addEventListener('mousedown', handleClickOutside)
+      setTimeout(() => searchInputRef.current?.focus(), 50)
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [open])
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return requests
+    return requests.filter(
+      (r) =>
+        (r.title && r.title.toLowerCase().includes(q)) ||
+        (r.refId && r.refId.toLowerCase().includes(q)) ||
+        (r.status && r.status.toLowerCase().includes(q))
+    )
+  }, [requests, search])
+
+  return (
+    <div className="relative mb-4" ref={containerRef}>
+      {/* Trigger Button */}
+      <button
+        type="button"
+        onClick={() => {
+          setOpen((o) => !o)
+          setSearch('')
+        }}
+        className="w-full flex items-center justify-between text-left text-xs border border-line rounded-lg px-3 py-2 text-fg bg-surface hover:border-indigo-300 dark:hover:border-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-200 transition cursor-pointer"
+      >
+        <span className="truncate font-medium">
+          {active ? `${active.title} · ${active.refId}` : 'Select a request'}
+        </span>
+        <svg
+          className={`w-4 h-4 text-fg-subtle shrink-0 ml-2 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {/* Searchable Dropdown Popover */}
+      {open && (
+        <div className="absolute top-full left-0 right-0 mt-1 z-30 bg-surface border border-line rounded-xl shadow-xl overflow-hidden animate-fade-in">
+          {/* Search Input Box */}
+          <div className="p-2 border-b border-line bg-surface-2/60">
+            <div className="relative flex items-center">
+              <svg
+                className="w-3.5 h-3.5 absolute left-2.5 text-fg-subtle pointer-events-none"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35" />
+              </svg>
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search requests by name or ID..."
+                className="w-full pl-8 pr-6 py-1.5 text-xs rounded-lg border border-line bg-surface text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  className="absolute right-2 text-xs text-fg-subtle hover:text-fg cursor-pointer"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Options List */}
+          <div className="max-h-56 overflow-y-auto py-1 thin-scrollbar">
+            {filtered.length === 0 ? (
+              <p className="p-3 text-center text-xs text-fg-subtle">No matching requests</p>
+            ) : (
+              filtered.map((r) => {
+                const isSelected = r.key === active?.key
+                return (
+                  <button
+                    key={r.key}
+                    type="button"
+                    onClick={() => {
+                      onSelect(r.key)
+                      setOpen(false)
+                      setSearch('')
+                    }}
+                    className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between transition cursor-pointer ${isSelected
+                        ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-300 font-semibold'
+                        : 'text-fg hover:bg-surface-2'
+                      }`}
+                  >
+                    <span className="truncate pr-2">{r.title} · {r.refId}</span>
+                    {isSelected && (
+                      <svg className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </button>
+                )
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 // Track Status — renders the live approval chain for a selected request.
@@ -920,11 +1108,11 @@ function TrackStatusCard({ requests }) {
     for (const s of active.chain || []) {
       const norm = s.isCurrent && s.status !== 'approved' && s.status !== 'rejected' ? 'pending' : s.status
       let sub
-      if (s.status === 'approved')      sub = s.decidedBy ? `Approved by ${s.decidedBy}` : 'Approved'
+      if (s.status === 'approved') sub = s.decidedBy ? `Approved by ${s.decidedBy}` : 'Approved'
       else if (s.status === 'rejected') sub = s.decidedBy ? `Rejected by ${s.decidedBy}` : 'Rejected'
       else if (s.status === 'escalated') sub = 'Escalated'
-      else if (norm === 'pending')      sub = `Awaiting ${s.assignee || s.roleLabel || 'approval'}`
-      else                              sub = s.roleLabel ? `${s.roleLabel} · upcoming` : 'Upcoming'
+      else if (norm === 'pending') sub = `Awaiting ${s.assignee || s.roleLabel || 'approval'}`
+      else sub = s.roleLabel ? `${s.roleLabel} · upcoming` : 'Upcoming'
       out.push({ key: s.nodeId, title: s.title || s.roleLabel || 'Approval', sub, vis: statusVisual(norm), current: s.isCurrent })
     }
     if (active.status === 'Approved') {
@@ -961,15 +1149,11 @@ function TrackStatusCard({ requests }) {
       </div>
 
       {requests.length > 1 && (
-        <select
-          value={active.key}
-          onChange={(e) => setSelectedKey(e.target.value)}
-          className="mb-4 w-full text-xs border border-line rounded-lg px-2.5 py-2 text-fg bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200"
-        >
-          {requests.map((r) => (
-            <option key={r.key} value={r.key}>{r.title} · {r.refId}</option>
-          ))}
-        </select>
+        <TrackStatusSelect
+          requests={requests}
+          active={active}
+          onSelect={(key) => setSelectedKey(key)}
+        />
       )}
 
       <ol className="flex-1">
@@ -996,31 +1180,33 @@ function TrackStatusCard({ requests }) {
 function RecentActivityCard({ requests }) {
   const items = requests.slice(0, 5)
   return (
-    <div className="bg-surface border border-line rounded-xl p-5">
-      <h2 className="text-sm font-semibold text-fg mb-4">Recent Activity</h2>
-      {items.length === 0 ? (
-        <EmptyState
-          title="No activity yet"
-          description="Your recent requests and approvals will appear here."
-        />
-      ) : (
-        <ul className="space-y-3">
-          {items.map((r) => {
-            const styles = statusBadge(r.status)
-            return (
-              <li key={r.key} className="flex items-start gap-3">
-                <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${styles.dot}`} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs text-fg leading-snug">
-                    <span className="font-medium">{r.title}</span> {ACTIVITY_VERB[r.status] || 'updated'}
-                  </p>
-                  <p className="text-[10px] text-fg-subtle mt-0.5">{timeAgo(r.latestAt)}</p>
-                </div>
-              </li>
-            )
-          })}
-        </ul>
-      )}
+    <div className="bg-white dark:bg-[#111a2e] border border-slate-200/80 dark:border-slate-800 rounded-3xl p-5 shadow-2xs flex flex-col justify-between h-full">
+      <div>
+        <h2 className="text-sm font-bold text-slate-900 dark:text-white mb-4">Recent Activity</h2>
+        {items.length === 0 ? (
+          <EmptyState
+            title="No activity yet"
+            description="Your recent requests and approvals will appear here."
+          />
+        ) : (
+          <ul className="space-y-3">
+            {items.map((r) => {
+              const styles = statusBadge(r.status)
+              return (
+                <li key={r.key} className="flex items-start gap-3">
+                  <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${styles.dot}`} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-slate-700 dark:text-slate-200 leading-snug">
+                      <span className="font-semibold text-slate-900 dark:text-white">{r.title}</span> {ACTIVITY_VERB[r.status] || 'updated'}
+                    </p>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{timeAgo(r.latestAt)}</p>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
     </div>
   )
 }
@@ -1028,32 +1214,69 @@ function RecentActivityCard({ requests }) {
 function RequestSummaryCard({ requests }) {
   const navigate = useNavigate()
   const segs = useMemo(() => ([
-    { label: 'Approved',  value: requests.filter((r) => r.status === 'Approved').length,  color: '#22c55e' },
+    { label: 'Approved', value: requests.filter((r) => r.status === 'Approved').length, color: '#22c55e' },
     { label: 'In Review', value: requests.filter((r) => r.status === 'In Review').length, color: '#3b82f6' },
-    { label: 'Pending',   value: requests.filter((r) => r.status === 'Pending').length,   color: '#f59e0b' },
-    { label: 'Rejected',  value: requests.filter((r) => r.status === 'Rejected').length,  color: '#ef4444' },
+    { label: 'Pending', value: requests.filter((r) => r.status === 'Pending').length, color: '#f59e0b' },
+    { label: 'Rejected', value: requests.filter((r) => r.status === 'Rejected').length, color: '#ef4444' },
   ]), [requests])
   const total = segs.reduce((s, x) => s + x.value, 0)
+  const approvalRate = total > 0 ? Math.round((segs[0].value / total) * 100) : 0
+  const inProgress = segs[1].value + segs[2].value
+
   return (
-    <div className="bg-surface border border-line rounded-xl p-5">
-      <h2 className="text-sm font-semibold text-fg mb-4">Request Summary</h2>
-      <div className="flex items-center gap-4">
-        <DonutChart segments={segs} total={total} />
-        <ul className="space-y-1.5 text-xs text-fg-muted flex-1">
-          {segs.map((s) => (
-            <li key={s.label} className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
-              <span className="flex-1">{s.label}</span>
-              <span className="text-fg-subtle font-medium ml-2">
-                {s.value}{total > 0 ? ` (${Math.round((s.value / total) * 100)}%)` : ''}
-              </span>
-            </li>
-          ))}
-        </ul>
+    <div className="bg-white dark:bg-[#111a2e] border border-slate-200/80 dark:border-slate-800 rounded-3xl p-5 shadow-2xs flex flex-col justify-between h-full">
+      <div>
+        <div className="flex items-center justify-between mb-3.5">
+          <h2 className="text-sm font-bold text-slate-900 dark:text-white">Request Summary</h2>
+          <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400 border border-indigo-100/60 dark:border-indigo-800/40">
+            {total} Total
+          </span>
+        </div>
+
+        {/* Donut Chart and Legend */}
+        <div className="flex items-center gap-4 bg-slate-50/80 dark:bg-slate-800/40 p-3 rounded-2xl border border-slate-100 dark:border-slate-800/80">
+          <DonutChart segments={segs} total={total} />
+          <ul className="space-y-1.5 text-xs text-slate-600 dark:text-slate-300 flex-1 min-w-0">
+            {segs.map((s) => (
+              <li key={s.label} className="flex items-center justify-between text-xs font-semibold">
+                <div className="flex items-center gap-2 truncate">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0 shadow-2xs" style={{ background: s.color }} />
+                  <span className="truncate">{s.label}</span>
+                </div>
+                <span className="font-extrabold text-slate-900 dark:text-white shrink-0 ml-2">
+                  {s.value} <span className="text-[10px] text-slate-400 font-semibold">{total > 0 ? `(${Math.round((s.value / total) * 100)}%)` : ''}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Key Operational Metrics — Fills the Card Systematically */}
+        <div className="grid grid-cols-2 gap-2.5 mt-3">
+          <div className="bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-100/80 dark:border-emerald-900/40 rounded-2xl p-2.5">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 block">
+              Approval Rate
+            </span>
+            <span className="text-base font-black text-slate-900 dark:text-white tracking-tight mt-0.5 block">
+              {approvalRate}%
+            </span>
+          </div>
+          <div className="bg-blue-50/60 dark:bg-blue-950/30 border border-blue-100/80 dark:border-blue-900/40 rounded-2xl p-2.5">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-600 dark:text-blue-400 block">
+              In Progress
+            </span>
+            <span className="text-base font-black text-slate-900 dark:text-white tracking-tight mt-0.5 block">
+              {inProgress} active
+            </span>
+          </div>
+        </div>
       </div>
-      <button onClick={() => navigate('/tasks')}
-        className="mt-4 w-full py-2 rounded-lg border border-line text-xs font-medium text-fg-muted hover:bg-surface-2 transition">
-        View all requests
+
+      <button
+        onClick={() => navigate('/tasks')}
+        className="mt-4 w-full py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/80 transition shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer"
+      >
+        View all requests →
       </button>
     </div>
   )
@@ -1066,30 +1289,32 @@ function NeedsAttentionCard({ rejected, approvals }) {
     ...approvals.map((t) => ({ key: `a-${t.id}`, title: (t.title || 'Task').replace(/\s*—\s*Approval Required\s*$/i, ''), note: 'Awaiting your approval', taskId: t.id, tone: 'amber' })),
   ]
   return (
-    <div className="bg-surface border border-line rounded-xl p-5">
-      <h2 className="text-sm font-semibold text-fg mb-4">Needs Your Attention</h2>
-      {items.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-10 text-center">
-          <IconCheck className="w-6 h-6 text-success-solid mb-2" />
-          <p className="text-xs text-fg-subtle">You're all caught up</p>
-        </div>
-      ) : (
-        <ul className="space-y-2">
-          {items.slice(0, 5).map((it) => (
-            <li key={it.key}>
-              <button onClick={() => navigate(`/tasks/${it.taskId}`)}
-                className="w-full text-left flex items-center gap-3 p-2.5 rounded-lg hover:bg-surface-2 transition">
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${it.tone === 'rose' ? 'bg-danger-solid' : 'bg-warning-solid'}`} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-fg truncate">{it.title}</p>
-                  <p className={`text-[10px] mt-0.5 ${it.tone === 'rose' ? 'text-danger-fg' : 'text-warning-fg'}`}>{it.note}</p>
-                </div>
-                <span className="text-fg-subtle text-xs">›</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+    <div className="bg-white dark:bg-[#111a2e] border border-slate-200/80 dark:border-slate-800 rounded-3xl p-5 shadow-2xs flex flex-col justify-between h-full">
+      <div>
+        <h2 className="text-sm font-bold text-slate-900 dark:text-white mb-4">Needs Your Attention</h2>
+        {items.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-10 text-center">
+            <IconCheck className="w-6 h-6 text-emerald-500 mb-2" />
+            <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">You're all caught up</p>
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {items.slice(0, 5).map((it) => (
+              <li key={it.key}>
+                <button onClick={() => navigate(`/tasks/${it.taskId}`)}
+                  className="w-full text-left flex items-center gap-3 p-2.5 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800/60 transition cursor-pointer">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${it.tone === 'rose' ? 'bg-rose-500' : 'bg-amber-500'}`} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">{it.title}</p>
+                    <p className={`text-[10px] font-medium mt-0.5 ${it.tone === 'rose' ? 'text-rose-500' : 'text-amber-500'}`}>{it.note}</p>
+                  </div>
+                  <span className="text-slate-400 text-xs">›</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   )
 }
@@ -1098,6 +1323,11 @@ function EmployeeDashboard({ user }) {
   const tasks = useTasks()
   const myId = user?._id || user?.id || null
   const firstName = (user?.name || 'there').split(' ')[0]
+
+  const today = new Date()
+  const dateStr = today.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' })
+  const hour = today.getHours()
+  const greetingText = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
 
   const requests = useMemo(() => groupRequests(tasks, myId), [tasks, myId])
   const myApprovals = useMemo(
@@ -1112,19 +1342,36 @@ function EmployeeDashboard({ user }) {
 
   return (
     <AppShell
-      title={<>Welcome back, {firstName}</>}
-      subtitle="Your requests and anything that needs attention"
-      actions={
-        <Link
-          to="/forms"
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-sm transition"
-        >
-          Start a request
-        </Link>
-      }
-      mainClass="flex-1 min-h-0 flex flex-col p-4 md:p-6 pb-24 md:pb-6 overflow-hidden"
+      title="Dashboard"
+      mainClass="flex-1 min-h-0 flex flex-col p-4 md:p-6 pb-24 md:pb-6 bg-[#e2e8f0] dark:bg-[#0b1120] overflow-hidden"
     >
       <div className="flex-1 min-h-0 overflow-y-auto space-y-4">
+        {/* ── 1. Header Bar ── */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1A2340] dark:text-white tracking-tight">
+                Welcome back, {firstName}
+              </h1>
+              <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#eef2ff] text-[#4f46e5] border border-indigo-200 dark:bg-indigo-950/70 dark:text-indigo-300 dark:border-indigo-800 shadow-2xs">
+                Employee
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 mt-2 leading-relaxed bg-slate-100/90 dark:bg-slate-800/90 px-3 py-1.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80 inline-block shadow-2xs">
+              <span className="text-indigo-600 dark:text-indigo-400 font-extrabold">{greetingText} · {dateStr}</span> — Personal dashboard — your requests and anything that needs attention.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2.5 shrink-0 self-start md:self-center">
+            <Link
+              to="/forms"
+              className="px-4 py-2.5 rounded-xl bg-[#2563eb] hover:bg-[#1d4ed8] active:bg-[#1e40af] text-white text-xs font-bold shadow-xs transition flex items-center gap-1.5"
+            >
+              <span className="text-sm font-bold">+</span> Start a request
+            </Link>
+          </div>
+        </div>
+
         <EmployeeStats requests={requests} needsAttention={needsAttention} loading={booting} />
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">

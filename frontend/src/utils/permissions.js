@@ -9,7 +9,13 @@
 //   ops       — Manager / HR / CEO / VP (approve + monitor)
 //   workspace — Employee (submit + track)
 
-const roleName = (user) => user?.role?.name || null
+const roleName = (user) => {
+  if (!user) return null
+  if (user.role?.name) return user.role.name
+  if (typeof user.role === 'string') return user.role
+  if (user.roleName) return user.roleName
+  return null
+}
 
 export const SHELL = {
   PLATFORM: 'platform',
@@ -38,19 +44,29 @@ const APPROVER_ROLES = new Set(['Admin', 'CEO', 'Manager', 'HR', 'VP'])
 // them. Mirrors TEAM_LEADS in server/routes/team.js.
 const TEAM_LEAD_ROLES = new Set(['Admin', 'CEO', 'Manager', 'HR', 'VP'])
 
-export const getShell = (user) => {
+export const isSuperAdmin = (user) => {
+  if (!user) return false
   const role = roleName(user)
-  if (role === 'SuperAdmin') return SHELL.PLATFORM
+  if (role === 'SuperAdmin' || role === 'superadmin') return true
+  if (user.isSuperAdmin === true) return true
+  if (typeof user.email === 'string' && user.email.toLowerCase().includes('superadmin')) return true
+  if (typeof user.name === 'string' && (user.name.toLowerCase().includes('platform super admin') || user.name.toLowerCase() === 'platform')) return true
+  return false
+}
+
+export const getShell = (user) => {
+  if (isSuperAdmin(user)) return SHELL.PLATFORM
+  const role = roleName(user)
   if (role === 'Admin') return SHELL.ORG_ADMIN
   if (OPS_ROLES.has(role)) return SHELL.OPS
   return SHELL.WORKSPACE
 }
 
-export const canCreateForm = (user) => DESIGNER_ROLES.has(roleName(user))
-export const canCreateWorkflow = (user) => DESIGNER_ROLES.has(roleName(user))
+export const canCreateForm = (user) => DESIGNER_ROLES.has(roleName(user)) || Boolean(user?.canBuild)
+export const canCreateWorkflow = (user) => DESIGNER_ROLES.has(roleName(user)) || Boolean(user?.canBuild)
 
-export const canEditWorkflow = (user) => ADMIN_ROLES.has(roleName(user))
-export const canEditForm = (user) => ADMIN_ROLES.has(roleName(user))
+export const canEditWorkflow = (user) => ADMIN_ROLES.has(roleName(user)) || Boolean(user?.canBuild)
+export const canEditForm = (user) => ADMIN_ROLES.has(roleName(user)) || Boolean(user?.canBuild)
 
 export const canManageUsers = (user) => ADMIN_ROLES.has(roleName(user))
 
@@ -61,8 +77,6 @@ export const canSubmitForms = (user) => SUBMITTER_ROLES.has(roleName(user))
 export const isApprover = (user) => APPROVER_ROLES.has(roleName(user))
 
 export const canViewTeam = (user) => TEAM_LEAD_ROLES.has(roleName(user))
-
-export const isSuperAdmin = (user) => roleName(user) === 'SuperAdmin'
 
 export const isOrgAdmin = (user) => roleName(user) === 'Admin'
 

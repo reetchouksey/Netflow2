@@ -1,7 +1,6 @@
-// M3 - Phase 2 - TaskInbox.jsx - Live tasks from GET /api/tasks/my-tasks
-
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Trash2 } from 'lucide-react'
 import AppShell from '../components/AppShell'
 import { useTasks, tasksStore, TASK_FILTERS } from '../lib/tasksStore'
 import { useUser } from '../utils/auth'
@@ -16,7 +15,7 @@ import { statusBadge } from '../utils/badges'
 
 // The list is grouped by department, so a page-number pager would split groups
 // oddly. Progressive "show more" keeps the grouping intact.
-const PAGE_SIZE = 40
+const PAGE_SIZE = 15
 
 const SORTS = [
   { value: 'date_desc', label: 'Newest first' },
@@ -83,7 +82,7 @@ function TaskCard({ task, onOpen, onApprove, onReject, busy, canAct, showApprove
   return (
     <div
       onClick={() => onOpen(task.id)}
-      className="flex items-start gap-4 px-5 py-4 bg-surface rounded-lg border border-line hover:border-indigo-300 hover:shadow-sm transition cursor-pointer"
+      className="flex items-start gap-4 p-5 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-2xs hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-700 transition cursor-pointer"
     >
       {selectable && (
         <input
@@ -92,33 +91,33 @@ function TaskCard({ task, onOpen, onApprove, onReject, busy, canAct, showApprove
           onClick={(e) => e.stopPropagation()}
           onChange={() => onToggleSelect(task.id)}
           aria-label={`Select ${task.title} for bulk approval`}
-          className="mt-2.5 w-4 h-4 rounded border-line text-indigo-600 focus:ring-indigo-400 shrink-0"
+          className="mt-2.5 w-4.5 h-4.5 rounded-lg border-slate-300 text-[#6366F1] focus:ring-indigo-400 shrink-0"
         />
       )}
-      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${task.avatarColor}`}>
+      <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-bold shrink-0 shadow-2xs ${task.avatarColor}`}>
         {task.initials}
       </div>
 
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-fg truncate">
+        <p className="text-sm font-bold text-slate-900 dark:text-white truncate">
           {task.title}
-          <span className="text-fg-subtle font-normal"> · {task.detail}</span>
+          <span className="text-slate-400 dark:text-slate-500 font-normal"> · {task.detail}</span>
         </p>
-        <p className="text-xs text-fg-muted mt-0.5">
+        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5">
           {showApprover
             ? `With ${task.approver || 'an approver'} · ${task.workflow}`
             : `${task.requester} · ${task.workflow}`}
         </p>
 
-        <div className="flex flex-wrap items-center gap-1.5 mt-2">
+        <div className="flex flex-wrap items-center gap-2 mt-2.5">
           {sla.label && (
-            <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md border font-medium ${sla.cls}`}>
+            <span className={`inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-xl border font-bold ${sla.cls}`}>
               <span aria-hidden="true">{sla.icon}</span>
               <span className="sr-only">{sla.srLabel}</span>
               {sla.label}
             </span>
           )}
-          <span className={`text-[11px] px-2 py-0.5 rounded-md border ${status.cls}`}>
+          <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-xl border ${status.cls}`}>
             {showApprover && task.status === 'Pending' ? 'Awaiting approval' : status.label}
           </span>
         </div>
@@ -133,10 +132,10 @@ function TaskCard({ task, onOpen, onApprove, onReject, busy, canAct, showApprove
               e.stopPropagation()
               onApprove(task.id)
             }}
-            className={`px-4 py-1 text-xs font-medium rounded-md border transition ${
+            className={`px-4.5 py-1.5 text-xs font-bold rounded-2xl border transition cursor-pointer ${
               isResolved || busy
-                ? 'border-line text-fg-subtle cursor-not-allowed'
-                : 'border-success-line text-success-fg hover:bg-success-subtle'
+                ? 'border-slate-200 dark:border-slate-700 text-slate-400 cursor-not-allowed'
+                : 'border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10'
             }`}
           >
             {busy === 'approve' ? 'Approving…' : 'Approve'}
@@ -148,17 +147,17 @@ function TaskCard({ task, onOpen, onApprove, onReject, busy, canAct, showApprove
               e.stopPropagation()
               onReject(task.id)
             }}
-            className={`px-4 py-1 text-xs font-medium rounded-md border transition ${
+            className={`px-4.5 py-1.5 text-xs font-bold rounded-2xl border transition cursor-pointer ${
               isResolved || busy
-                ? 'border-line text-fg-subtle cursor-not-allowed'
-                : 'border-danger-line text-danger-fg hover:bg-danger-subtle'
+                ? 'border-slate-200 dark:border-slate-700 text-slate-400 cursor-not-allowed'
+                : 'border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10'
             }`}
           >
             {busy === 'reject' ? 'Rejecting…' : 'Reject'}
           </button>
         </div>
       ) : (
-        <div className="shrink-0 self-center flex items-center gap-2">
+        <div className="shrink-0 self-center flex items-center gap-3">
           {canDelete && (
             <button
               type="button"
@@ -166,14 +165,18 @@ function TaskCard({ task, onOpen, onApprove, onReject, busy, canAct, showApprove
               disabled={busy === 'delete'}
               aria-label="Delete request"
               title="Delete request"
-              className="p-1 rounded-md text-fg-subtle hover:text-danger-fg hover:bg-danger-subtle disabled:opacity-50 transition"
+              className="w-8 h-8 rounded-xl flex items-center justify-center border border-slate-200/80 dark:border-slate-700/80 hover:border-rose-200 dark:hover:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-500/10 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 disabled:opacity-40 transition cursor-pointer shrink-0"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-1 0v12a1 1 0 01-1 1H8a1 1 0 01-1-1V7m3 4v6m4-6v6" />
-              </svg>
+              <Trash2 className="w-4 h-4 shrink-0" />
             </button>
           )}
-          <span className="text-xs text-fg-subtle">View →</span>
+          <button
+            type="button"
+            onClick={() => onOpen(task.id)}
+            className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer flex items-center gap-1"
+          >
+            View &rarr;
+          </button>
         </div>
       )}
     </div>
@@ -197,13 +200,16 @@ function TaskInbox() {
     if (wanted === 'assigned' || wanted === 'submitted') return wanted
     return isApprover ? 'assigned' : 'submitted'
   })
-  const [filter, setFilter] = useState('All tasks')
+  const [filter, setFilter] = useState(() => {
+    const wanted = searchParams.get('filter')
+    return TASK_FILTERS.includes(wanted) ? wanted : 'All tasks'
+  })
   const [sort, setSort] = useState('date_desc')
   const [query, setQuery] = useState('')
   const [busyMap, setBusyMap] = useState({})
   const [selectedIds, setSelectedIds] = useState([])
   const [bulkBusy, setBulkBusy] = useState(false)
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const [currentPage, setCurrentPage] = useState(1)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [teamTasks, setTeamTasks] = useState([])
@@ -232,12 +238,35 @@ function TaskInbox() {
 
   // Keep the URL honest so the tab survives a refresh or a shared link.
   useEffect(() => {
-    const current = searchParams.get('scope')
-    if (current === scope) return
     const next = new URLSearchParams(searchParams)
-    next.set('scope', scope)
-    setSearchParams(next, { replace: true })
-  }, [scope])
+    let changed = false
+    if (next.get('scope') !== scope) {
+      next.set('scope', scope)
+      changed = true
+    }
+    if (filter !== 'All tasks' && next.get('filter') !== filter) {
+      next.set('filter', filter)
+      changed = true
+    } else if (filter === 'All tasks' && next.has('filter')) {
+      next.delete('filter')
+      changed = true
+    }
+    if (changed) {
+      setSearchParams(next, { replace: true })
+    }
+  }, [scope, filter])
+
+  // Sync state if URL query params change externally
+  useEffect(() => {
+    const wantedScope = searchParams.get('scope')
+    if (wantedScope && (wantedScope === 'submitted' || wantedScope === 'assigned' || wantedScope === 'team')) {
+      setScope(wantedScope)
+    }
+    const wantedFilter = searchParams.get('filter')
+    if (wantedFilter && TASK_FILTERS.includes(wantedFilter)) {
+      setFilter(wantedFilter)
+    }
+  }, [searchParams])
 
   const openTask = (id) => navigate(`/tasks/${id}`)
 
@@ -339,14 +368,10 @@ function TaskInbox() {
     )
   }, [byFilter, query])
 
-  useEffect(() => { setVisibleCount(PAGE_SIZE) }, [query, filter, scope, sort])
+  useEffect(() => { setCurrentPage(1) }, [query, filter, scope, sort])
 
-  const visibleTasks = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount])
-  const hiddenCount = filtered.length - visibleTasks.length
-
-  // Group the visible tasks by department, departments sorted alphabetically,
-  // and within each department by submission date/time (newest first).
-  const groups = useMemo(() => {
+  // Sort the visible tasks (flat list, no department grouping)
+  const sortedAllTasks = useMemo(() => {
     const byDate = (a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0)
     const byName = (a, b) => (a.title || '').localeCompare(b.title || '')
     const sortItems = (arr) => {
@@ -359,17 +384,13 @@ function TaskInbox() {
         default:          return copy.sort((a, b) => byDate(b, a)) // date_desc — newest first
       }
     }
+    return sortItems(filtered)
+  }, [filtered, sort])
 
-    const byDept = new Map()
-    for (const t of visibleTasks) {
-      const dept = t.department || 'General'
-      if (!byDept.has(dept)) byDept.set(dept, [])
-      byDept.get(dept).push(t)
-    }
-    return [...byDept.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([department, items]) => ({ department, items: sortItems(items) }))
-  }, [visibleTasks, sort])
+  const totalPages = Math.ceil(sortedAllTasks.length / PAGE_SIZE) || 1
+  const startIndex = (currentPage - 1) * PAGE_SIZE
+  const endIndex = Math.min(startIndex + PAGE_SIZE, sortedAllTasks.length)
+  const sortedTasks = useMemo(() => sortedAllTasks.slice(startIndex, endIndex), [sortedAllTasks, startIndex, endIndex])
 
   // Bulk approve only ever touches rows the user can actually act on.
   const bulkEligible = useMemo(
@@ -483,7 +504,7 @@ function TaskInbox() {
 
   return (
     <AppShell
-      title={onTeam ? "My team's requests" : onRequests ? 'My requests' : 'Task inbox'}
+      title={<span className="whitespace-nowrap">{onTeam ? "My team's requests" : onRequests ? 'My requests' : 'Task inbox'}</span>}
       subtitle={
         query.trim()
           ? `${filtered.length} of ${byFilter.length} ${itemNoun}s match`
@@ -587,48 +608,76 @@ function TaskInbox() {
               )}
             </div>
           ) : (
-            <div className="space-y-6">
-              {groups.map((group) => (
-                <div key={group.department}>
-                  <div className="flex items-center gap-2 mb-2 px-1">
-                    <h2 className="text-xs font-semibold tracking-wider text-fg-muted uppercase">
-                      {group.department}
-                    </h2>
-                    <span className="text-[11px] font-medium text-fg-subtle bg-surface-3 rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
-                      {group.items.length}
-                    </span>
-                    <div className="flex-1 h-px bg-surface-3" />
-                  </div>
-                  <div className="space-y-3">
-                    {group.items.map((task) => (
-                      <TaskCard
-                        key={task.id}
-                        task={task}
-                        onOpen={openTask}
-                        onApprove={(id) => handleAction(id, 'approve')}
-                        onReject={(id) => handleAction(id, 'reject')}
-                        busy={busyMap[task.id]}
-                        canAct={scope === 'assigned' && String(task.assignedToId) === meId}
-                        showApprover={scope !== 'assigned'}
-                        canDelete={scope === 'submitted' && String(task.submittedById) === meId && isRequestFinished(task)}
-                        onDelete={handleDelete}
-                        selectable={bulkEligible.length > 1 && eligibleIds.has(task.id)}
-                        selected={selected.includes(task.id)}
-                        onToggleSelect={toggleSelect}
-                      />
-                    ))}
-                  </div>
-                </div>
+            <div className="space-y-3">
+              {sortedTasks.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onOpen={openTask}
+                  onApprove={(id) => handleAction(id, 'approve')}
+                  onReject={(id) => handleAction(id, 'reject')}
+                  busy={busyMap[task.id]}
+                  canAct={scope === 'assigned' && String(task.assignedToId) === meId}
+                  showApprover={scope !== 'assigned'}
+                  canDelete={scope === 'submitted'}
+                  onDelete={handleDelete}
+                  selectable={bulkEligible.length > 1 && eligibleIds.has(task.id)}
+                  selected={selected.includes(task.id)}
+                  onToggleSelect={toggleSelect}
+                />
               ))}
 
-              {hiddenCount > 0 && (
-                <div className="text-center pt-1">
+              {totalPages > 1 && (
+                <div className="flex justify-end items-center gap-1.5 mt-8 mb-4">
                   <button
                     type="button"
-                    onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
-                    className="px-4 py-2 rounded-md border border-line bg-surface text-sm font-medium text-fg hover:bg-surface-2 transition"
+                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    className="px-2.5 py-1 rounded-lg font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-transparent transition"
                   >
-                    Show {Math.min(PAGE_SIZE, hiddenCount)} more ({hiddenCount} remaining)
+                    Prev
+                  </button>
+
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .reduce((acc, p) => {
+                      if (
+                        p === 1 || p === totalPages ||
+                        (p >= currentPage - 1 && p <= currentPage + 1)
+                      ) {
+                        acc.push(p)
+                      } else if (acc[acc.length - 1] !== '...') {
+                        acc.push('...')
+                      }
+                      return acc
+                    }, [])
+                    .map((item, idx) => {
+                      if (typeof item === 'string') {
+                        return <span key={`ellipsis-${idx}`} className="px-1 text-slate-400">...</span>
+                      }
+                      const isCurrent = item === currentPage
+                      return (
+                        <button
+                          key={item}
+                          type="button"
+                          onClick={() => setCurrentPage(item)}
+                          className={`min-w-[28px] h-7 px-2 rounded-lg text-xs font-bold transition ${
+                            isCurrent
+                              ? 'bg-indigo-600 text-white shadow-sm'
+                              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/50 dark:hover:bg-slate-700'
+                          }`}
+                        >
+                          {item}
+                        </button>
+                      )
+                    })}
+
+                  <button
+                    type="button"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    className="px-2.5 py-1 rounded-lg font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-transparent transition"
+                  >
+                    Next
                   </button>
                 </div>
               )}

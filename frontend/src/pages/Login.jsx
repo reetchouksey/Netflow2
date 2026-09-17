@@ -228,195 +228,194 @@ function Login() {
   }
 
   return (
-    <div className="min-h-screen flex bg-auth-bg">
-      {/* ---------- Left branding panel ---------- */}
-      <div className="hidden lg:flex flex-col justify-between w-1/2 px-14 py-12 bg-auth-bg">
-        {/* Logo */}
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shadow">
-            <img src="/netflow-icon.png" alt="NetFlow Logo" className="w-full h-full object-contain" />
-          </div>
-          <div>
-            <span className="font-bold text-fg text-lg leading-none">NetFlow</span>
-            <p className="text-[10px] text-fg-subtle leading-none mt-0.5">Automate. Orchestrate. Scale.</p>
+    <div className="h-screen max-h-screen overflow-hidden flex bg-white dark:bg-slate-900 font-sans">
+      {/* ---------- Left Royal Blue Hero Panel ---------- */}
+      <div className="hidden lg:flex flex-col justify-between w-1/2 p-10 lg:p-14 bg-gradient-to-br from-[#2563EB] via-[#1D4ED8] to-[#1E40AF] text-white relative overflow-hidden shrink-0 h-full">
+        
+        {/* Decorative Background Waves & Orbs */}
+        <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
+          <svg className="w-full h-full" viewBox="0 0 500 500" fill="none">
+            <circle cx="450" cy="50" r="180" stroke="white" strokeWidth="2" strokeDasharray="6 6" />
+            <circle cx="50" cy="450" r="220" stroke="white" strokeWidth="2" />
+            <path d="M-50,200 Q150,100 350,300 T550,200" stroke="white" strokeWidth="3" />
+          </svg>
+        </div>
+
+        {/* Top Brand Logo */}
+        <Link to="/" className="relative z-10 flex items-center hover:opacity-90 transition group cursor-pointer" title="Back to landing page">
+          <span className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md text-white font-black text-xl flex items-center justify-center shadow-lg shadow-black/10 group-hover:scale-105 transition-transform">
+            N
+          </span>
+          <span className="text-2xl font-black tracking-tight text-white ml-3">
+            NetFlow
+          </span>
+        </Link>
+
+        {/* Hero Copy */}
+        <div className="relative z-10 my-auto py-6 max-w-xl">
+          <h1 className="text-4xl lg:text-5xl font-black text-white leading-[1.15] tracking-tight mb-5">
+            Streamline workflows.<br />
+            Increase efficiency.<br />
+            Drive growth.
+          </h1>
+          
+          <p className="text-sm text-blue-100/90 leading-relaxed font-medium max-w-md mb-8">
+            NetFlow automates your processes, provides real-time insights, and empowers your team to achieve more—every single day.
+          </p>
+
+          {/* 3 Feature Pills */}
+          <div className="space-y-4 max-w-sm">
+            <div className="flex items-center gap-4 text-white">
+              <div className="w-11 h-11 rounded-[16px] bg-white/20 backdrop-blur-md border border-white/15 flex items-center justify-center shrink-0 shadow-sm">
+                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              </div>
+              <span className="text-sm font-extrabold tracking-wide text-white">Automate approvals</span>
+            </div>
+
+            <div className="flex items-center gap-4 text-white">
+              <div className="w-11 h-11 rounded-[16px] bg-white/20 backdrop-blur-md border border-white/15 flex items-center justify-center shrink-0 shadow-sm">
+                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </div>
+              <span className="text-sm font-extrabold tracking-wide text-white">Real-time SLA visibility</span>
+            </div>
+
+            <div className="flex items-center gap-4 text-white">
+              <div className="w-11 h-11 rounded-[16px] bg-white/20 backdrop-blur-md border border-white/15 flex items-center justify-center shrink-0 shadow-sm">
+                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <span className="text-sm font-extrabold tracking-wide text-white">Faster decisions</span>
+            </div>
           </div>
         </div>
 
-        {/* Hero text */}
-        <div className="mb-16">
-          <h2 className="text-4xl font-extrabold text-fg leading-tight mb-3">
-            Streamline workflows.<br />
-            <span className="text-indigo-600">Increase efficiency.</span><br />
-            Drive growth.
-          </h2>
-          <p className="text-fg-muted text-sm max-w-xs leading-relaxed">
-            NetFlow helps organizations automate processes, orchestrate workflows and achieve operational excellence at scale.
-          </p>
-          <MockupCard />
+        {/* Footer Subtext */}
+        <div className="relative z-10 text-xs font-semibold text-blue-200/80">
+          © {new Date().getFullYear()} NetFlow Inc. All rights reserved.
         </div>
       </div>
 
-      {/* ---------- Right form panel ---------- */}
-      <div className="flex flex-1 items-center justify-center px-6 py-12 bg-surface lg:rounded-l-3xl shadow-2xl">
-        <div className="w-full max-w-sm">
-          {/* Mobile logo */}
-          <div className="flex items-center gap-2 mb-8 lg:hidden">
-            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
-              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-              </svg>
-            </div>
-            <span className="font-bold text-fg">NetFlow</span>
-          </div>
+      {/* ---------- Right Form Panel ---------- */}
+      <div className="flex-1 flex flex-col justify-center items-center px-6 sm:px-12 py-8 bg-white dark:bg-slate-900 h-full overflow-hidden">
+        <div className="w-full max-w-md space-y-6">
+
+          {/* Mobile Logo Header */}
+          <Link to="/" className="flex items-center gap-3 lg:hidden mb-4 hover:opacity-90 transition cursor-pointer" title="Back to landing page">
+            <span className="w-9 h-9 rounded-2xl bg-[#2563EB] text-white font-black text-lg flex items-center justify-center shadow-md">
+              N
+            </span>
+            <span className="text-xl font-black text-slate-900 dark:text-white">NetFlow</span>
+          </Link>
 
           {step === 'login' && (
-          <>
-          {/* Workspace context (step 9 - subdomain routing) */}
-          {orgContext && !orgUnknown && (
-            <div className="inline-flex items-center gap-1.5 mb-3 px-2.5 py-1 rounded-full bg-indigo-50 border border-indigo-100 text-xs font-semibold text-indigo-700">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0H5m14 0h2M5 21H3m4-6h.01M7 11h.01M7 7h.01M11 15h.01M11 11h.01M11 7h.01" />
-              </svg>
-              {orgContext.name}
-            </div>
-          )}
-          <h1 className="text-2xl font-bold text-fg">Welcome back</h1>
-          <p className="text-sm text-fg-muted mt-1 mb-8">
-            {orgContext && !orgUnknown
-              ? <>Sign in to <span className="font-semibold text-fg">{orgContext.name}</span> on NetFlow.</>
-              : 'Sign in to your NetFlow admin account.'}
-          </p>
-
-          {orgSuspended && (
-            <div className="mb-5 p-3 rounded-lg border border-danger-line bg-danger-subtle text-danger-fg text-sm flex items-start gap-2">
-              <svg className="w-4 h-4 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M12 3l9 16H3L12 3z" />
-              </svg>
-              <span>This workspace is suspended. Contact your platform administrator.</span>
-            </div>
-          )}
-          {orgUnknown && (
-            <div className="mb-5 p-3 rounded-lg border border-warning-line bg-warning-subtle text-warning-fg text-sm flex items-start gap-2">
-              <svg className="w-4 h-4 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M12 3l9 16H3L12 3z" />
-              </svg>
-              <span>Unknown workspace “{workspace}”. Check the address and try again.</span>
-            </div>
-          )}
-
-          {serverError && (
-            <div
-              className={`mb-5 p-3 rounded-lg border text-sm flex items-start gap-2 ${
-                locked
-                  ? 'bg-danger-subtle border-danger-line text-danger-fg'
-                  : attemptsLeft !== null
-                    ? 'bg-warning-subtle border-warning-line text-warning-fg'
-                    : 'bg-danger-subtle border-danger-line text-danger-fg'
-              }`}
-            >
-              <svg className="w-4 h-4 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                {locked ? (
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                ) : (
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M12 3l9 16H3L12 3z" />
-                )}
-              </svg>
-              <span>
-                {serverError}
-                {/* The server message already spells out the remaining count, so
-                    only add emphasis on the final attempt. */}
-                {attemptsLeft === 1 && !locked && (
-                  <span className="block mt-0.5 font-semibold">
-                    This is your last try — one more failure locks your account.
-                  </span>
-                )}
-              </span>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} noValidate className="space-y-4">
-            {/* Email */}
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-fg mb-1.5">
-                Email address
-              </label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-fg-subtle">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            <div className="w-full max-w-[360px] mx-auto">
+              {/* Back to website link */}
+              <div className="mb-4">
+                <Link to="/" className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
                   </svg>
-                </span>
-                <input
-                  id="email" name="email" type="email" autoComplete="email"
-                  value={form.email} onChange={handleChange}
-                  placeholder="Enter your email"
-                  className={`w-full pl-9 pr-4 py-2.5 rounded-lg border border-line bg-surface text-fg placeholder:text-fg-subtle text-sm focus:outline-none focus:ring-2 transition ${errors.email ? 'border-red-400 focus:ring-red-200' : 'focus:ring-indigo-200 focus:border-indigo-400'
-                    }`}
-                />
+                  <span>Back to home</span>
+                </Link>
               </div>
-              {errors.email && <p className="mt-1 text-xs text-danger-fg">{errors.email}</p>}
-            </div>
 
-            {/* Password */}
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-fg mb-1.5">
-                Password
-              </label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-fg-subtle">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
-                </span>
-                <input
-                  id="password" name="password"
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  value={form.password} onChange={handleChange}
-                  placeholder="Enter your password"
-                  className={`w-full pl-9 pr-14 py-2.5 rounded-lg border border-line bg-surface text-fg placeholder:text-fg-subtle text-sm focus:outline-none focus:ring-2 transition ${errors.password ? 'border-red-400 focus:ring-red-200' : 'focus:ring-indigo-200 focus:border-indigo-400'
-                    }`}
-                />
+              {/* Heading */}
+              <div className="mb-8">
+                <h2 className="text-[32px] font-extrabold text-slate-900 dark:text-white tracking-tight">
+                  Welcome back
+                </h2>
+                <p className="text-[14px] text-slate-500 mt-1.5">
+                  Sign in to continue to NetFlow
+                </p>
+              </div>
+
+              {/* Server / Auth Error Banner */}
+              {serverError && (
+                <div className="mb-6 p-3 rounded-lg bg-rose-50 border border-rose-100 text-[13px] font-medium text-rose-600">
+                  {serverError}
+                </div>
+              )}
+
+              {/* Form */}
+              <form onSubmit={handleSubmit} noValidate className="space-y-4">
+                {/* Email address */}
+                <div>
+                  <label htmlFor="email" className="block text-[13px] font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                    Email address
+                  </label>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    value={form.email}
+                    onChange={handleChange}
+                    placeholder="superadmin@netflow.com"
+                    className="w-full px-3 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder:text-slate-400 text-[14px] outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition shadow-sm"
+                  />
+                  {errors.email && <p className="mt-1.5 text-[12px] font-medium text-rose-500">{errors.email}</p>}
+                </div>
+
+                {/* Password */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label htmlFor="password" className="block text-[13px] font-semibold text-slate-700 dark:text-slate-300">
+                      Password
+                    </label>
+                    <Link to="/forgot-password" className="text-[13px] font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline">
+                      Forgot password?
+                    </Link>
+                  </div>
+                  <div className="relative">
+                    <input
+                      id="password"
+                      name="password"
+                      type={showPassword ? 'text' : 'password'}
+                      autoComplete="current-password"
+                      value={form.password}
+                      onChange={handleChange}
+                      placeholder="••••••••••••"
+                      className="w-full px-3 pr-16 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder:text-slate-400 text-[14px] outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition shadow-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((s) => !s)}
+                      className="absolute inset-y-0 right-3 text-[13px] font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 flex items-center"
+                    >
+                      {showPassword ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  {errors.password && <p className="mt-1.5 text-[12px] font-medium text-rose-500">{errors.password}</p>}
+                </div>
+
+                {/* Sign in button */}
                 <button
-                  type="button"
-                  onClick={() => setShowPassword((s) => !s)}
-                  className="absolute inset-y-0 right-3 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-60 text-white text-[14px] font-semibold shadow-sm transition mt-2 cursor-pointer"
                 >
-                  {showPassword ? 'Hide' : 'Show'}
+                  {submitting ? 'Signing in…' : 'Sign in'}
                 </button>
-              </div>
-              {errors.password && <p className="mt-1 text-xs text-danger-fg">{errors.password}</p>}
-            </div>
+              </form>
 
-            {/* Forgot password */}
-            <div className="flex items-center justify-end text-sm">
-              <Link to="/forgot-password" className="text-indigo-600 hover:text-indigo-800 font-medium">
-                Forgot password?
-              </Link>
-            </div>
-
-            {/* Sign in */}
-            <button
-              type="submit" disabled={submitting || orgSuspended}
-              className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-semibold shadow transition mt-1"
-            >
-              {submitting ? 'Signing in…' : 'Sign in'}
-            </button>
-          </form>
-
-          {ssoEnabled && (
-            <>
               {/* Divider */}
-              <div className="flex items-center gap-3 my-5">
-                <hr className="flex-1 border-line" />
-                <span className="text-xs text-fg-subtle">or</span>
-                <hr className="flex-1 border-line" />
+              <div className="flex items-center gap-3 my-6">
+                <hr className="flex-1 border-slate-200 dark:border-slate-800" />
+                <span className="text-[12px] text-slate-400 uppercase tracking-widest font-medium">or</span>
+                <hr className="flex-1 border-slate-200 dark:border-slate-800" />
               </div>
 
+              {/* Continue with Microsoft */}
               <button
                 type="button"
                 onClick={() => { window.location.href = `${API_BASE}/api/auth/oauth/microsoft` }}
-                className="w-full py-2.5 rounded-lg border border-line hover:bg-surface-2 active:bg-surface-3 text-sm font-semibold text-fg shadow-sm transition flex items-center justify-center gap-2"
+                className="w-full py-2.5 rounded-lg border border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-[14px] font-semibold shadow-sm transition flex items-center justify-center gap-2.5 cursor-pointer"
               >
                 <svg width="18" height="18" viewBox="0 0 21 21" aria-hidden="true">
                   <rect x="1" y="1" width="9" height="9" fill="#f25022" />
@@ -424,15 +423,9 @@ function Login() {
                   <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
                   <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
                 </svg>
-                Sign in with Microsoft
+                Continue with Microsoft
               </button>
-            </>
-          )}
-
-          <p className="text-center text-xs text-fg-subtle mt-6">
-            Contact your administrator to get an account.
-          </p>
-          </>
+            </div>
           )}
 
           {step === 'mfa' && (

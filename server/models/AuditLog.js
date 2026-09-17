@@ -29,7 +29,6 @@ const auditLogSchema = new mongoose.Schema({
       'webhook_called',
       'webhook_received',
       'users_imported',
-      'user_logged_in',
       // Org Admin configuration
       'department_created',
       'department_renamed',
@@ -46,8 +45,7 @@ const auditLogSchema = new mongoose.Schema({
       'org_storage_extended',
       'org_storage_extension_revoked',
       'org_licence_expired',
-      'org_limit_reached',
-      'platform_broadcast_sent'
+      'org_limit_reached'
     ],
     required: true
   },

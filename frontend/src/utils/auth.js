@@ -84,8 +84,8 @@ export const authStore = {
     emit()
     return data.user
   },
-  async logout(allDevices = false) {
-    try { await api.post('/api/auth/logout', { allDevices }) } catch { /* ignore */ }
+  async logout() {
+    try { await api.post('/api/auth/logout') } catch { /* ignore */ }
     clearToken()
     currentUser = null
     emit()
@@ -134,4 +134,4 @@ export const ROLE_LABELS = {
 // Fallback list for the self-registration screen only. That page runs without a
 // session, so it cannot read the tenant's real list — everywhere inside the app
 // uses lib/departmentsStore, which does. Self-registration is currently off.
-export const DEPARTMENTS = ['HR', 'Finance', 'IT', 'Operations', 'Sales', 'Legal', 'Warehouse', 'Accounts']
+export const DEPARTMENTS = ['HR', 'Finance', 'IT', 'Operations', 'Sales', 'Legal', 'Warehouse', 'Accounts', 'Corporate']

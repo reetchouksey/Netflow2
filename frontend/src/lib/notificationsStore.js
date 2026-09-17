@@ -39,16 +39,9 @@ function toastNewArrivals(next) {
     seenIds = new Set(next.map((n) => n.id))
     return
   }
-  const fresh = next.filter((n) => !n.read && !seenIds.has(n.id))
   for (const id of next.map((n) => n.id)) seenIds.add(id)
-  // Cap so a bulk import doesn't flood the corner.
-  for (const n of fresh.slice(0, 3)) {
-    const label = n.title ? `${n.title}: ${n.message}` : n.message
-    toast.info(label || 'New notification', 6000)
-  }
-  if (fresh.length > 3) {
-    toast.info(`${fresh.length - 3} more new notifications`, 5000)
-  }
+  // User requested to disable automatic toasts for new notifications.
+  // Notifications will only be shown when the user clicks the notification bell icon.
 }
 
 const fetchAll = async () => {
@@ -150,5 +143,26 @@ export function useNotificationsStatus() {
     notificationsStore.subscribe,
     notificationsStore.getStatus,
     notificationsStore.getStatus
+  )
+}
+
+// Panel-open state: lets other UI (e.g. AssistantWidget) know when the
+// notification popup is visible so they can hide themselves.
+let panelOpen = false
+const panelListeners = new Set()
+const emitPanel = () => { for (const l of panelListeners) l() }
+
+export function setNotificationsPanelOpen(v) {
+  const next = !!v
+  if (next === panelOpen) return
+  panelOpen = next
+  emitPanel()
+}
+
+export function useNotificationsPanelOpen() {
+  return useSyncExternalStore(
+    (cb) => { panelListeners.add(cb); return () => panelListeners.delete(cb) },
+    () => panelOpen,
+    () => panelOpen
   )
 }

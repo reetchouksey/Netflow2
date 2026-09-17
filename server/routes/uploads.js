@@ -9,6 +9,7 @@ const crypto = require('crypto')
 const multer = require('multer')
 
 const Task = require('../models/Task')
+const S3File = require('../models/S3File')
 const { protect } = require('../middleware/auth')
 const { sendSuccess, sendError } = require('../utils/apiResponse')
 const { checkStorage, respond } = require('../middleware/quota')
@@ -16,7 +17,6 @@ const { isReadOnly } = require('../middleware/licence')
 const { addStorage } = require('../utils/usageMeter')
 const { dirForOrg, safeFilename, urlFor } = require('../utils/fileStore')
 const dms = require('../services/dmsClient')
-const s3Client = require('../services/s3Client')
 
 const router = express.Router()
 
@@ -74,7 +74,7 @@ router.post('/', protect, async (req, res, next) => {
         if (!req.file) return sendError(res, 'No file provided', 'NO_FILE', 400)
 
         // ── DMS path ──────────────────────────────────────────────────────
-        if (!s3Client.isEnabled(req.organization) && dms.isConfiguredFor(req.organization)) {
+        if (dms.isEnabled(req.organization)) {
           const provisionalId = crypto.randomBytes(12).toString('hex')
           const taskId = String(req.query.taskId || '').trim() || undefined
           const formResponseId = String(req.query.formResponseId || '').trim() || undefined
@@ -89,8 +89,7 @@ router.post('/', protect, async (req, res, next) => {
               org: req.organization,
               // Department-based folder routing: route the file into the user's
               // department sub-folder inside the org's DMS root, e.g. "acme/hr".
-              // If not for an open task, it's a temporary upload (Two-Stage Upload), so place in 'staging'.
-              department: forTask ? (req.user.department || null) : 'staging',
+              department: req.user.department || null,
               orgSubdomain: req.organization?.subdomain || null,
               ref: {
                 id: provisionalId,
@@ -144,29 +143,6 @@ router.post('/', protect, async (req, res, next) => {
           }
         }
 
-        // ── S3 path ───────────────────────────────────────────────────────
-        if (s3Client.isEnabled(req.organization)) {
-          const s3Key = `${req.orgId}/${req.file.filename}`
-          try {
-            const fileBuffer = await fs.promises.readFile(req.file.path)
-            await s3Client.uploadFile(req.organization, s3Key, fileBuffer, req.file.mimetype)
-            await fs.promises.unlink(req.file.path).catch(() => {})
-
-            return sendSuccess(res, {
-              file: {
-                name: req.file.originalname,
-                s3Key,
-                mime: req.file.mimetype,
-                size: req.file.size
-              }
-            }, 201)
-          } catch (s3Err) {
-            await fs.promises.unlink(req.file.path).catch(() => {})
-            console.error('[s3] upload failed:', s3Err.message)
-            return sendError(res, 'S3 upload failed. Please try again or contact your administrator.', 'S3_UPLOAD_FAILED', 502)
-          }
-        }
-
         // ── Legacy local disk path ────────────────────────────────────────
         const room = await checkStorage(req.organization, req.file.size, { allowBuffer: forTask })
         if (!room.ok) {
@@ -176,12 +152,24 @@ router.post('/', protect, async (req, res, next) => {
 
         await addStorage(req.orgId, req.file.size, { bufferBytes: room.bufferBytes })
 
+        // Persist local upload into MongoDB for DMS usage
+        const s3File = await S3File.create({
+          orgId: req.orgId,
+          uploadedBy: req.user._id,
+          filename: req.file.filename,
+          originalName: req.file.originalname,
+          mimetype: req.file.mimetype,
+          size: req.file.size,
+          path: req.file.path
+        })
+
         return sendSuccess(res, {
           file: {
             name: req.file.originalname,
             url: urlFor(req.orgId, req.file.filename),
             mime: req.file.mimetype,
-            size: req.file.size
+            size: req.file.size,
+            dmsDocId: s3File._id.toString()
           },
           ...(room.bufferBytes > 0 ? { usedStorageBuffer: true } : {})
         }, 201)

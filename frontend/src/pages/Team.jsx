@@ -92,15 +92,17 @@ export default function Team() {
             className={fieldCls}
             aria-label="Search your team"
           />
-          <label className="inline-flex items-center gap-2 text-sm text-fg-muted select-none">
-            <input
-              type="checkbox"
-              checked={onlyBlocked}
-              onChange={(e) => setOnlyBlocked(e.target.checked)}
-              className="rounded border-line text-indigo-600 focus:ring-indigo-300"
-            />
+          <button
+            type="button"
+            onClick={() => setOnlyBlocked(!onlyBlocked)}
+            className={`text-sm px-3 py-1.5 rounded-md border transition-colors ${
+              onlyBlocked 
+                ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' 
+                : 'bg-surface border-line text-fg hover:bg-surface-2'
+            }`}
+          >
             Only people with work pending
-          </label>
+          </button>
         </div>
       )}
 

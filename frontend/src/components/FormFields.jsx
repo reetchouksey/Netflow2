@@ -13,13 +13,16 @@ const inputErrorCls = 'border-red-400 focus:ring-red-200 focus:border-red-400'
 // Field types a designer can drop into a Submit-node form.
 export const FORM_FIELD_TYPES = [
   { type: 'text', label: 'Text' },
-  { type: 'textarea', label: 'Text area' },
-  { type: 'number', label: 'Number' },
-  { type: 'date', label: 'Date' },
   { type: 'dropdown', label: 'Dropdown' },
-  { type: 'file', label: 'File upload' },
-  { type: 'signature', label: 'E-signature' },
+  { type: 'date', label: 'Date' },
+  { type: 'file', label: 'File' },
+  { type: 'checkbox', label: 'Checkbox' },
+  { type: 'signature', label: 'Signature' },
+  { type: 'number', label: 'Number' },
+  { type: 'radio', label: 'Radio' },
+  { type: 'grid', label: 'Table' },
   { type: 'camera', label: 'Camera' },
+  { type: 'heading', label: 'Heading' },
 ]
 
 let _fid = 0
@@ -95,6 +98,11 @@ export function SignaturePad({ onChange, disabled, label, id, uploadFile }) {
   const [hasInk, setHasInk] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [err, setErr] = useState('')
+
+  const [stream, setStream] = useState(null)
+  const [previewDataUrl, setPreviewDataUrl] = useState(null)
+  const [cameraError, setCameraError] = useState('')
+  const videoRef = useRef(null)
 
   const canvasRef = useRef(null)
   const wrapRef = useRef(null)
@@ -194,8 +202,15 @@ export function SignaturePad({ onChange, disabled, label, id, uploadFile }) {
       hasInkRef.current = false
       setHasInk(false)
     }
+    if (mode === 'camera' && next !== 'camera') {
+      stopCamera()
+    }
     setMode(next)
   }
+
+  useEffect(() => {
+    return () => stopCamera()
+  }, [stream])
 
   const persistDrawnBlob = useCallback(async () => {
     const canvas = canvasRef.current
@@ -207,13 +222,14 @@ export function SignaturePad({ onChange, disabled, label, id, uploadFile }) {
       const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
       if (!blob || gen !== exportGen.current) return
       const file = new File([blob], `signature-${Date.now()}.png`, { type: 'image/png' })
-      const url = URL.createObjectURL(blob)
+      const meta = uploadFile
+        ? await uploadFile(file)
+        : (await api.upload(file, MAX_UPLOAD_MB)).file
       if (gen !== exportGen.current) return
       setDrawn({
-        pending: true,
-        file,
-        url,
-        name: file.name
+        url: meta.url,
+        name: meta.name || file.name,
+        ...(meta.dmsDocId ? { dmsDocId: meta.dmsDocId } : {}),
       })
     } catch (e2) {
       if (gen === exportGen.current) setErr(e2.message || 'Could not save signature')
@@ -306,18 +322,83 @@ export function SignaturePad({ onChange, disabled, label, id, uploadFile }) {
     }
     setUploading(true)
     try {
-      const url = URL.createObjectURL(file)
+      const meta = uploadFile
+        ? await uploadFile(file)
+        : (await api.upload(file, MAX_UPLOAD_MB)).file
       setUploaded({
-        pending: true,
-        file,
-        url,
-        name: file.name
+        url: meta.url,
+        name: meta.name,
+        ...(meta.dmsDocId ? { dmsDocId: meta.dmsDocId } : {}),
       })
     } catch (e2) {
       setErr(e2.message || 'Upload failed')
     } finally {
       setUploading(false)
       e.target.value = ''
+    }
+  }
+
+  const stopCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop())
+      setStream(null)
+    }
+  }
+
+  const handleCapture = () => {
+    if (!videoRef.current) return
+    const video = videoRef.current
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+    
+    setPreviewDataUrl(canvas.toDataURL('image/jpeg', 0.9))
+    stopCamera()
+  }
+
+  const openCamera = async () => {
+    setCameraError('')
+    setPreviewDataUrl(null)
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+      setStream(s)
+      setTimeout(() => {
+        if (videoRef.current) videoRef.current.srcObject = s
+      }, 50)
+    } catch (e) {
+      setCameraError('Unable to access camera. Please allow camera access or use Upload.')
+    }
+  }
+
+  const handleUsePhoto = async () => {
+    if (!previewDataUrl) return
+    const res = await fetch(previewDataUrl)
+    const blob = await res.blob()
+    const file = new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' })
+
+    if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+      setErr(`File too large. Max ${MAX_UPLOAD_MB} MB.`)
+      return
+    }
+
+    setUploading(true)
+    setErr('')
+    try {
+      const meta = uploadFile
+        ? await uploadFile(file)
+        : (await api.upload(file, MAX_UPLOAD_MB)).file
+      setUploaded({
+        url: meta.url,
+        name: meta.name,
+        ...(meta.dmsDocId ? { dmsDocId: meta.dmsDocId } : {}),
+      })
+      stopCamera()
+    } catch (e2) {
+      setErr(e2.message || 'Upload failed')
+    } finally {
+      setUploading(false)
     }
   }
 
@@ -341,6 +422,9 @@ export function SignaturePad({ onChange, disabled, label, id, uploadFile }) {
           </button>
           <button type="button" onClick={() => switchMode('upload')} disabled={disabled} className={tabCls('upload')}>
             Upload
+          </button>
+          <button type="button" onClick={() => { switchMode('camera'); openCamera(); }} disabled={disabled} className={tabCls('camera')}>
+            Camera
           </button>
         </div>
       </div>
@@ -423,6 +507,42 @@ export function SignaturePad({ onChange, disabled, label, id, uploadFile }) {
           {uploaded && <SignatureMark signature={{ kind: 'uploaded', url: uploaded.url }} className="mt-2" />}
         </>
       )}
+      {mode === 'camera' && (
+        <div className="mt-2 space-y-3">
+          {cameraError ? (
+            <p className="text-sm text-danger-fg bg-danger-subtle p-3 rounded-md border border-danger-subtle/50">{cameraError}</p>
+          ) : previewDataUrl ? (
+            <div className="rounded-md border border-line bg-surface overflow-hidden">
+              <img src={previewDataUrl} alt="Preview" className="w-full object-contain max-h-64" />
+            </div>
+          ) : (
+            <div className="rounded-md border border-line bg-black overflow-hidden relative aspect-video flex items-center justify-center">
+              <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover max-h-64" />
+              {!stream && <p className="text-white text-xs absolute font-medium">Starting camera…</p>}
+            </div>
+          )}
+
+          {!cameraError && (
+            <div className="flex justify-end gap-2">
+              {previewDataUrl ? (
+                <>
+                  <button type="button" onClick={openCamera} disabled={uploading || disabled} className="px-3 py-1.5 text-xs font-medium rounded border border-line text-fg-muted hover:bg-surface disabled:opacity-50 transition">
+                    Retake
+                  </button>
+                  <button type="button" onClick={handleUsePhoto} disabled={uploading || disabled} className="px-3 py-1.5 text-xs font-bold rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition">
+                    {uploading ? 'Saving…' : 'Use Photo'}
+                  </button>
+                </>
+              ) : (
+                <button type="button" onClick={handleCapture} disabled={!stream || disabled} className="px-3 py-1.5 text-xs font-bold rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition shadow-sm">
+                  Capture
+                </button>
+              )}
+            </div>
+          )}
+          {uploaded && <SignatureMark signature={{ kind: 'uploaded', url: uploaded.url }} className="mt-2" />}
+        </div>
+      )}
       {err && <p className="mt-2 text-xs text-danger-fg">{err}</p>}
     </div>
   )
@@ -457,11 +577,10 @@ export function UploadProgress({ percent }) {
   )
 }
 
-export function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB, disabled, onRequestPreview }) {
+export function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB, disabled }) {
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(null)
   const [uploadError, setUploadError] = useState('')
-  const [useCamera, setUseCamera] = useState(false)
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0]
@@ -472,13 +591,22 @@ export function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB, disabled, on
       e.target.value = ''
       return
     }
+    setUploading(true)
+    setProgress(0)
     setUploadError('')
-    const url = URL.createObjectURL(file)
-    onChange({ pending: true, file, url, name: file.name, size: file.size, mime: file.type })
-    e.target.value = ''
+    try {
+      const { file: saved } = await api.upload(file, maxMb, { onProgress: setProgress })
+      onChange(saved)
+    } catch (err) {
+      setUploadError(err.message || 'Upload failed')
+      onChange('')
+    } finally {
+      setUploading(false)
+      setProgress(null)
+    }
   }
 
-  const current = value && typeof value === 'object' && (value.url || value.dmsDocId || value.pending) ? value : null
+  const current = value && typeof value === 'object' && (value.url || value.dmsDocId) ? value : null
   const dmsHref = current?.dmsDocId ? dmsWebUrl(current.dmsDocId) : ''
 
   const openCurrent = async (e) => {
@@ -488,467 +616,31 @@ export function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB, disabled, on
     if (href) window.open(href, '_blank', 'noopener,noreferrer')
   }
 
-  if (useCamera) {
-    return (
-      <div className="space-y-2">
-        <CameraCapture
-          value={value}
-          onChange={(val) => {
-            onChange(val)
-            if (val) setUseCamera(false)
-          }}
-          disabled={disabled}
-          autoStart={true}
-          inlineMode={true}
-          onCancel={() => setUseCamera(false)}
-        />
-      </div>
-    )
-  }
-
   return (
     <div>
-      <div className="flex items-center gap-3">
-        <input
-          type="file"
-          onChange={handleFile}
-          disabled={uploading || disabled}
-          className="block w-full text-sm text-fg-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-info-subtle file:text-info-fg hover:file:brightness-95 disabled:opacity-60"
-        />
-        {!disabled && (
-          <button
-            type="button"
-            onClick={() => setUseCamera(true)}
-            disabled={uploading}
-            className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-surface-2 text-fg hover:bg-surface-3 transition border border-line disabled:opacity-60"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
-            </svg>
-            Camera
-          </button>
-        )}
-      </div>
+      <input
+        type="file"
+        onChange={handleFile}
+        disabled={uploading || disabled}
+        className="block w-full text-sm text-fg-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-info-subtle file:text-info-fg hover:file:brightness-95 disabled:opacity-60"
+      />
       {!uploading && !uploadError && <p className="mt-1 text-xs text-fg-subtle">Max {maxMb} MB</p>}
       {uploading && <UploadProgress percent={progress} />}
       {uploadError && <p className="mt-1 text-xs text-danger-fg">{uploadError}</p>}
       {current && !uploading && (
-        <p className="mt-1 text-xs flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className={current.pending ? "text-fg" : "text-success-fg"}>
-            {current.pending ? 'Ready to submit:' : 'Uploaded:'}{' '}
+        <p className="mt-1 text-xs text-success-fg flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span>
+            Uploaded:{' '}
             <a href={toAbsoluteUrl(current.url) || '#'} onClick={openCurrent} target="_blank" rel="noreferrer" className="underline hover:brightness-110">
               {current.name || 'file'}
             </a>
           </span>
-          {onRequestPreview && (current.mime?.startsWith('image/') || current.mime === 'application/pdf' || current.name?.match(/\.(pdf|jpe?g|png|webp|gif)$/i)) && (
-            <button
-              type="button"
-              onClick={() => onRequestPreview(current)}
-              className="text-fg-muted hover:text-indigo-600 transition flex items-center gap-1 bg-surface-2 px-2 py-0.5 rounded border border-line"
-              title="Preview file"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-              </svg>
-              Preview
-            </button>
-          )}
           {dmsHref ? (
             <a href={dmsHref} target="_blank" rel="noreferrer" className="underline text-fg-muted hover:text-fg">
               Open in DMS
             </a>
           ) : null}
         </p>
-      )}
-    </div>
-  )
-}
-
-// Camera capture field: opens a live video stream, lets the user snap a photo,
-// previews it locally, uploads it upon confirmation, and stores { name, url, mime, size }.
-export function CameraCapture({ value, onChange, disabled, autoStart, inlineMode = false, onCancel }) {
-  const videoRef = useRef(null)
-  const canvasRef = useRef(null)
-  const [streaming, setStreaming] = useState(false)
-  const [isStarting, setIsStarting] = useState(false)
-  const [cameraError, setCameraError] = useState('')
-  const [uploading, setUploading] = useState(false)
-  const [uploadError, setUploadError] = useState('')
-  const [facingMode, setFacingMode] = useState('environment')
-  
-  // Preview state
-  const [previewFile, setPreviewFile] = useState(null)
-  const [previewUrl, setPreviewUrl] = useState(null)
-
-  const streamRef = useRef(null)
-  const isMounted = useRef(true)
-
-  useEffect(() => {
-    if (streaming && isMounted.current) {
-      startCamera()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [facingMode])
-
-  useEffect(() => {
-    isMounted.current = true
-    return () => {
-      isMounted.current = false
-    }
-  }, [])
-
-  const current = value && typeof value === 'object' && value.url ? value : null
-
-  const startCamera = async () => {
-    setCameraError('')
-    setIsStarting(true)
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode } })
-      if (!isMounted.current) {
-        stream.getTracks().forEach(t => t.stop())
-        return
-      }
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => t.stop())
-      }
-      streamRef.current = stream
-      setStreaming(true)
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        videoRef.current.play().catch(console.error)
-      }
-    } catch (err) {
-      if (isMounted.current) {
-        setCameraError('Could not access camera. Please allow camera permission or use the file fallback.')
-      }
-    } finally {
-      if (isMounted.current) {
-        setIsStarting(false)
-      }
-    }
-  }
-
-  useEffect(() => {
-    if (streaming && videoRef.current && streamRef.current) {
-      videoRef.current.srcObject = streamRef.current
-      videoRef.current.play().catch(console.error)
-    }
-  }, [streaming])
-
-  useEffect(() => {
-    if (autoStart && !disabled && !current && !previewUrl) {
-      startCamera()
-    }
-
-    // Cleanup camera stream and object URLs on unmount
-    return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => t.stop())
-        streamRef.current = null
-      }
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl)
-      }
-    }
-    // We only want to auto-start once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop())
-      streamRef.current = null
-    }
-    setStreaming(false)
-  }
-
-  const handleCapture = async () => {
-    const video = videoRef.current
-    const canvas = canvasRef.current
-    if (!video || !canvas) return
-    canvas.width = video.videoWidth || 640
-    canvas.height = video.videoHeight || 480
-    canvas.getContext('2d').drawImage(video, 0, 0)
-    stopCamera()
-    
-    canvas.toBlob(async (blob) => {
-      if (!blob) { setUploadError('Failed to capture image'); return }
-      const file = new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' })
-      const url = URL.createObjectURL(blob)
-      setPreviewFile(file)
-      setPreviewUrl(url)
-    }, 'image/jpeg', 0.92)
-  }
-
-  const handleConfirmPreview = () => {
-    if (!previewFile) return
-    onChange({ pending: true, file: previewFile, url: previewUrl, name: previewFile.name, size: previewFile.size, mime: previewFile.type })
-    setPreviewFile(null)
-    setPreviewUrl(null)
-  }
-
-  const handleDiscardPreview = () => {
-    if (previewUrl) URL.revokeObjectURL(previewUrl)
-    setPreviewFile(null)
-    setPreviewUrl(null)
-    setUploadError('')
-    startCamera()
-  }
-
-  const handleRetake = () => {
-    onChange(null)
-    startCamera()
-  }
-
-  // Fallback: native file input accepting images
-  const handleFallbackFile = (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploadError('')
-    const url = URL.createObjectURL(file)
-    onChange({ pending: true, file, url, name: file.name, size: file.size, mime: file.type })
-  }
-
-  const supportsCamera = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia
-
-  return (
-    <div className="space-y-2">
-      <canvas ref={canvasRef} className="hidden" />
-
-      {current && !streaming && !previewUrl ? (
-        <div className="relative">
-          <img
-            src={toAbsoluteUrl(current.url)}
-            alt="Captured photo"
-            className="w-full max-h-60 object-cover rounded-lg border border-line shadow-sm"
-          />
-          {!disabled && (
-            <button
-              type="button"
-              onClick={handleRetake}
-              className="mt-2 text-xs font-semibold text-indigo-600 hover:text-indigo-700 underline"
-            >
-              Retake Photo
-            </button>
-          )}
-        </div>
-      ) : previewUrl ? (
-        <div className="relative">
-          <img
-            src={previewUrl}
-            alt="Preview photo"
-            className="w-full max-h-60 object-cover rounded-lg border border-line shadow-sm"
-          />
-          <div className="mt-2 flex gap-2">
-            <button
-              type="button"
-              onClick={handleConfirmPreview}
-              disabled={uploading}
-              className="flex-1 py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow transition disabled:opacity-50"
-            >
-              {uploading ? 'Uploading…' : 'Confirm & Upload'}
-            </button>
-            <button
-              type="button"
-              onClick={handleDiscardPreview}
-              disabled={uploading}
-              className="py-2 px-4 bg-surface hover:bg-surface-2 text-fg border border-line text-sm font-semibold rounded-lg shadow-sm transition disabled:opacity-50"
-            >
-              Discard
-            </button>
-          </div>
-          {uploadError && <p className="mt-2 text-xs text-danger-fg">{uploadError}</p>}
-        </div>
-      ) : streaming ? (
-        <div className="relative">
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="w-full max-h-60 object-cover rounded-lg border border-line shadow-sm bg-black"
-          />
-          <button
-            type="button"
-            onClick={() => setFacingMode(prev => prev === 'environment' ? 'user' : 'environment')}
-            className="absolute top-2 right-2 bg-gray-900/50 hover:bg-gray-900/80 text-white p-2 rounded-full backdrop-blur-sm transition"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 512 512">
-              <path d="M350.54,148,318.22,100.86A32,32,0,0,0,291.83,88H220.17a32,32,0,0,0-26.39,12.86L161.46,148H88a40,40,0,0,0-40,40V384a40,40,0,0,0,40,40H424a40,40,0,0,0,40-40V188A40,40,0,0,0,424,148Z" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="32"/>
-              <polyline points="124 256 160 220 196 256" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="32"/>
-              <path d="M160,220V296a64,64,0,0,0,64,64h60" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="32"/>
-              <polyline points="388 336 352 372 316 336" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="32"/>
-              <path d="M352,372V296a64,64,0,0,0-64-64H228" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="32"/>
-            </svg>
-          </button>
-          <button
-            type="button"
-            onClick={handleCapture}
-            className="mt-2 w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow transition"
-          >
-            Capture Photo
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              stopCamera()
-              if (onCancel) onCancel()
-            }}
-            className="mt-1 w-full py-1.5 text-xs text-fg-muted hover:text-fg border border-line rounded-lg transition"
-          >
-            Cancel
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {isStarting ? (
-            <div className="w-full py-8 border-2 border-dashed border-line rounded-xl text-fg-muted flex flex-col items-center justify-center gap-3">
-              <svg className="w-6 h-6 animate-spin text-indigo-500" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              <span className="text-sm font-medium animate-pulse">Requesting camera access...</span>
-              {inlineMode && onCancel && (
-                <button type="button" onClick={onCancel} className="mt-2 px-3 py-1 text-xs font-medium text-fg-muted hover:text-fg border border-line rounded-lg transition">
-                  Cancel
-                </button>
-              )}
-            </div>
-          ) : supportsCamera ? (
-            <button
-              type="button"
-              onClick={startCamera}
-              disabled={disabled || uploading}
-              className="w-full py-8 border-2 border-dashed border-line rounded-xl text-fg-muted hover:border-indigo-400 hover:text-indigo-600 transition flex flex-col items-center justify-center gap-2 group"
-            >
-              <svg className="w-8 h-8 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
-              </svg>
-              <span className="text-sm font-medium">{cameraError ? 'Retry Camera' : 'Open Camera'}</span>
-            </button>
-          ) : null}
-          {inlineMode && onCancel && !isStarting && (
-            <button type="button" onClick={onCancel} className="w-full py-2 text-xs font-medium text-fg-muted hover:text-fg border border-line rounded-lg transition">
-              Cancel Camera
-            </button>
-          )}
-          {!inlineMode && (
-            <label className="block text-xs text-fg-muted text-center cursor-pointer">
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={handleFallbackFile}
-                disabled={disabled || uploading}
-                className="hidden"
-              />
-              <span className="underline hover:text-fg transition">
-                {supportsCamera ? 'Or upload from device' : 'Upload a photo'}
-              </span>
-            </label>
-          )}
-        </div>
-      )}
-
-      {cameraError && <p className="text-xs text-danger-fg">{cameraError}</p>}
-      {uploadError && <p className="text-xs text-danger-fg">{uploadError}</p>}
-      {uploading && <p className="text-xs text-fg-muted animate-pulse">Uploading photo…</p>}
-    </div>
-  )
-}
-
-export function ReferenceUserSelect({ value, onChange, disabled, placeholder, className, a11y }) {
-  const [query, setQuery] = useState(value || '')
-  const [results, setResults] = useState([])
-  const [open, setOpen] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const wrapperRef = useRef(null)
-
-  useEffect(() => {
-    if (value !== query && !open) {
-      setQuery(value || '')
-    }
-  }, [value, open])
-
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
-        setOpen(false)
-        setQuery(value || '')
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [value])
-
-  useEffect(() => {
-    if (!open || query.length < 2) {
-      setResults([])
-      return
-    }
-    const timer = setTimeout(async () => {
-      setLoading(true)
-      try {
-        const res = await api.get(`/api/users?search=${encodeURIComponent(query)}&limit=10`)
-        setResults(res.users || [])
-      } catch (err) {
-        console.error('Failed to fetch reference users:', err)
-      } finally {
-        setLoading(false)
-      }
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [query, open])
-
-  return (
-    <div className="relative w-full" ref={wrapperRef}>
-      <input
-        {...a11y}
-        type="text"
-        value={query}
-        disabled={disabled}
-        onChange={(e) => {
-          setQuery(e.target.value)
-          onChange('') // Clear value while typing to enforce strict match
-          setOpen(true)
-        }}
-        onFocus={() => {
-          if (query.length >= 2) setOpen(true)
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && open) e.preventDefault()
-        }}
-        placeholder={placeholder || 'Search users...'}
-        className={className}
-        autoComplete="off"
-      />
-      {open && (loading || results.length > 0 || query.length >= 2) && (
-        <ul className="absolute z-50 w-full mt-1 bg-surface border border-line rounded-md shadow-lg max-h-60 overflow-y-auto">
-          {loading ? (
-            <li className="px-3 py-2 text-sm text-fg-subtle">Searching...</li>
-          ) : results.length > 0 ? (
-            results.map((user) => (
-              <li
-                key={user._id}
-                className="px-3 py-2 cursor-pointer hover:bg-surface-2 text-sm flex flex-col"
-                onClick={() => {
-                  const name = user.name || user.email
-                  setQuery(name)
-                  onChange(name)
-                  setOpen(false)
-                }}
-              >
-                <span className="font-medium text-fg">{user.name}</span>
-                <span className="text-xs text-fg-muted">{user.email}</span>
-              </li>
-            ))
-          ) : (
-            <li className="px-3 py-2 text-sm text-fg-subtle">No users found</li>
-          )}
-        </ul>
       )}
     </div>
   )
@@ -961,15 +653,6 @@ export function ReferenceUserSelect({ value, onChange, disabled, placeholder, cl
 export const fieldDomId = (fieldId) => `ff-${fieldId}`
 
 export function FieldRow({ field, value, onChange, error, richSignature = false, disabled = false }) {
-  if (field.type === 'heading') {
-    return (
-      <div data-field-row={field.id} className="pt-4 pb-2 border-b border-line mb-4">
-        <h3 className="text-lg font-semibold text-fg">{field.label}</h3>
-        {field.placeholder && <p className="text-sm text-fg-muted mt-1">{field.placeholder}</p>}
-      </div>
-    )
-  }
-
   const cls = `${inputCls} ${error ? inputErrorCls : ''}`
   const inputId = fieldDomId(field.id)
   const labelId = `${inputId}-label`
@@ -1011,7 +694,7 @@ export function FieldRow({ field, value, onChange, error, richSignature = false,
         )
       case 'date':
         return (
-          <input {...a11y} type={field.includeTime ? "datetime-local" : "date"} value={value ?? ''} disabled={disabled} onChange={(e) => onChange(e.target.value)} className={cls} />
+          <input {...a11y} type="date" value={value ?? ''} disabled={disabled} onChange={(e) => onChange(e.target.value)} className={cls} />
         )
       case 'dropdown':
         return (
@@ -1023,33 +706,6 @@ export function FieldRow({ field, value, onChange, error, richSignature = false,
           </select>
         )
       case 'checkbox':
-        if (field.options && field.options.length > 0) {
-          const selectedValues = Array.isArray(value) ? value : []
-          return (
-            <div className={field.layout === 'horizontal' ? "flex flex-wrap gap-x-6 gap-y-2" : "space-y-1.5"} role="group" aria-labelledby={labelId}>
-              {field.options.map((opt, i) => (
-                <label key={opt} className="flex items-center gap-2 text-sm text-fg">
-                  <input
-                    id={i === 0 ? inputId : undefined}
-                    type="checkbox"
-                    value={opt}
-                    checked={selectedValues.includes(opt)}
-                    disabled={disabled}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        onChange([...selectedValues, opt])
-                      } else {
-                        onChange(selectedValues.filter((v) => v !== opt))
-                      }
-                    }}
-                    className="w-4 h-4 rounded border-line text-indigo-600 focus:ring-indigo-400"
-                  />
-                  <span>{opt}</span>
-                </label>
-              ))}
-            </div>
-          )
-        }
         return (
           <label className="flex items-center gap-2 text-sm text-fg">
             <input
@@ -1065,7 +721,7 @@ export function FieldRow({ field, value, onChange, error, richSignature = false,
         )
       case 'radio':
         return (
-          <div className={field.layout === 'horizontal' ? "flex flex-wrap gap-x-6 gap-y-2" : "space-y-1.5"} role="radiogroup" aria-labelledby={labelId} aria-describedby={errorId}>
+          <div className="space-y-1.5" role="radiogroup" aria-labelledby={labelId} aria-describedby={errorId}>
             {(field.options || []).map((opt, i) => (
               <label key={opt} className="flex items-center gap-2 text-sm text-fg">
                 <input
@@ -1093,26 +749,12 @@ export function FieldRow({ field, value, onChange, error, richSignature = false,
             disabled={disabled}
           />
         )
-      case 'camera':
-        return <CameraCapture value={value} onChange={onChange} disabled={disabled} />
       case 'file':
         return <FileField value={value} onChange={onChange} maxMb={fieldMaxMb(field)} disabled={disabled} />
       case 'repeater':
         return <div className="text-xs text-fg-muted italic">Repeater fields aren&apos;t supported in this view.</div>
       case 'text':
       default:
-        if (field.referenceUser) {
-          return (
-            <ReferenceUserSelect
-              a11y={a11y}
-              value={value ?? ''}
-              disabled={disabled}
-              onChange={(val) => onChange(val)}
-              placeholder={field.placeholder || 'Search users...'}
-              className={cls}
-            />
-          )
-        }
         return (
           <input
             {...a11y}
@@ -1153,7 +795,7 @@ export function focusFirstError(fields, errors) {
   const control = document.getElementById(fieldDomId(first.id))
   const target = control || row
   try {
-    ; (row || target)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    ;(row || target)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   } catch {
     row?.scrollIntoView()
   }
@@ -1265,15 +907,8 @@ export function validateFields(fields, values) {
     const v = values[f.id]
     if (f.required) {
       let empty = v === undefined || v === null || v === ''
-      if (!empty && f.type === 'checkbox') {
-        if (f.options && f.options.length > 0) {
-          empty = Array.isArray(v) ? v.length === 0 : true
-        } else {
-          empty = v === false
-        }
-      }
+      if (!empty && f.type === 'checkbox') empty = v === false
       if (f.type === 'signature') empty = isSignatureEmpty(v)
-      if (f.type === 'camera') empty = !(v && typeof v === 'object' && v.url)
       if (empty) {
         errs[f.id] = `${f.label} is required`
         continue
@@ -1290,16 +925,7 @@ export function FieldValueView({ field, value }) {
   if (value === undefined || value === null || value === '') {
     return <span className="text-fg-subtle">—</span>
   }
-  if ((field.type === 'file' || field.type === 'camera') && typeof value === 'object' && value.url) {
-    if (field.type === 'camera') {
-      return (
-        <img
-          src={toAbsoluteUrl(value.url)}
-          alt="Captured photo"
-          className="max-h-48 rounded-lg border border-line shadow-sm object-contain"
-        />
-      )
-    }
+  if (field.type === 'file' && typeof value === 'object' && value.url) {
     return (
       <a href={toAbsoluteUrl(value.url)} target="_blank" rel="noreferrer" className="text-indigo-600 hover:text-indigo-700 underline">
         {value.name || 'Attachment'}
@@ -1310,5 +936,5 @@ export function FieldValueView({ field, value }) {
     if (typeof value === 'object') return <SignatureMark signature={value} />
     return <span style={{ fontFamily: 'cursive' }}>{value}</span>
   }
-  return <span className="text-fg whitespace-pre-wrap">{Array.isArray(value) ? value.join(', ') : String(value)}</span>
+  return <span className="text-fg whitespace-pre-wrap">{String(value)}</span>
 }

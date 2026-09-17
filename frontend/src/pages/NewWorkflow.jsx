@@ -10,11 +10,14 @@ import NodeConfig from './WorkflowCanvas/NodeConfig'
 import { NODE_DEFAULTS, NODE_STYLES, createNodeId } from './WorkflowCanvas/nodeStyles'
 import { confirm } from '../lib/confirmStore'
 import { toast } from '../lib/toastStore'
+import { useNotificationsPanelOpen } from '../lib/notificationsStore'
 import { limitBanner } from '../lib/limitFeedback'
 import { AlertBanner } from '../components/Alert'
 import { createDraftStore, useBeforeUnloadWarning } from '../utils/localDraft'
 import { fetchAllUsers } from '../utils/users'
 import { useFocusTrap, useScrollLock } from '../utils/a11y'
+import AppShell from '../components/AppShell'
+import Modal from '../components/Modal'
 
 const apiBase = () => String(import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/$/, '')
 
@@ -130,80 +133,6 @@ function PublishSuccessModal({ open, name, webhookUrl, secret, onClose, onGoToLi
           </button>
         </div>
       </div>
-    </div>
-  )
-}
-
-function TagInput({ tags = [], onChange, inputValue, onInputChange, placeholder, className, id }) {
-  const [internalInput, setInternalInput] = useState('')
-  
-  const isControlled = inputValue !== undefined && onInputChange !== undefined
-  const input = isControlled ? inputValue : internalInput
-  const setInput = isControlled ? onInputChange : setInternalInput
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault()
-      addTag()
-    } else if (e.key === 'Backspace' && !input && tags.length > 0) {
-      onChange(tags.slice(0, -1))
-    }
-  }
-
-  const addTag = () => {
-    const parts = input.split(',').map(t => t.trim().replace(/^#/, '')).filter(Boolean)
-    if (parts.length === 0) {
-      setInput('')
-      return
-    }
-    const newTags = [...tags]
-    let changed = false
-    for (const p of parts) {
-      if (!newTags.includes(p)) {
-        newTags.push(p)
-        changed = true
-      }
-    }
-    if (changed) {
-      onChange(newTags)
-    }
-    setInput('')
-  }
-
-  const removeTag = (indexToRemove) => {
-    onChange(tags.filter((_, i) => i !== indexToRemove))
-  }
-
-  return (
-    <div className={`flex flex-wrap items-center gap-2 p-2 bg-surface-2/50 backdrop-blur-sm border border-line rounded-xl focus-within:ring-2 focus-within:ring-indigo-500/50 focus-within:bg-surface transition-all duration-300 min-h-[46px] ${className || ''}`}>
-      {tags.map((tag, i) => (
-        <span 
-          key={i} 
-          className="group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/60 dark:bg-black/20 backdrop-blur-md border border-white/50 dark:border-white/10 text-fg text-[13px] font-medium shadow-sm hover:-translate-y-0.5 hover:shadow-md hover:bg-white/80 dark:hover:bg-black/40 transition-all duration-300 ease-out cursor-default"
-        >
-          {tag}
-          <button
-            type="button"
-            onClick={() => removeTag(i)}
-            className="hover:bg-black/5 dark:hover:bg-white/10 rounded-full p-0.5 transition-colors text-fg-muted group-hover:text-danger-fg focus:outline-none focus:ring-2 focus:ring-danger-fg/50"
-            aria-label={`Remove ${tag}`}
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </span>
-      ))}
-      <input
-        id={id}
-        type="text"
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        onKeyDown={handleKeyDown}
-        onBlur={addTag}
-        placeholder={tags.length === 0 ? placeholder : ''}
-        className="flex-1 min-w-[120px] bg-transparent text-sm text-fg focus:outline-none px-1 py-1 placeholder:text-fg-subtle"
-      />
     </div>
   )
 }
@@ -440,7 +369,13 @@ const TRIGGER_OPTIONS = [
   'Manual trigger only',
 ]
 
-const SUBMITTER_OPTIONS = ['All employees', 'Managers only', 'Specific people']
+const SUBMITTER_OPTIONS = [
+  'All employees',
+  'Specific roles',
+  'Specific people',
+  'Specific departments',
+  'Managers only',
+]
 
 const SLA_OPTIONS = ['Always', 'After first breach', 'Never']
 
@@ -459,67 +394,104 @@ function Step1Template({
   setShowAiPanel,
   aiInputRef,
 }) {
-  const prebuilt = TEMPLATES.filter((t) => t.id !== 'scratch')
-  const scratch = TEMPLATES.find((t) => t.id === 'scratch')
-  const scratchSelected = selected === 'scratch'
-
   return (
-    <div className="max-w-5xl mx-auto pb-10">
-      <h2 className="text-2xl font-bold tracking-tight text-fg mb-6">Choose a template</h2>
+    <div className="max-w-4xl mx-auto py-2 pb-12">
+      {/* Title & Subtitle */}
+      <div className="text-center mb-8">
+        <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">
+          Choose a template to start with
+        </h2>
+        <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+          Pick a pre-built workflow or start from scratch. You can customise everything in the next step.
+        </p>
+      </div>
 
-      <div className="flex flex-nowrap overflow-x-auto gap-4 snap-x snap-mandatory pb-4 -mx-1 px-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-        {prebuilt.map((t) => {
-          const isSelected = selected === t.id
+      {/* Templates Grid (2 Columns x 3 Rows) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {TEMPLATES.map((t) => {
+          const isSelected = selected === t.id && !showAiPanel
+          const dept = t.defaults.category || 'General'
+
+          let iconBg = 'bg-blue-50 text-blue-500 dark:bg-blue-500/15 dark:text-blue-300'
+          let tagBg = 'bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300'
+          let countsText = `${t.defaults.nodes.length} steps · ${t.defaults.connections.length} connections`
+
+          if (t.id === 'expense') {
+            iconBg = 'bg-emerald-50 text-emerald-500 dark:bg-emerald-500/15 dark:text-emerald-300'
+            tagBg = 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300'
+          } else if (t.id === 'it') {
+            iconBg = 'bg-purple-50 text-purple-500 dark:bg-purple-500/15 dark:text-purple-300'
+            tagBg = 'bg-purple-50 text-purple-600 dark:bg-purple-500/15 dark:text-purple-300'
+          } else if (t.id === 'po') {
+            iconBg = 'bg-amber-50 text-amber-500 dark:bg-amber-500/15 dark:text-amber-300'
+            tagBg = 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300'
+          } else if (t.id === 'onboarding') {
+            iconBg = 'bg-pink-50 text-pink-500 dark:bg-pink-500/15 dark:text-pink-300'
+            tagBg = 'bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300'
+          } else if (t.id === 'scratch') {
+            iconBg = 'bg-purple-50 text-purple-500 dark:bg-purple-500/15 dark:text-purple-300'
+            tagBg = 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300'
+          }
+
           return (
-            <button
+            <div
               key={t.id}
-              type="button"
               onClick={() => {
                 setShowAiPanel(false)
                 onSelect(t.id)
               }}
-              aria-pressed={isSelected}
-              className={`shrink-0 w-[280px] snap-start group relative text-left p-5 rounded-xl border bg-surface shadow-sm transition ${
-                isSelected && !showAiPanel
-                  ? 'border-indigo-500 ring-2 ring-indigo-500/20 bg-indigo-50/50 dark:bg-indigo-500/10'
-                  : 'border-line hover:border-indigo-300 hover:shadow-md dark:hover:border-indigo-500/40'
+              className={`group relative text-left p-6 rounded-2xl border bg-white dark:bg-slate-800/80 shadow-xs hover:shadow-md transition cursor-pointer flex flex-col justify-between min-h-[145px] ${
+                isSelected
+                  ? 'border-indigo-500 ring-2 ring-indigo-500/30 bg-indigo-50/10 dark:bg-indigo-500/10'
+                  : 'border-slate-200 dark:border-slate-700/60 hover:border-indigo-300 dark:hover:border-indigo-500/40'
               }`}
             >
-              <span
-                className={`absolute top-4 right-4 w-5 h-5 rounded-full border-2 flex items-center justify-center transition ${
-                  isSelected && !showAiPanel
-                    ? 'border-indigo-600 bg-indigo-600'
-                    : 'border-line bg-surface group-hover:border-indigo-300'
-                }`}
-                aria-hidden="true"
-              >
-                {isSelected && !showAiPanel && (
-                  <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                )}
-              </span>
+              <div>
+                {/* Top Row: Branch Icon + Category Badge + Checkmark (if selected) */}
+                <div className="flex items-center justify-between mb-3">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${iconBg}`}>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                      <circle cx="6" cy="6" r="2" />
+                      <circle cx="18" cy="12" r="2" />
+                      <circle cx="6" cy="18" r="2" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 7.5l7 3.5M8 16.5l7-3.5" />
+                    </svg>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${tagBg}`}>
+                      {t.id === 'scratch' ? 'Blank' : dept}
+                    </span>
+                    {isSelected && (
+                      <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center">
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      </span>
+                    )}
+                  </div>
+                </div>
 
-              <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-4 ${t.iconClass}`}>
-                <TemplateIcon name={t.icon} />
+                {/* Title & Description */}
+                <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm group-hover:text-indigo-600 transition">
+                  {t.title}
+                </h3>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 line-clamp-2">
+                  {t.subtitle}
+                </p>
               </div>
-              <p className="font-semibold text-fg pr-6">{t.title}</p>
-              <p className="mt-3 pt-3 border-t border-line text-xs text-fg-subtle">
-                {templateMeta(t.defaults.nodes)}
-              </p>
-            </button>
+
+              {/* Card Footer: steps & connections count */}
+              <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700/40 flex items-center text-[11px] font-medium text-slate-400 dark:text-slate-500">
+                {countsText}
+              </div>
+            </div>
           )
         })}
       </div>
 
-      <div className="flex items-center gap-3 my-7">
-        <hr className="flex-1 border-line" />
-        <span className="text-xs font-medium uppercase tracking-wider text-fg-subtle">or</span>
-        <hr className="flex-1 border-line" />
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {aiAvailable && (
+      {/* AI Option Button & Panel */}
+      {aiAvailable && (
+        <div className="mt-6">
           <button
             type="button"
             onClick={() => {
@@ -527,129 +499,57 @@ function Step1Template({
               onSelect('ai_generated')
             }}
             aria-pressed={showAiPanel}
-            className={`w-full flex items-center gap-4 text-left px-5 py-4 rounded-xl border-2 transition ${
+            className={`w-full flex items-center gap-4 text-left p-4 rounded-2xl border transition ${
               showAiPanel
-                ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-500/10 shadow-sm'
-                : 'border-line bg-surface hover:border-indigo-300 dark:hover:border-indigo-500/40'
+                ? 'border-indigo-600 bg-indigo-50/40 dark:bg-indigo-500/10 ring-2 ring-indigo-500/30'
+                : 'border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-800/80 hover:border-indigo-300'
             }`}
           >
-            <span className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </span>
-            <span className="min-w-0 flex-1 font-semibold text-fg">Build with AI</span>
-            <span
-              className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition ${
-                showAiPanel
-                  ? 'bg-indigo-600 text-white'
-                  : 'border-2 border-line text-transparent'
-              }`}
-              aria-hidden="true"
-            >
-              {showAiPanel && (
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              )}
+            <div className="min-w-0 flex-1">
+              <p className="font-bold text-slate-800 dark:text-slate-100 text-sm">Build with AI</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500">Describe your process in plain English and let AI build it</p>
+            </div>
+            <span className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 border ${
+              showAiPanel ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-300'
+            }`}>
+              {showAiPanel && <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>}
             </span>
           </button>
-        )}
 
-        {scratch && (
-          <button
-            type="button"
-            onClick={() => {
-              setShowAiPanel(false)
-              onSelect(scratch.id)
-            }}
-            aria-pressed={scratchSelected && !showAiPanel}
-            className={`w-full flex items-center gap-4 text-left px-5 py-4 rounded-xl border-2 border-dashed transition ${
-              scratchSelected && !showAiPanel
-                ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-500/10'
-                : 'border-line bg-surface hover:border-indigo-300 dark:hover:border-indigo-500/40'
-            }`}
-          >
-            <span className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${scratch.iconClass}`}>
-              <TemplateIcon name={scratch.icon} />
-            </span>
-            <span className="min-w-0 flex-1 font-semibold text-fg">{scratch.title}</span>
-            <span
-              className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition ${
-                scratchSelected && !showAiPanel
-                  ? 'bg-indigo-600 text-white'
-                  : 'border-2 border-line text-transparent'
-              }`}
-              aria-hidden="true"
-            >
-              {scratchSelected && !showAiPanel && (
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              )}
-            </span>
-          </button>
-        )}
-      </div>
-
-      {showAiPanel && (
-        <div className="mt-8 p-6 rounded-2xl bg-surface border border-line shadow-sm">
-          <label htmlFor="ai-workflow-prompt" className="block text-sm font-semibold text-fg mb-2">
-            What kind of workflow do you need?
-          </label>
-          <p className="text-sm text-fg-subtle mb-4">
-            Describe the process in plain English, and our AI will build a draft for you.
-          </p>
-          
-          <div className="relative">
-            {aiSuggestion && (
-              <div
-                className="absolute inset-0 pointer-events-none px-4 py-3 text-sm font-mono whitespace-pre-wrap break-words"
-                aria-hidden="true"
-              >
-                <span className="invisible">{aiPrompt}</span>
-                <span className="text-fg-subtle">{aiSuggestion}</span>
+          {showAiPanel && (
+            <div className="mt-4 p-5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">
+              <label htmlFor="ai-workflow-prompt" className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
+                What kind of workflow do you need?
+              </label>
+              <textarea
+                id="ai-workflow-prompt"
+                ref={aiInputRef}
+                rows={3}
+                value={aiPrompt}
+                onChange={onAiPromptChange}
+                onKeyDown={onAiKeyDown}
+                disabled={aiBusy}
+                placeholder="e.g. A purchase order request that needs department head approval, and CFO approval if the amount is over $10k."
+                className="w-full bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 p-3 text-xs rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+              />
+              <div className="mt-3 flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={generateWithAI}
+                  disabled={aiBusy || !aiPrompt.trim()}
+                  className="px-5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 disabled:opacity-50 transition shadow-sm"
+                >
+                  {aiBusy ? 'Generating...' : 'Generate Workflow'}
+                </button>
               </div>
-            )}
-            <textarea
-              id="ai-workflow-prompt"
-              ref={aiInputRef}
-              rows={4}
-              value={aiPrompt}
-              onChange={onAiPromptChange}
-              onKeyDown={onAiKeyDown}
-              onBlur={() => onAiPromptChange({ target: { value: aiPrompt } })}
-              disabled={aiBusy}
-              aria-label="Workflow description for AI"
-              placeholder="e.g. A purchase order request that needs department head approval, and CFO approval if the amount is over $10k."
-              className="w-full relative z-10 bg-transparent text-fg px-4 py-3 text-sm font-mono rounded-xl border border-line focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none placeholder:text-fg-subtle/50 transition-shadow disabled:opacity-50"
-            />
-          </div>
-
-          <div className="mt-4 flex items-center justify-between">
-            <p className="text-xs text-fg-subtle">
-              Press <kbd className="font-mono bg-surface-2 px-1 py-0.5 rounded border border-line">Tab</kbd> to accept suggestions.
-            </p>
-            <button
-              type="button"
-              onClick={generateWithAI}
-              disabled={aiBusy || !aiPrompt.trim()}
-              className="px-6 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm flex items-center gap-2"
-            >
-              {aiBusy ? (
-                <>
-                  <svg className="animate-spin w-4 h-4 text-white/70" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Generating...
-                </>
-              ) : (
-                'Generate Workflow'
-              )}
-            </button>
-          </div>
-          {aiError && <p className="mt-3 text-xs text-danger-fg">{aiError}</p>}
+              {aiError && <p className="mt-2 text-xs text-rose-500">{aiError}</p>}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -691,10 +591,12 @@ function withBranchIfNeeded(fromNode, conn, existing) {
   return conn
 }
 
-function Step2Builder({ data, setData, fitKey = 0 }) {
+function Step2Builder({ data, setData, fitKey = 0, stepperHeader = null }) {
   const { nodes, connections, selectedNodeId } = data
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) || null
   const [isMaximized, setIsMaximized] = useState(false)
+  const [isStepperCollapsed, setIsStepperCollapsed] = useState(false)
+  const notifPanelOpen = useNotificationsPanelOpen()
   const flowProblems = useMemo(
     () => graphIssues(nodes, connections),
     [nodes, connections]
@@ -717,6 +619,12 @@ function Step2Builder({ data, setData, fitKey = 0 }) {
     setData((d) => ({
       ...d,
       nodes: d.nodes.map((n) => (n.id === id ? { ...n, x: snap(x), y: snap(y) } : n)),
+    }))
+
+  const resizeNode = (id, w, h) =>
+    setData((d) => ({
+      ...d,
+      nodes: d.nodes.map((n) => (n.id === id ? { ...n, w, h } : n)),
     }))
 
   const deleteNode = (id) =>
@@ -792,23 +700,62 @@ function Step2Builder({ data, setData, fitKey = 0 }) {
     <div className={`bg-surface overflow-hidden transition-all duration-300 ${isMaximized ? 'fixed inset-0 z-50 flex flex-col' : 'flex-1 min-h-0 flex flex-col'}`}>
       <div className="flex flex-1 min-h-0">
         {!isMaximized && <NodeTypesSidebar onAddNode={addNodeAfterTail} />}
-        <WorkflowEditor
-          isMaximized={isMaximized}
-          onToggleMaximize={() => setIsMaximized(m => !m)}
-          fitKey={fitKey}
-          nodes={nodes}
-          connections={connections}
-          selectedNodeId={selectedNodeId}
-          problemNodeIds={problemNodeIds}
-          flowProblems={flowProblems}
-          onSelectProblem={jumpToProblem}
-          onSelectNode={selectNode}
-          onMoveNode={moveNode}
-          onDropNewNode={addNodeAt}
-          onDeleteNode={deleteNode}
-          onAddConnection={addConnection}
-          onDeleteConnection={deleteConnection}
-        />
+        <div className="relative flex-1 min-w-0 min-h-0 flex flex-col">
+          {!isMaximized && (
+            <>
+              <div
+                className={`grid shrink-0 transition-[grid-template-rows,opacity] duration-300 ease-in-out ${
+                  isStepperCollapsed
+                    ? 'grid-rows-[0fr] opacity-0'
+                    : 'grid-rows-[1fr] opacity-100'
+                }`}
+              >
+                <div className="min-h-0 overflow-hidden">{stepperHeader}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsStepperCollapsed((collapsed) => !collapsed)}
+                aria-label={isStepperCollapsed ? 'Expand workflow stepper' : 'Collapse workflow stepper'}
+                aria-expanded={!isStepperCollapsed}
+                title={isStepperCollapsed ? 'Expand stepper' : 'Collapse stepper'}
+                className={`absolute top-2 right-3 z-30 w-7 h-7 rounded-lg border border-slate-200/80 dark:border-slate-700 bg-white/95 dark:bg-slate-800/95 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 shadow-sm backdrop-blur flex items-center justify-center transition-colors ${notifPanelOpen ? 'invisible' : ''}`}
+              >
+                <svg
+                  className={`w-3.5 h-3.5 transition-transform duration-300 ${isStepperCollapsed ? 'rotate-180' : ''}`}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="m6 15 6-6 6 6" />
+                </svg>
+              </button>
+            </>
+          )}
+          <div className="flex flex-1 min-h-0">
+            <WorkflowEditor
+              isMaximized={isMaximized}
+              onToggleMaximize={() => setIsMaximized(m => !m)}
+              fitKey={fitKey}
+              nodes={nodes}
+              connections={connections}
+              selectedNodeId={selectedNodeId}
+              problemNodeIds={problemNodeIds}
+              flowProblems={flowProblems}
+              onSelectProblem={jumpToProblem}
+              onSelectNode={selectNode}
+              onMoveNode={moveNode}
+              onResizeNode={resizeNode}
+              onDropNewNode={addNodeAt}
+              onDeleteNode={deleteNode}
+              onAddConnection={addConnection}
+              onDeleteConnection={deleteConnection}
+            />
+          </div>
+        </div>
         {!isMaximized && (
           <NodeConfig
             node={selectedNode}
@@ -845,9 +792,9 @@ function Section({ title, description, icon, children }) {
   )
 }
 
-function FieldLabel({ htmlFor, children, hint, className = '' }) {
+function FieldLabel({ htmlFor, children, hint }) {
   return (
-    <div className={`mb-1.5 ${className}`}>
+    <div className="mb-1.5">
       <label htmlFor={htmlFor} className="block text-sm font-medium text-fg">
         {children}
       </label>
@@ -877,8 +824,373 @@ function ToggleRow({ checked, onChange, label, hint }) {
   )
 }
 
+function AiFormGeneratorModal({ open, onClose, workflowName, onApprove }) {
+  const [mode, setMode] = useState('config') // 'config' | 'preview'
+  const [activeTab, setActiveTab] = useState('auto') // 'auto' | 'custom'
+  const [prompt, setPrompt] = useState(`Form for ${workflowName || 'Workflow'}`)
+  const [fields, setFields] = useState([])
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [editingIndex, setEditingIndex] = useState(null)
+  const [editDraft, setEditDraft] = useState({ label: '', required: false, type: 'Text' })
+  const [confirmDeleteIndex, setConfirmDeleteIndex] = useState(null)
+
+  const FIELD_TYPES = [
+    'Text', 'Number', 'Dropdown', 'Radio', 'Checkbox', 
+    'Date', 'File', 'Signature', 'Textarea', 'Grid'
+  ]
+
+  useEffect(() => {
+    setPrompt(`Form for ${workflowName || 'Workflow'}`)
+    setMode('config')
+    setActiveTab('auto')
+    setEditingIndex(null)
+    setConfirmDeleteIndex(null)
+  }, [workflowName, open])
+
+  if (!open) return null
+
+  const handleGeneratePreview = async () => {
+    try {
+      setIsGenerating(true)
+      const res = await api.post('/api/forms/ai-draft', { prompt })
+      if (res.fields) {
+        const withIds = res.fields.map(f => ({
+          ...f,
+          id: f.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `f_${Math.random().toString(36).slice(2, 8)}`)
+        }))
+        setFields(withIds)
+        setMode('preview')
+        toast.success('Generated form preview from AI')
+      } else {
+        throw new Error('No fields generated')
+      }
+    } catch (err) {
+      toast.error(err.message || 'AI generation failed')
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
+  const startEdit = (idx, f) => {
+    setConfirmDeleteIndex(null)
+    setEditingIndex(idx)
+    setEditDraft({ label: f.label, required: !!f.required, type: f.type || 'Text' })
+  }
+
+  const saveEdit = (idx) => {
+    if (!editDraft.label.trim()) {
+      toast.error('Field label cannot be empty')
+      return
+    }
+    setFields((prev) =>
+      prev.map((f, i) => (i === idx ? { ...editDraft, label: editDraft.label.trim() } : f))
+    )
+    setEditingIndex(null)
+  }
+
+  const cancelEdit = () => {
+    setEditingIndex(null)
+  }
+
+  const requestDelete = (idx) => {
+    setEditingIndex(null)
+    setConfirmDeleteIndex(idx)
+  }
+
+  const cancelDelete = () => {
+    setConfirmDeleteIndex(null)
+  }
+
+  const confirmDelete = (idx) => {
+    setFields((prev) => prev.filter((_, i) => i !== idx))
+    setConfirmDeleteIndex(null)
+    if (editingIndex === idx) setEditingIndex(null)
+    toast.success('Field deleted')
+  }
+
+  const handleAddField = () => {
+    setConfirmDeleteIndex(null)
+    const newFieldId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `f_${Math.random().toString(36).slice(2, 8)}`
+    const newField = { id: newFieldId, label: 'New Field', required: false, type: 'Text' }
+    setFields((prev) => [...prev, newField])
+    setEditingIndex(fields.length)
+    setEditDraft(newField)
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="AI Form Generator"
+      size="lg"
+      className="max-w-lg"
+    >
+      {mode === 'config' ? (
+        /* STEP 1: Auto-Generate / Custom Prompt Config Screen */
+        <div className="space-y-5 pt-1">
+          {/* Tab Selection */}
+          <div className="border-b border-slate-200 dark:border-slate-800 flex gap-6">
+            <button
+              type="button"
+              onClick={() => setActiveTab('auto')}
+              className={`pb-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer ${
+                activeTab === 'auto'
+                  ? 'border-[#6366F1] text-[#6366F1] dark:text-indigo-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              Auto-Generate (Fast)
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('custom')}
+              className={`pb-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer ${
+                activeTab === 'custom'
+                  ? 'border-[#6366F1] text-[#6366F1] dark:text-indigo-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              Custom Prompt
+            </button>
+          </div>
+
+          {/* Tab Content */}
+          {activeTab === 'auto' ? (
+            <div className="py-2 space-y-1.5 min-h-[70px]">
+              <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
+                The AI will automatically generate a form based on the workflow name:
+              </p>
+              <p className="text-sm font-extrabold text-slate-900 dark:text-white">
+                {workflowName || 'Workflow'}
+              </p>
+            </div>
+          ) : (
+            <div className="py-1 space-y-2 min-h-[70px]">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Describe the fields needed:
+              </label>
+              <textarea
+                rows={3}
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="e.g. Employee name, Reason for request, Start date, Department..."
+                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+              />
+            </div>
+          )}
+
+          {/* Footer Actions */}
+          <div className="flex items-center justify-end gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleGeneratePreview}
+              disabled={isGenerating}
+              className="px-5 py-2.5 text-xs font-bold rounded-xl bg-[#6366F1] hover:bg-indigo-700 disabled:opacity-50 text-white shadow-md shadow-indigo-500/20 transition cursor-pointer"
+            >
+              {isGenerating ? 'Generating...' : 'Generate Preview'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* STEP 2: Form Fields Preview & Inline Editing Screen */
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setMode('config')}
+                className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition cursor-pointer"
+                title="Back to config"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight">
+                  {workflowName || 'Workflow'} — Preview
+                </h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Generated fields preview (Editable)
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleAddField}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 transition cursor-pointer"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+              </svg>
+              Add Field
+            </button>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 max-h-[300px] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 sidebar-scroll">
+            {fields.length === 0 ? (
+              <div className="px-4 py-8 text-center text-xs text-slate-400">
+                No fields available. Click &ldquo;Add Field&rdquo; to add custom fields.
+              </div>
+            ) : (
+              fields.map((f, idx) => {
+                const isEditing = editingIndex === idx
+                const isConfirmingDelete = confirmDeleteIndex === idx
+
+                if (isConfirmingDelete) {
+                  return (
+                    <div key={idx} className="flex items-center justify-between px-4 py-2.5 bg-rose-50/70 dark:bg-rose-950/30 border-l-4 border-rose-500 transition">
+                      <div className="text-xs font-semibold text-rose-800 dark:text-rose-300">
+                        Delete &ldquo;{f.label}&rdquo;?
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={cancelDelete}
+                          className="px-2.5 py-1 text-xs font-medium rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750 transition cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => confirmDelete(idx)}
+                          className="px-2.5 py-1 text-xs font-semibold rounded-md bg-rose-600 hover:bg-rose-700 text-white transition cursor-pointer"
+                        >
+                          Yes, Delete
+                        </button>
+                      </div>
+                    </div>
+                  )
+                }
+
+                if (isEditing) {
+                  return (
+                    <div key={idx} className="p-3 bg-indigo-50/40 dark:bg-indigo-950/30 space-y-2.5">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={editDraft.label}
+                          onChange={(e) => setEditDraft((d) => ({ ...d, label: e.target.value }))}
+                          placeholder="Field label..."
+                          className="flex-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                          autoFocus
+                        />
+                        <select
+                          value={editDraft.type}
+                          onChange={(e) => setEditDraft((d) => ({ ...d, type: e.target.value }))}
+                          className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none cursor-pointer"
+                        >
+                          {FIELD_TYPES.map((t) => (
+                            <option key={t} value={t}>{t}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex items-center justify-between pt-1">
+                        <label className="flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={editDraft.required}
+                            onChange={(e) => setEditDraft((d) => ({ ...d, required: e.target.checked }))}
+                            className="w-3.5 h-3.5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                          />
+                          Required field
+                        </label>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={cancelEdit}
+                            className="px-2.5 py-1 text-xs font-medium rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750 transition cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => saveEdit(idx)}
+                            className="px-3 py-1 text-xs font-semibold rounded-md bg-indigo-600 hover:bg-indigo-700 text-white transition cursor-pointer"
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                }
+
+                return (
+                  <div key={idx} className="group flex items-center justify-between px-4 py-2.5 text-sm hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition">
+                    <div className="flex items-center text-slate-800 dark:text-slate-200 font-medium text-sm truncate mr-2">
+                      <span className="truncate">{f.label}</span>
+                      {f.required && <span className="text-rose-500 font-bold ml-1 shrink-0">*</span>}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-medium text-slate-500 dark:text-slate-400 border border-slate-200/80 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80">
+                        {f.type}
+                      </span>
+                      <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                        <button
+                          type="button"
+                          onClick={() => startEdit(idx, f)}
+                          className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 dark:hover:text-indigo-400 transition cursor-pointer"
+                          title="Edit Field"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => requestDelete(idx)}
+                          className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 dark:hover:text-rose-400 transition cursor-pointer"
+                          title="Delete Field"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+
+          <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={() => setMode('config')}
+              className="px-4 py-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-750 transition cursor-pointer shadow-2xs"
+            >
+              Back to Prompt
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onApprove?.(fields)
+                onClose()
+              }}
+              className="px-4.5 py-2.5 text-xs font-bold rounded-xl bg-[#6366F1] hover:bg-indigo-700 text-white transition cursor-pointer shadow-md shadow-indigo-500/20"
+            >
+              Apply Form &amp; Link
+            </button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  )
+}
+
 function Step3Settings({ data, setData, forms, editId }) {
   const { settings } = data
+  const navigate = useNavigate()
+  const [aiFormModalOpen, setAiFormModalOpen] = useState(false)
   const orgDepartments = useDepartmentNames()
   // A workflow written before a department was renamed still names the old one;
   // keep it in the list so opening the page does not quietly re-file the flow.
@@ -902,97 +1214,27 @@ function Step3Settings({ data, setData, forms, editId }) {
   const updateWebhook = (patch) =>
     update({ inboundWebhook: { ...(settings.inboundWebhook || {}), ...patch } })
 
+  // Active users & roles for access pickers
   const [users, setUsers] = useState([])
+  const [tenantRoles, setTenantRoles] = useState(['Manager', 'VP', 'HR', 'Employee', 'Admin', 'Viewer', 'CEO'])
   const [deliveries, setDeliveries] = useState([])
   const [dlq, setDlq] = useState([])
   const [showSecret, setShowSecret] = useState(false)
-  const [aiStatus, setAiStatus] = useState(null)
-  const [isGeneratingForm, setIsGeneratingForm] = useState(false)
-  const [isAiModalOpen, setIsAiModalOpen] = useState(false)
-  const [aiModalTab, setAiModalTab] = useState('auto')
-  const [aiPrompt, setAiPrompt] = useState('')
-  const [aiDraft, setAiDraft] = useState(null)
-  const [aiPreviewActivePage, setAiPreviewActivePage] = useState(1)
-  const [editingIndex, setEditingIndex] = useState(null)
-  const [editDraft, setEditDraft] = useState({})
-  const [addingNew, setAddingNew] = useState(false)
-  const [newField, setNewField] = useState({ label: '', type: 'text', required: false })
-  const [undoQueue, setUndoQueue] = useState(null)
-
   useEffect(() => {
     let cancelled = false
     fetchAllUsers({ isActive: true })
       .then((d) => { if (!cancelled) setUsers(d.users || []) })
       .catch(() => {})
-      
-    api.get('/api/workflows/ai-status')
-      .then((res) => { if (!cancelled) setAiStatus(res) })
+    api.get('/api/roles')
+      .then((d) => {
+        if (!cancelled && Array.isArray(d.roles) && d.roles.length) {
+          const names = d.roles.map((r) => r.name).filter(Boolean)
+          if (names.length) setTenantRoles(names)
+        }
+      })
       .catch(() => {})
-      
     return () => { cancelled = true }
   }, [])
-
-  const handleGeneratePreview = async () => {
-    const finalPrompt = aiModalTab === 'auto' 
-      ? `Create a form for a workflow named: ${settings.name || 'Workflow'}`
-      : aiPrompt
-
-    if (!finalPrompt.trim()) return toast.error('Please enter a prompt first.')
-
-    setIsGeneratingForm(true)
-    try {
-      const draft = await api.post('/api/forms/ai-draft', { prompt: finalPrompt })
-      setAiDraft(draft)
-    } catch (err) {
-      console.error('Auto-generate error:', err)
-      toast.error(err.message || 'Failed to auto-generate form preview.')
-    } finally {
-      setIsGeneratingForm(false)
-    }
-  }
-
-  const handleApproveAndPublish = async () => {
-    if (!aiDraft) return
-    setIsGeneratingForm(true)
-    try {
-      const newFieldId = () =>
-        typeof crypto !== 'undefined' && crypto.randomUUID
-          ? crypto.randomUUID()
-          : `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
-
-      const fieldsWithIds = (aiDraft.fields || []).map(f => ({
-        ...f,
-        id: f.id || newFieldId()
-      }))
-
-      const newForm = await formsStore.add({
-        name: aiDraft.title || `${settings.name || 'Workflow'} Form`,
-        description: aiDraft.description || '',
-        category: settings.category || '',
-        fields: fieldsWithIds
-      })
-
-      if (newForm && newForm.id) {
-        await formsStore.publish(newForm.id)
-        
-        const linkedIds = settings.linkedFormIds?.length
-          ? settings.linkedFormIds.map(String)
-          : (settings.linkedFormId ? [String(settings.linkedFormId)] : [])
-        
-        const nextIds = [...linkedIds, String(newForm.id)]
-        update({ linkedFormIds: nextIds, linkedFormId: nextIds[0] || null })
-        toast.success('Form automatically generated, published, and linked!')
-        setIsAiModalOpen(false)
-        setAiDraft(null)
-        setAiPrompt('')
-      }
-    } catch (err) {
-      console.error('Publish error:', err)
-      toast.error(err.message || 'Failed to publish form.')
-    } finally {
-      setIsGeneratingForm(false)
-    }
-  }
 
   useEffect(() => {
     if (!editId || !settings.inboundWebhook?.enabled) return
@@ -1023,6 +1265,16 @@ function Step3Settings({ data, setData, forms, editId }) {
   }
   const removeVisiblePerson = (id) =>
     update({ visibleTo: visibleTo.filter((x) => x !== id) })
+
+  const visibleRoles = settings.visibleRoles || []
+  const toggleRole = (role) => {
+    const has = visibleRoles.includes(role)
+    update({
+      visibleRoles: has
+        ? visibleRoles.filter((r) => r !== role)
+        : [...visibleRoles, role],
+    })
+  }
 
   const publishedForms = forms.filter((f) => f.status === 'Published')
 
@@ -1075,7 +1327,7 @@ function Step3Settings({ data, setData, forms, editId }) {
             />
           </div>
           <div>
-            <FieldLabel htmlFor="wf-category">Category (Department)</FieldLabel>
+            <FieldLabel htmlFor="wf-category">Category</FieldLabel>
             <select
               id="wf-category"
               value={settings.category}
@@ -1088,14 +1340,14 @@ function Step3Settings({ data, setData, forms, editId }) {
             </select>
           </div>
           <div>
-            <FieldLabel htmlFor="wf-tags" >Tags</FieldLabel>
-            <TagInput
+            <FieldLabel htmlFor="wf-tags">Tags (#)</FieldLabel>
+            <input
               id="wf-tags"
-              tags={settings.tags || []}
-              onChange={(tags) => update({ tags })}
-              inputValue={settings.tagInput || ''}
-              onInputChange={(tagInput) => update({ tagInput })}
-              placeholder="e.g. Urgent, Setup, HR"
+              type="text"
+              value={settings.tags || ''}
+              onChange={(e) => update({ tags: e.target.value })}
+              placeholder="e.g. #finance #urgent #approval"
+              className={inputCls}
             />
           </div>
         </div>
@@ -1112,17 +1364,14 @@ function Step3Settings({ data, setData, forms, editId }) {
         <div className="space-y-5">
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <FieldLabel htmlFor="wf-linked-forms" className="mb-0">Linked forms</FieldLabel>
-              {aiStatus?.aiConfigured && (
-                <button
-                  type="button"
-                  onClick={() => setIsAiModalOpen(true)}
-                  disabled={!settings.name}
-                  className="text-[13px] font-medium flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 disabled:opacity-50 transition -mt-1.5"
-                >
-                  ✨ Auto-generate Form
-                </button>
-              )}
+              <FieldLabel htmlFor="wf-linked-forms" className="!mb-0">Linked forms</FieldLabel>
+              <button
+                type="button"
+                onClick={() => setAiFormModalOpen(true)}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#6366F1] dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition cursor-pointer"
+              >
+                <span className="text-[#F59E0B]">✨</span> Auto-generate Form
+              </button>
             </div>
             {(() => {
               const linkedIds = settings.linkedFormIds?.length
@@ -1158,19 +1407,20 @@ function Step3Settings({ data, setData, forms, editId }) {
                 {linkedIds.map((id) => {
                   const f = publishedForms.find((x) => String(x.id) === String(id))
                     || forms.find((x) => String(x.id) === String(id))
+                  const formTitle = f ? f.title : 'Unknown form'
                   return (
                     <span
                       key={id}
-                      className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 text-xs rounded-md border border-info-line bg-info-subtle text-info-fg"
+                      className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-lg border border-indigo-200/90 dark:border-indigo-800 bg-[#EEF2FF] dark:bg-indigo-950/70 text-[#4F46E5] dark:text-indigo-300 transition-all"
                     >
-                      {f ? f.title : 'Unknown form'}
+                      <span className="truncate">{formTitle}</span>
                       <button
                         type="button"
                         onClick={() => {
                           const next = linkedIds.filter((x) => String(x) !== String(id))
                           update({ linkedFormIds: next, linkedFormId: next[0] || null })
                         }}
-                        className="w-4 h-4 rounded hover:brightness-95 flex items-center justify-center text-info-fg"
+                        className="ml-0.5 text-xs font-bold text-[#4F46E5] dark:text-indigo-300 hover:text-rose-600 dark:hover:text-rose-400 transition cursor-pointer"
                         aria-label="Remove form"
                       >
                         &times;
@@ -1252,23 +1502,7 @@ function Step3Settings({ data, setData, forms, editId }) {
                     </button>
                   </div>
                 </div>
-                <div className="pt-2">
-                  <ToggleRow
-                    checked={settings.inboundWebhook?.requireSignature !== false}
-                    onChange={(e) =>
-                      updateWebhook({ requireSignature: e.target.checked })
-                    }
-                    label="Require HMAC Signature (Authentication)"
-                  />
-                  {settings.inboundWebhook?.requireSignature === false && (
-                    <div className="mt-2 p-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl">
-                      <p className="text-xs text-amber-800 dark:text-amber-300 font-medium">
-                        Warning: Your webhook is now completely public. Anyone with the URL can trigger this workflow.
-                      </p>
-                    </div>
-                  )}
-                </div>
-                {settings.inboundWebhook?.requireSignature !== false && settings.inboundWebhook?.secret && (
+                {settings.inboundWebhook?.secret && (
                   <div>
                     <FieldLabel htmlFor="wf-signing-secret">Signing secret</FieldLabel>
                     <div className="flex gap-2">
@@ -1439,7 +1673,7 @@ function Step3Settings({ data, setData, forms, editId }) {
       </Section>
 
       <Section
-        title="Access"
+        title="Access & Permissions"
         icon={(
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -1447,177 +1681,272 @@ function Step3Settings({ data, setData, forms, editId }) {
         )}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-        <div>
-          <FieldLabel htmlFor="wf-who-can-submit">Who can submit</FieldLabel>
-          <select
-            id="wf-who-can-submit"
-            value={settings.whoCanSubmit}
-            onChange={(e) => update({ whoCanSubmit: e.target.value })}
-            className={inputCls}
-          >
-            {SUBMITTER_OPTIONS.map((s) => (
-              <option key={s}>{s}</option>
-            ))}
-          </select>
+          <div>
+            <FieldLabel htmlFor="wf-who-can-submit">Who can access & submit</FieldLabel>
+            <select
+              id="wf-who-can-submit"
+              value={settings.whoCanSubmit}
+              onChange={(e) => {
+                const who = e.target.value
+                const needsSeedRoles = who === 'Specific roles' && !(settings.visibleRoles || []).length
+                const needsSeedDepts = who === 'Specific departments' && !(settings.visibleDepartments || []).length
+                let patch = { whoCanSubmit: who }
+                if (needsSeedRoles) patch.visibleRoles = ['Manager', 'VP']
+                if (needsSeedDepts) patch.visibleDepartments = [...orgDepartments]
+                update(patch)
+              }}
+              className={inputCls}
+            >
+              {SUBMITTER_OPTIONS.map((s) => (
+                <option key={s}>{s}</option>
+              ))}
+            </select>
 
-          {settings.whoCanSubmit === 'Specific people' && (
-            <div className="mt-2 space-y-2">
-              <select
-                value=""
-                onChange={(e) => { addInitiator(e.target.value); e.target.value = '' }}
-                className={inputCls}
-              >
-                <option value="">+ Add a person…</option>
-                {users
-                  .filter((u) => !allowedInitiators.includes(String(u._id)))
-                  .map((u) => (
-                    <option key={u._id} value={u._id}>
-                      {u.name}{u.department ? ` · ${u.department}` : ''}
-                    </option>
-                  ))}
-              </select>
-
-              {allowedInitiators.length === 0 ? (
-                <p className="text-[11px] text-warning-fg">Add at least one person.</p>
-              ) : (
+            {settings.whoCanSubmit === 'Specific roles' && (
+              <div className="mt-3">
+                <p className="text-[11px] text-fg-muted mb-2 font-medium">Select specific roles (e.g. Manager, VP, HR):</p>
                 <div className="flex flex-wrap gap-2">
-                  {allowedInitiators.map((id) => {
-                    const u = users.find((x) => String(x._id) === String(id))
+                  {tenantRoles.map((r) => {
+                    const on = (settings.visibleRoles || []).includes(r)
                     return (
-                      <span
-                        key={id}
-                        className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 text-xs rounded-md border border-info-line bg-info-subtle text-info-fg"
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => toggleRole(r)}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition flex items-center gap-1.5 ${
+                          on
+                            ? 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-500/40'
+                            : 'border-line bg-surface text-fg-muted hover:bg-surface-2'
+                        }`}
                       >
-                        {u ? u.name : 'Unknown user'}
-                        <button
-                          type="button"
-                          onClick={() => removeInitiator(id)}
-                          className="w-4 h-4 rounded hover:brightness-95 flex items-center justify-center text-info-fg"
-                          aria-label={`Remove ${u ? u.name : 'user'}`}
+                        <span
+                          className={`w-3.5 h-3.5 rounded-sm flex items-center justify-center ${
+                            on ? 'bg-indigo-600 text-white' : 'border border-line'
+                          }`}
                         >
-                          &times;
-                        </button>
-                      </span>
+                          {on && (
+                            <svg xmlns="http://www.w3.org/2000/svg" className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </span>
+                        {r}
+                      </button>
                     )
                   })}
                 </div>
-              )}
-            </div>
-          )}
-        </div>
-        <div>
-          <FieldLabel htmlFor="wf-sla-notify">SLA breach notify</FieldLabel>
-          <select
-            id="wf-sla-notify"
-            value={settings.notifyOnSlaBreach}
-            onChange={(e) => update({ notifyOnSlaBreach: e.target.value })}
-            className={inputCls}
-          >
-            {SLA_OPTIONS.map((s) => (
-              <option key={s}>{s}</option>
-            ))}
-          </select>
-        </div>
-        </div>
+                {(settings.visibleRoles || []).length === 0 && (
+                  <p className="mt-1.5 text-[11px] text-warning-fg">Select at least one role.</p>
+                )}
+              </div>
+            )}
 
-        <div>
-          <FieldLabel htmlFor="wf-visibility">Visibility</FieldLabel>
-          <select
-            id="wf-visibility"
-            value={settings.visibility}
-            onChange={(e) => {
-              const visibility = e.target.value
-              const needsSeed = visibility === 'departments' && !(settings.visibleDepartments || []).length
-              update(needsSeed ? { visibility, visibleDepartments: [...orgDepartments] } : { visibility })
-            }}
-            className={inputCls}
-          >
-            <option value="company">Company-wide (everyone)</option>
-            <option value="departments">Specific departments</option>
-            <option value="people">Specific people</option>
-          </select>
+            {settings.whoCanSubmit === 'Specific departments' && (
+              <div className="mt-3">
+                <p className="text-[11px] text-fg-muted mb-2 font-medium">Select departments that can access & submit:</p>
+                <div className="flex flex-wrap gap-2">
+                  {orgDepartments.map((d) => {
+                    const on = (settings.visibleDepartments || []).includes(d)
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => toggleDept(d)}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition flex items-center gap-1.5 ${
+                          on
+                            ? 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-500/40'
+                            : 'border-line bg-surface text-fg-muted hover:bg-surface-2'
+                        }`}
+                      >
+                        <span
+                          className={`w-3.5 h-3.5 rounded-sm flex items-center justify-center ${
+                            on ? 'bg-indigo-600 text-white' : 'border border-line'
+                          }`}
+                        >
+                          {on && (
+                            <svg xmlns="http://www.w3.org/2000/svg" className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </span>
+                        {d}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
-          {settings.visibility === 'departments' && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {orgDepartments.map((d) => {
-                const on = settings.visibleDepartments.includes(d)
-                return (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => toggleDept(d)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition flex items-center gap-1.5 ${
-                      on
-                        ? 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-500/40'
-                        : 'border-line bg-surface text-fg-muted hover:bg-surface-2'
-                    }`}
-                  >
-                    <span
-                      className={`w-3.5 h-3.5 rounded-sm flex items-center justify-center ${
-                        on ? 'bg-indigo-600 text-white' : 'border border-line'
-                      }`}
-                    >
-                      {on && (
-                        <svg xmlns="http://www.w3.org/2000/svg" className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </span>
-                    {d}
-                  </button>
-                )
-              })}
-            </div>
-          )}
+            {settings.whoCanSubmit === 'Specific people' && (
+              <div className="mt-3 space-y-2">
+                <p className="text-[11px] text-fg-muted mb-1 font-medium">Add specific employees by name:</p>
+                <select
+                  value=""
+                  onChange={(e) => { addInitiator(e.target.value); e.target.value = '' }}
+                  className={inputCls}
+                >
+                  <option value="">+ Add an employee…</option>
+                  {users
+                    .filter((u) => !allowedInitiators.includes(String(u._id)))
+                    .map((u) => (
+                      <option key={u._id} value={u._id}>
+                        {u.name}{u.department ? ` · ${u.department}` : ''}{u.role?.name ? ` (${u.role.name})` : ''}
+                      </option>
+                    ))}
+                </select>
 
-          {settings.visibility === 'people' && (
-            <div className="mt-3 space-y-2">
+                {allowedInitiators.length === 0 ? (
+                  <p className="text-[11px] text-warning-fg">Add at least one employee.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {allowedInitiators.map((id) => {
+                      const u = users.find((x) => String(x._id) === String(id))
+                      return (
+                        <span
+                          key={id}
+                          className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 text-xs rounded-md border border-info-line bg-info-subtle text-info-fg"
+                        >
+                          {u ? u.name : 'Unknown user'}
+                          <button
+                            type="button"
+                            onClick={() => removeInitiator(id)}
+                            className="w-4 h-4 rounded hover:brightness-95 flex items-center justify-center text-info-fg"
+                            aria-label={`Remove ${u ? u.name : 'user'}`}
+                          >
+                            &times;
+                          </button>
+                        </span>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <FieldLabel htmlFor="wf-sla-notify">SLA breach notify</FieldLabel>
+            <select
+              id="wf-sla-notify"
+              value={settings.notifyOnSlaBreach}
+              onChange={(e) => update({ notifyOnSlaBreach: e.target.value })}
+              className={inputCls}
+            >
+              {SLA_OPTIONS.map((s) => (
+                <option key={s}>{s}</option>
+              ))}
+            </select>
+
+            <div className="mt-5">
+              <FieldLabel htmlFor="wf-visibility">Visibility (Who can view)</FieldLabel>
               <select
-                value=""
+                id="wf-visibility"
+                value={settings.visibility}
                 onChange={(e) => {
-                  addVisiblePerson(e.target.value)
-                  e.target.value = ''
+                  const visibility = e.target.value
+                  const needsSeed = visibility === 'departments' && !(settings.visibleDepartments || []).length
+                  const needsSeedRoles = visibility === 'roles' && !(settings.visibleRoles || []).length
+                  let patch = { visibility }
+                  if (needsSeed) patch.visibleDepartments = [...orgDepartments]
+                  if (needsSeedRoles) patch.visibleRoles = ['Manager', 'VP']
+                  update(patch)
                 }}
                 className={inputCls}
               >
-                <option value="">+ Add a person…</option>
-                {users
-                  .filter((u) => !visibleTo.includes(String(u._id)))
-                  .map((u) => (
-                    <option key={u._id} value={u._id}>
-                      {u.name}
-                      {u.department ? ` · ${u.department}` : ''}
-                    </option>
-                  ))}
+                <option value="company">Company-wide (Everyone)</option>
+                <option value="roles">Specific roles only</option>
+                <option value="departments">Specific departments only</option>
+                <option value="people">Specific people only</option>
               </select>
 
-              {visibleTo.length === 0 ? (
-                <p className="text-[11px] text-warning-fg">Add at least one person.</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {visibleTo.map((id) => {
-                    const u = users.find((x) => String(x._id) === String(id))
+              {settings.visibility === 'roles' && settings.whoCanSubmit !== 'Specific roles' && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {tenantRoles.map((r) => {
+                    const on = (settings.visibleRoles || []).includes(r)
                     return (
-                      <span
-                        key={id}
-                        className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 text-xs rounded-lg border border-info-line bg-info-subtle text-info-fg"
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => toggleRole(r)}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition flex items-center gap-1.5 ${
+                          on
+                            ? 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-500/40'
+                            : 'border-line bg-surface text-fg-muted hover:bg-surface-2'
+                        }`}
                       >
-                        {u ? u.name : 'Unknown user'}
-                        <button
-                          type="button"
-                          onClick={() => removeVisiblePerson(id)}
-                          className="w-4 h-4 rounded hover:brightness-95 flex items-center justify-center text-info-fg"
-                          aria-label="Remove person"
-                        >
-                          &times;
-                        </button>
-                      </span>
+                        {r}
+                      </button>
                     )
                   })}
                 </div>
               )}
+
+              {settings.visibility === 'departments' && settings.whoCanSubmit !== 'Specific departments' && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {orgDepartments.map((d) => {
+                    const on = (settings.visibleDepartments || []).includes(d)
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => toggleDept(d)}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition flex items-center gap-1.5 ${
+                          on
+                            ? 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-500/40'
+                            : 'border-line bg-surface text-fg-muted hover:bg-surface-2'
+                        }`}
+                      >
+                        {d}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+
+              {settings.visibility === 'people' && settings.whoCanSubmit !== 'Specific people' && (
+                <div className="mt-3 space-y-2">
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      addVisiblePerson(e.target.value)
+                      e.target.value = ''
+                    }}
+                    className={inputCls}
+                  >
+                    <option value="">+ Add a person…</option>
+                    {users
+                      .filter((u) => !visibleTo.includes(String(u._id)))
+                      .map((u) => (
+                        <option key={u._id} value={u._id}>
+                          {u.name}{u.department ? ` · ${u.department}` : ''}
+                        </option>
+                      ))}
+                  </select>
+
+                  <div className="flex flex-wrap gap-2">
+                    {visibleTo.map((id) => {
+                      const u = users.find((x) => String(x._id) === String(id))
+                      return (
+                        <span
+                          key={id}
+                          className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 text-xs rounded-lg border border-info-line bg-info-subtle text-info-fg"
+                        >
+                          {u ? u.name : 'Unknown user'}
+                          <button
+                            type="button"
+                            onClick={() => removeVisiblePerson(id)}
+                            className="w-4 h-4 rounded hover:brightness-95 flex items-center justify-center text-info-fg"
+                          >
+                            &times;
+                          </button>
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </Section>
 
@@ -1643,343 +1972,35 @@ function Step3Settings({ data, setData, forms, editId }) {
         </div>
       </Section>
 
-      {isAiModalOpen && (() => {
-        const FIELD_TYPES = ['text','number','date','dropdown','radio','textarea','checkbox','file','email','phone']
-
-        const handleDeleteField = (idx) => {
-          const removed = aiDraft.fields[idx]
-          setAiDraft(prev => ({ ...prev, fields: prev.fields.filter((_, i) => i !== idx) }))
-          if (editingIndex === idx) { setEditingIndex(null); setEditDraft({}) }
-          // undo toast
-          const toastId = toast(
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-fg">Field <strong>{removed.label}</strong> removed.</span>
-              <button
-                className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 underline whitespace-nowrap"
-                onClick={() => {
-                  setAiDraft(prev => ({
-                    ...prev,
-                    fields: [...prev.fields.slice(0, idx), removed, ...prev.fields.slice(idx)]
-                  }))
-                  toast.dismiss(toastId)
-                }}
-              >Undo</button>
-            </div>,
-            { duration: 5000 }
-          )
-        }
-
-        const handleStartEdit = (idx) => {
-          setEditingIndex(idx)
-          setEditDraft({ ...aiDraft.fields[idx] })
-          setAddingNew(false)
-        }
-
-        const handleSaveEdit = (idx) => {
-          if (!editDraft.label?.trim()) return
-          setAiDraft(prev => ({
-            ...prev,
-            fields: prev.fields.map((f, i) => i === idx ? { ...f, ...editDraft } : f)
-          }))
-          setEditingIndex(null)
-          setEditDraft({})
-        }
-
-        const handleAddField = () => {
-          if (!newField.label?.trim()) return
-          const maxP = Math.max(1, ...(aiDraft?.fields || []).map(f => f.page || 1))
-          setAiDraft(prev => ({ ...prev, fields: [...(prev.fields || []), { ...newField, page: maxP, id: `f_${Date.now()}` }] }))
-          setNewField({ label: '', type: 'text', required: false })
-          setAddingNew(false)
-          setAiPreviewActivePage(maxP)
-        }
-
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="bg-surface border border-line rounded-lg shadow-xl w-full max-w-xl flex flex-col max-h-[90vh]">
-
-              {/* ── Header ── */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-line flex-shrink-0">
-                <div className="flex items-center gap-1.5 text-sm">
-                  <span className="font-semibold text-fg text-base">AI Form Generator</span>
-                  {aiDraft && (
-                    <>
-                      <svg className="w-3.5 h-3.5 text-fg-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-                      <span className="text-fg-muted font-medium">Preview</span>
-                    </>
-                  )}
-                </div>
-                <button onClick={() => { setIsAiModalOpen(false); setEditingIndex(null); setAddingNew(false) }} className="text-fg-muted hover:text-fg transition-colors rounded-md p-1 hover:bg-surface-2">
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
-              </div>
-
-              {/* ── Body ── */}
-              <div className="p-6 overflow-y-auto flex-1">
-                {!aiDraft ? (
-                  /* ── PROMPT SCREEN ── */
-                  <>
-                    <div className="flex border-b border-line mb-4">
-                      <button
-                        onClick={() => setAiModalTab('auto')}
-                        className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${aiModalTab === 'auto' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-fg-muted hover:text-fg'}`}
-                      >Auto-Generate (Fast)</button>
-                      <button
-                        onClick={() => setAiModalTab('custom')}
-                        className={`ml-6 pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${aiModalTab === 'custom' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-fg-muted hover:text-fg'}`}
-                      >Custom Prompt</button>
-                    </div>
-                    {aiModalTab === 'auto' ? (
-                      <p className="text-sm text-fg-muted mb-4">
-                        The AI will automatically generate a form based on the workflow name:<br />
-                        <strong className="text-fg">{settings.name || '(No name set)'}</strong>
-                      </p>
-                    ) : (
-                      <div className="mb-4">
-                        <label className="block text-sm font-medium text-fg mb-1">Detailed Requirements</label>
-                        <textarea
-                          value={aiPrompt}
-                          onChange={(e) => setAiPrompt(e.target.value)}
-                          placeholder="e.g., Create a KYC form with Aadhar Number, Full Name, and a grid for address history..."
-                          className="w-full h-32 px-3 py-2 text-sm bg-surface border border-line rounded-md focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none resize-none text-fg"
-                        />
-                      </div>
-                    )}
-                    <div className="flex justify-end gap-3 mt-6">
-                      <button onClick={() => setIsAiModalOpen(false)} className="px-4 py-2 text-sm font-medium text-fg-muted hover:text-fg">Cancel</button>
-                      <button
-                        onClick={handleGeneratePreview}
-                        disabled={isGeneratingForm || (aiModalTab === 'custom' && !aiPrompt.trim())}
-                        className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md disabled:opacity-50 flex items-center gap-2 transition-colors"
-                      >
-                        {isGeneratingForm && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>}
-                        Generate Preview
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  /* ── EDITABLE PREVIEW SCREEN ── */
-                  <>
-                    {/* Form title + subtitle */}
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h4 className="font-semibold text-fg text-base leading-tight">{aiDraft.title}</h4>
-                        {aiDraft.description && <p className="text-xs text-fg-muted mt-0.5">Generated fields preview <span className="text-indigo-500 font-medium">(Editable)</span></p>}
-                      </div>
-                      {/* + Add Field button */}
-                      <button
-                        onClick={() => { 
-                          setAddingNew(true); 
-                          setEditingIndex(null);
-                          const maxP = Math.max(1, ...(aiDraft?.fields || []).map(f => f.page || 1))
-                          setAiPreviewActivePage(maxP)
-                        }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 border border-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950 rounded-full transition-colors whitespace-nowrap ml-4 flex-shrink-0"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
-                        Add Field
-                      </button>
-                    </div>
-
-                    {/* Fields list */}
-                    {(() => {
-                      const totalAiPages = Math.max(1, ...(aiDraft.fields || []).map(f => f.page || 1))
-                      const pageFields = (aiDraft.fields || []).map((f, i) => ({ ...f, originalIndex: i })).filter(f => (f.page || 1) === aiPreviewActivePage)
-
-                      return (
-                        <>
-                          {totalAiPages > 1 && (
-                            <div className="flex px-4 border-b border-line mb-3 overflow-x-auto no-scrollbar gap-4">
-                              {Array.from({ length: totalAiPages }, (_, i) => i + 1).map(p => (
-                                <button
-                                  key={p}
-                                  onClick={() => { setAiPreviewActivePage(p); setEditingIndex(null) }}
-                                  className={`py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                                    aiPreviewActivePage === p
-                                      ? 'border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-300'
-                                      : 'border-transparent text-fg-muted hover:text-fg hover:border-line'
-                                  }`}
-                                >
-                                  Page {p}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                          <div className="border border-line rounded-lg overflow-hidden max-h-[42vh] overflow-y-auto">
-                            {pageFields.length === 0 && !addingNew ? (
-                              <div className="p-6 text-sm text-fg-muted italic text-center">No fields on this page. Click <strong>+ Add Field</strong> to add one.</div>
-                            ) : (
-                              <div className="divide-y divide-line">
-                                {pageFields.map((f) => {
-                                  const i = f.originalIndex
-                                  return (
-                                    <div key={i}>
-                                      {/* Field row */}
-                                      <div className={`px-4 py-3 flex items-center justify-between group transition-colors ${editingIndex === i ? 'bg-indigo-50 dark:bg-indigo-950/40' : 'hover:bg-surface-2'}`}>
-                                        <div className="flex items-center gap-2 min-w-0">
-                                          <span className="font-medium text-sm text-fg truncate">{f.label}</span>
-                                          {f.required && <span className="text-red-500 text-xs font-bold flex-shrink-0">*</span>}
-                                        </div>
-                                        <div className="flex items-center gap-2 flex-shrink-0 ml-3">
-                                          <span className="text-xs px-2 py-0.5 bg-surface-2 rounded-full text-fg-muted border border-line capitalize font-medium">{f.type}</span>
-                                          {/* Edit button */}
-                                          <button
-                                            onClick={() => editingIndex === i ? (setEditingIndex(null), setEditDraft({})) : handleStartEdit(i)}
-                                            title="Edit field"
-                                            className={`p-1.5 rounded-md transition-colors ${
-                                              editingIndex === i
-                                                ? 'text-indigo-600 bg-indigo-100 dark:bg-indigo-900'
-                                                : 'text-fg-muted hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950 opacity-0 group-hover:opacity-100'
-                                            }`}
-                                          >
-                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                                          </button>
-                                          {/* Delete button */}
-                                          <button
-                                            onClick={() => handleDeleteField(i)}
-                                            title="Delete field"
-                                            className="p-1.5 rounded-md text-fg-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950 transition-colors opacity-0 group-hover:opacity-100"
-                                          >
-                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                          </button>
-                                        </div>
-                                      </div>
-
-                                      {/* Inline Edit Expand */}
-                                      {editingIndex === i && (
-                                        <div className="px-4 py-4 bg-indigo-50/60 dark:bg-indigo-950/30 border-t border-indigo-100 dark:border-indigo-900">
-                                          <div className="grid grid-cols-2 gap-3 mb-3">
-                                            <div>
-                                              <label className="block text-xs font-medium text-fg-muted mb-1">Label</label>
-                                              <input
-                                                autoFocus
-                                                value={editDraft.label || ''}
-                                                onChange={e => setEditDraft(d => ({ ...d, label: e.target.value }))}
-                                                className="w-full px-2.5 py-1.5 text-sm bg-surface border border-line rounded-md focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none text-fg"
-                                                placeholder="Field label"
-                                              />
-                                            </div>
-                                            <div>
-                                              <label className="block text-xs font-medium text-fg-muted mb-1">Type</label>
-                                              <select
-                                                value={editDraft.type || 'text'}
-                                                onChange={e => setEditDraft(d => ({ ...d, type: e.target.value }))}
-                                                className="w-full px-2.5 py-1.5 text-sm bg-surface border border-line rounded-md focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none text-fg capitalize"
-                                              >
-                                                {FIELD_TYPES.map(t => <option key={t} value={t} className="capitalize">{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
-                                              </select>
-                                            </div>
-                                          </div>
-                                          <div className="flex items-center justify-between">
-                                            <label className="flex items-center gap-2 cursor-pointer select-none">
-                                              <input
-                                                type="checkbox"
-                                                checked={!!editDraft.required}
-                                                onChange={e => setEditDraft(d => ({ ...d, required: e.target.checked }))}
-                                                className="w-3.5 h-3.5 rounded accent-indigo-600"
-                                              />
-                                              <span className="text-xs text-fg-muted font-medium">Required</span>
-                                            </label>
-                                            <div className="flex gap-2">
-                                              <button
-                                                onClick={() => { setEditingIndex(null); setEditDraft({}) }}
-                                                className="px-3 py-1 text-xs font-medium text-fg-muted border border-line rounded-md hover:bg-surface-2 transition-colors"
-                                              >Cancel</button>
-                                              <button
-                                                onClick={() => handleSaveEdit(i)}
-                                                disabled={!editDraft.label?.trim()}
-                                                className="px-3 py-1 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-md disabled:opacity-40 transition-colors"
-                                              >Save</button>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )
-                                })}
-
-                          {/* Add Field inline form */}
-                          {addingNew && (
-                            <div className="px-4 py-4 bg-green-50/60 dark:bg-green-950/20 border-t border-green-100 dark:border-green-900">
-                              <p className="text-xs font-semibold text-green-700 dark:text-green-400 mb-3">New Field</p>
-                              <div className="grid grid-cols-2 gap-3 mb-3">
-                                <div>
-                                  <label className="block text-xs font-medium text-fg-muted mb-1">Label</label>
-                                  <input
-                                    autoFocus
-                                    value={newField.label}
-                                    onChange={e => setNewField(f => ({ ...f, label: e.target.value }))}
-                                    className="w-full px-2.5 py-1.5 text-sm bg-surface border border-line rounded-md focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none text-fg"
-                                    placeholder="e.g. Invoice Number"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-fg-muted mb-1">Type</label>
-                                  <select
-                                    value={newField.type}
-                                    onChange={e => setNewField(f => ({ ...f, type: e.target.value }))}
-                                    className="w-full px-2.5 py-1.5 text-sm bg-surface border border-line rounded-md focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none text-fg"
-                                  >
-                                    {FIELD_TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
-                                  </select>
-                                </div>
-                              </div>
-                              <div className="flex items-center justify-between">
-                                <label className="flex items-center gap-2 cursor-pointer select-none">
-                                  <input
-                                    type="checkbox"
-                                    checked={newField.required}
-                                    onChange={e => setNewField(f => ({ ...f, required: e.target.checked }))}
-                                    className="w-3.5 h-3.5 rounded accent-green-600"
-                                  />
-                                  <span className="text-xs text-fg-muted font-medium">Required</span>
-                                </label>
-                                <div className="flex gap-2">
-                                  <button
-                                    onClick={() => { setAddingNew(false); setNewField({ label: '', type: 'text', required: false }) }}
-                                    className="px-3 py-1 text-xs font-medium text-fg-muted border border-line rounded-md hover:bg-surface-2 transition-colors"
-                                  >Cancel</button>
-                                  <button
-                                    onClick={handleAddField}
-                                    disabled={!newField.label.trim()}
-                                    className="px-3 py-1 text-xs font-semibold text-white bg-green-600 hover:bg-green-700 rounded-md disabled:opacity-40 transition-colors"
-                                  >Add</button>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )
-              })()}
-
-                    {/* Footer actions */}
-                    <div className="flex justify-between items-center mt-5 pt-4 border-t border-line">
-                      <button
-                        onClick={() => { setAiDraft(null); setEditingIndex(null); setAddingNew(false) }}
-                        disabled={isGeneratingForm}
-                        className="px-4 py-2 text-sm font-medium text-fg border border-line hover:bg-surface-2 rounded-md transition-colors"
-                      >
-                        Back to Prompt
-                      </button>
-                      <button
-                        onClick={handleApproveAndPublish}
-                        disabled={isGeneratingForm || (aiDraft.fields || []).length === 0}
-                        className="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md disabled:opacity-50 flex items-center gap-2 transition-colors"
-                      >
-                        {isGeneratingForm && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>}
-                        Approve & Publish
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        )
-      })()}
+      <AiFormGeneratorModal
+        open={aiFormModalOpen}
+        onClose={() => setAiFormModalOpen(false)}
+        workflowName={settings.name}
+        onApprove={async (fields) => {
+          try {
+            const form = await formsStore.add({
+              name: settings.name || 'AI Generated Form',
+              description: 'Auto-generated form for workflow',
+              category: settings.category || 'Company-wide',
+              fields: fields
+            })
+            await formsStore.publish(form.id)
+            
+            const linkedIds = settings.linkedFormIds?.length
+                ? settings.linkedFormIds.map(String)
+                : (settings.linkedFormId ? [String(settings.linkedFormId)] : [])
+            const nextIds = [...linkedIds]
+            if (!nextIds.includes(String(form.id))) {
+              nextIds.push(String(form.id))
+            }
+            update({ linkedFormIds: nextIds, linkedFormId: nextIds[0] || null })
+            setAiFormModalOpen(false)
+            toast.success('Form generated and published!')
+          } catch (err) {
+            toast.error(err.message || 'Failed to generate form')
+          }
+        }}
+      />
     </div>
   )
 }
@@ -2204,7 +2225,7 @@ function NewWorkflow() {
   const forms = useForms()
   const orgDepartments = useDepartmentNames()
   // Read once, before any state initialiser looks at it.
-  const [restoredDraft] = useState(() => isEditMode ? null : readDraft())
+  const restoredDraft = useRef(isEditMode ? null : readDraft()).current
   // Edit mode starts at the canvas (step 2); create mode starts at template picker (step 1).
   // After publishing with inbound webhook, we reopen settings so the URL is copyable.
   const [step, setStep] = useState(
@@ -2223,7 +2244,6 @@ function NewWorkflow() {
 
   // --- AI Builder State ---
   const [aiAvailable, setAiAvailable] = useState(false)
-  // eslint-disable-next-line no-unused-vars
   const [aiStatusReady, setAiStatusReady] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
   const [aiBusy, setAiBusy] = useState(false)
@@ -2231,6 +2251,11 @@ function NewWorkflow() {
   const [aiSuggestion, setAiSuggestion] = useState('')
   const [showAiPanel, setShowAiPanel] = useState(false)
   const aiInputRef = useRef(null)
+
+  // UX Enhancements
+  const [renameModalOpen, setRenameModalOpen] = useState(false)
+  const [renameModalContext, setRenameModalContext] = useState(null) // 'rename' | 'publish'
+  const [renameInput, setRenameInput] = useState('')
 
   useEffect(() => {
     api.get('/api/workflows/ai-status')
@@ -2245,9 +2270,7 @@ function NewWorkflow() {
   }, [])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (location.state?.openSettings) setStep(3)
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (location.state?.publishSuccess) setPublishSuccess(location.state.publishSuccess)
   }, [location.state])
 
@@ -2263,11 +2286,13 @@ function NewWorkflow() {
         name: '',
         description: '',
         category: '',
+        tags: '',
         linkedFormId: null,
         linkedFormIds: [],
         triggerOn: 'Every form submission',
         preventDuplicates: true,
         whoCanSubmit: 'All employees',
+        visibleRoles: [],
         // Filled from the tenant's list the first time visibility is set to
         // 'departments' — there is no list to copy from at this point.
         visibleDepartments: [],
@@ -2376,7 +2401,7 @@ function NewWorkflow() {
             name: workflow.title || '',
             description: workflow.description || '',
             category: workflow.department || d.settings.category,
-            tags: workflow.tags || [],
+            tags: workflow.tags || (Array.isArray(workflow.tags) ? workflow.tags.join(' ') : '') || '',
             linkedFormIds: (() => {
               if (Array.isArray(workflow.linkedFormIds) && workflow.linkedFormIds.length) {
                 return workflow.linkedFormIds.map(String)
@@ -2388,15 +2413,18 @@ function NewWorkflow() {
               : (workflow.linkedFormIds?.[0] ? String(workflow.linkedFormIds[0]) : null),
             whoCanSubmit: SUBMITTER_OPTIONS.includes(workflow.access?.whoCanSubmit)
               ? workflow.access.whoCanSubmit
-              : d.settings.whoCanSubmit,
+              : (workflow.access?.roles?.length ? 'Specific roles' : workflow.access?.departments?.length ? 'Specific departments' : workflow.access?.allowedInitiators?.length ? 'Specific people' : d.settings.whoCanSubmit),
+            visibleRoles: Array.isArray(workflow.access?.roles)
+              ? workflow.access.roles
+              : [],
             visibleDepartments: workflow.access?.departments?.length
               ? workflow.access.departments
               : d.settings.visibleDepartments,
-            allowedInitiators: (workflow.access?.allowedInitiators || []).map((x) => String(x)),
+            allowedInitiators: (workflow.access?.allowedInitiators || []).map((x) => String(x?._id || x)),
             visibility:
               workflow.access?.visibility ||
-              (workflow.access?.departments?.length ? 'departments' : 'company'),
-            visibleTo: (workflow.access?.visibleTo || []).map((x) => String(x)),
+              (workflow.access?.roles?.length ? 'roles' : workflow.access?.departments?.length ? 'departments' : (workflow.access?.visibleTo?.length ? 'people' : 'company')),
+            visibleTo: (workflow.access?.visibleTo || []).map((x) => String(x?._id || x)),
             triggerOn: TRIGGER_OPTIONS.includes(workflow.triggerOn)
               ? workflow.triggerOn
               : d.settings.triggerOn,
@@ -2406,7 +2434,6 @@ function NewWorkflow() {
               enabled: workflow.inboundWebhook?.enabled === true,
               token: workflow.inboundWebhook?.token || '',
               secret: workflow.inboundWebhook?.secret || '',
-              requireSignature: workflow.inboundWebhook?.requireSignature !== false,
               callbackUrl: workflow.inboundWebhook?.callbackUrl || '',
               expectedFields: Array.isArray(workflow.inboundWebhook?.expectedFields)
                 ? workflow.inboundWebhook.expectedFields.map((f) => ({
@@ -2476,7 +2503,6 @@ function NewWorkflow() {
   useEffect(() => {
     const snapshot = JSON.stringify({ step, data })
     if (pristineRef.current === null) {
-      // eslint-disable-next-line react-hooks/immutability
       pristineRef.current = snapshot
       return
     }
@@ -2505,17 +2531,8 @@ function NewWorkflow() {
     return {
       name: settings.name.trim(),
       description: settings.description,
-      department: settings.category,
-      tags: (() => {
-        const currentTags = [...(settings.tags || [])]
-        if (settings.tagInput) {
-          const parts = settings.tagInput.split(',').map(t => t.trim().replace(/^#/, '')).filter(Boolean)
-          for (const p of parts) {
-            if (!currentTags.includes(p)) currentTags.push(p)
-          }
-        }
-        return currentTags
-      })(),
+      category: settings.category,
+      tags: settings.tags || '',
       linkedFormIds: (() => {
         const ids = settings.linkedFormIds?.length
           ? settings.linkedFormIds
@@ -2533,20 +2550,26 @@ function NewWorkflow() {
         allowedInitiators:
           settings.whoCanSubmit === 'Specific people'
             ? settings.allowedInitiators || []
-            : [],
+            : (settings.visibility === 'people' ? settings.visibleTo || [] : []),
         visibility: settings.visibility,
-        // departments only apply in 'departments' mode; an empty list there means
-        // "no restriction", which is also what selecting every team amounts to.
         departments:
-          settings.visibility !== 'departments' ? [] : (settings.visibleDepartments || []),
-        visibleTo: settings.visibility === 'people' ? settings.visibleTo || [] : [],
+          settings.visibility === 'departments'
+            ? settings.visibleDepartments || []
+            : (settings.whoCanSubmit === 'Specific departments' ? settings.visibleDepartments || [] : []),
+        visibleTo:
+          settings.visibility === 'people'
+            ? settings.visibleTo || []
+            : (settings.whoCanSubmit === 'Specific people' ? settings.allowedInitiators || [] : []),
+        roles:
+          settings.visibility === 'roles'
+            ? settings.visibleRoles || []
+            : (settings.whoCanSubmit === 'Specific roles' ? settings.visibleRoles || [] : []),
       },
       triggerOn: settings.triggerOn,
       preventDuplicates: settings.preventDuplicates === true,
       notifyOnSlaBreach: settings.notifyOnSlaBreach,
       inboundWebhook: {
         enabled: settings.inboundWebhook?.enabled === true,
-        requireSignature: settings.inboundWebhook?.requireSignature !== false,
         callbackUrl: settings.inboundWebhook?.callbackUrl || '',
         expectedFields: Array.isArray(settings.inboundWebhook?.expectedFields)
           ? settings.inboundWebhook.expectedFields
@@ -2566,8 +2589,9 @@ function NewWorkflow() {
   // "Untitled workflow", leaving lists full of identical entries.
   const requireName = () => {
     if (data.settings.name.trim()) return true
-    toast.error('Give the workflow a name before saving')
-    setStep(3)
+    setRenameInput('')
+    setRenameModalContext('rename') // or fallback to rename if they just clicked save draft
+    setRenameModalOpen(true)
     return false
   }
 
@@ -2606,7 +2630,12 @@ function NewWorkflow() {
 
   const handlePublish = async () => {
     setPublishError('')
-    if (!requireName()) return
+    if (!data.settings.name.trim()) {
+      setRenameInput('')
+      setRenameModalContext('publish')
+      setRenameModalOpen(true)
+      return
+    }
     const issues = graphIssues(data.nodes, data.connections)
     if (issues.length) {
       const msg = `Can't publish yet — ${issues[0].message}${issues.length > 1 ? ` (+${issues.length - 1} more)` : ''}`
@@ -2640,6 +2669,14 @@ function NewWorkflow() {
       }
       const savedId = saved?.id
       const wh = saved?.inboundWebhook || saved?._raw?.inboundWebhook
+      if (payload.tags) {
+        try {
+          const map = JSON.parse(localStorage.getItem('netflow_wf_tags') || '{}')
+          if (savedId) map[savedId] = payload.tags
+          if (payload.name) map[payload.name] = payload.tags
+          localStorage.setItem('netflow_wf_tags', JSON.stringify(map))
+        } catch (e) {}
+      }
       draftStore.clear()
       setDraftNotice(false)
 
@@ -2706,140 +2743,328 @@ function NewWorkflow() {
 
   const builderFullscreen = step === 2
 
+  const stepNames = [
+    'Choose template',
+    'Build workflow',
+    'Settings & triggers',
+    'Review & publish',
+  ]
+
+  const openRenameModal = () => {
+    setRenameInput(data.settings.name || '')
+    setRenameModalContext('rename')
+    setRenameModalOpen(true)
+  }
+
+  const handleRenameSave = () => {
+    const newName = renameInput.trim()
+    if (!newName) {
+      toast.error('Workflow name cannot be empty')
+      return
+    }
+    setData((d) => ({ ...d, settings: { ...d.settings, name: newName } }))
+    setRenameModalOpen(false)
+    if (renameModalContext === 'publish') {
+      // Need a small timeout to let React batch state updates before we trigger the publish
+      setTimeout(() => {
+        handlePublish()
+      }, 50)
+    }
+  }
+
+  const [isStudioFullscreen, setIsStudioFullscreen] = useState(false)
+
+  useEffect(() => {
+    const onFsChange = () => {
+      setIsStudioFullscreen(!!document.fullscreenElement)
+    }
+    document.addEventListener('fullscreenchange', onFsChange)
+    return () => document.removeEventListener('fullscreenchange', onFsChange)
+  }, [])
+
+  const toggleFullscreen = () => {
+    if (!isStudioFullscreen && !document.fullscreenElement) {
+      setIsStudioFullscreen(true)
+      document.documentElement.requestFullscreen().catch(() => {})
+    } else {
+      setIsStudioFullscreen(false)
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {})
+      }
+    }
+  }
+
+  const stepperHeader = (
+    <div className="shrink-0 px-6 py-2.5 bg-[#e2e8f0] dark:bg-[#0b1120] border-b border-slate-200/60 dark:border-slate-800/60">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-full py-1.5 px-4 sm:px-6 shadow-xs flex items-center justify-center max-w-3xl mx-auto gap-2 sm:gap-4 overflow-x-auto thin-scrollbar">
+        {stepNames.map((name, index) => {
+          const stepNum = index + 1
+          const isActive = step === stepNum
+          const isPast = step > stepNum
+
+          return (
+            <React.Fragment key={stepNum}>
+              <button
+                type="button"
+                onClick={() => setStep(stepNum)}
+                className={`flex items-center gap-2 transition cursor-pointer text-xs shrink-0 ${
+                  isActive
+                    ? 'px-4 py-1.5 rounded-full bg-[#4F46E5] text-white font-bold shadow-xs shadow-indigo-500/20'
+                    : isPast
+                    ? 'text-slate-700 dark:text-slate-200 font-semibold hover:text-[#4F46E5]'
+                    : 'text-slate-400 dark:text-slate-500 font-semibold hover:text-slate-600 dark:hover:text-slate-300'
+                }`}
+              >
+                <span
+                  className={`w-5 h-5 rounded-full text-[11px] flex items-center justify-center font-bold shrink-0 ${
+                    isActive
+                      ? 'bg-white/20 text-white'
+                      : isPast
+                      ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500'
+                  }`}
+                >
+                  {isPast ? '✓' : stepNum}
+                </span>
+                <span className="whitespace-nowrap">{name}</span>
+              </button>
+
+              {index < stepNames.length - 1 && (
+                <span className="w-4 sm:w-6 h-px bg-slate-200 dark:bg-slate-700 shrink-0" />
+              )}
+            </React.Fragment>
+          )
+        })}
+      </div>
+    </div>
+  )
+
   return (
-    <div className="h-dvh flex flex-col bg-surface-2 text-fg overflow-hidden">
-      <main
-        data-tour="workflow-builder-main"
-        className={
-          builderFullscreen
-            ? 'flex-1 min-h-0 flex flex-col overflow-hidden'
-            : 'flex-1 min-h-0 p-6 overflow-y-auto'
-        }
-      >
-        {draftNotice && (
-          <div className={`mb-4 shrink-0 ${builderFullscreen ? 'px-4 pt-3' : 'max-w-3xl mx-auto'}`}>
-            <AlertBanner
-              tone="info"
-              onRetry={async () => {
-                const ok = await confirm({
-                  title: 'Start over?',
-                  message: 'Your restored draft will be thrown away and the builder resets to a blank workflow.',
-                  confirmLabel: 'Start fresh',
-                  danger: true,
-                })
-                if (!ok) return
-                draftStore.clear()
-                setDraftNotice(false)
-                navigate(0)
-              }}
-              retryLabel="Start fresh"
-            >
-              Picked up where you left off — this is an unsaved draft from your last visit.
-            </AlertBanner>
-          </div>
-        )}
-        {isLive && (
-          <div className={`mb-4 shrink-0 ${builderFullscreen ? 'px-4 pt-3' : 'max-w-3xl mx-auto'}`}>
-            <AlertBanner tone="warning">
-              This workflow is live. Saving applies your changes to new submissions straight away;
-              runs already in progress keep the steps they started with.
-            </AlertBanner>
-          </div>
-        )}
-        {step === 1 && !isEditMode && (
-          <Step1Template
-            selected={data.template}
-            onSelect={applyTemplate}
-            aiAvailable={aiAvailable}
-            aiPrompt={aiPrompt}
-            onAiPromptChange={onAiPromptChange}
-            onAiKeyDown={onAiKeyDown}
-            aiSuggestion={aiSuggestion}
-            aiBusy={aiBusy}
-            generateWithAI={generateWithAI}
-            aiError={aiError}
-            showAiPanel={showAiPanel}
-            setShowAiPanel={setShowAiPanel}
-            aiInputRef={aiInputRef}
-          />
-        )}
-        {step === 2 && <Step2Builder data={data} setData={setData} fitKey={canvasFitKey} />}
-        {step === 3 && <Step3Settings data={data} setData={setData} forms={forms} editId={editId} />}
-        {step === 4 && (
-          <>
-            <Step4Review data={data} forms={forms} />
-            {publishError && (
-              <div className="max-w-3xl mx-auto mt-3 p-3 rounded-md bg-danger-subtle border border-danger-line text-danger-fg text-sm">
-                {publishError}
-              </div>
-            )}
-          </>
-        )}
-
-      </main>
-
-      <footer data-tour="workflow-builder-actions" className="h-16 shrink-0 bg-surface border-t border-line px-6 flex items-center justify-end">
-        <div className="flex items-center gap-2">
-          {step > 1 && (
+    <AppShell
+      title="Workflows"
+      fullscreen={isStudioFullscreen}
+      mainClass="p-0 flex flex-col flex-1 min-h-0 bg-[#e2e8f0] dark:bg-[#0b1120] overflow-hidden"
+    >
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        {/* Top Workflow Builder Bar (Matching exact UI) */}
+        <div className="shrink-0 bg-white dark:bg-slate-900 border-b border-slate-200/80 dark:border-slate-800 px-6 py-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-5">
             <button
+              type="button"
+              onClick={() => navigate('/workflows')}
+              className="text-xs font-bold text-[#4F46E5] dark:text-indigo-400 hover:text-indigo-700 flex items-center gap-1.5 transition cursor-pointer"
+            >
+              ← Back to workflows
+            </button>
+            <div className="h-6 w-px bg-slate-200/80 dark:border-slate-800" />
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-sm sm:text-[15px] font-bold text-slate-800 dark:text-slate-100">
+                  {data.settings.name || 'Untitled workflow'}
+                </h1>
+                <button
+                  type="button"
+                  onClick={openRenameModal}
+                  className="text-slate-400 hover:text-indigo-600 transition cursor-pointer p-0.5"
+                  title="Edit workflow name"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                </button>
+              </div>
+              <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
+                Design an approval flow in four quick steps.
+              </p>
+            </div>
+          </div>
+
+          {/* Top Right Badges & Controls */}
+          <div className="flex items-center gap-2.5 shrink-0">
+            <button
+              type="button"
               onClick={() => {
-                if (step === 2 && isEditMode) {
-                  handleDiscard();
+                const d = readDraft()
+                if (d?.data) {
+                  setData(d.data)
+                  if (d.step) setStep(d.step)
+                  toast.success('Draft restored')
                 } else {
-                  setStep((s) => s - 1);
+                  toast.info('No earlier draft found')
                 }
               }}
-              className="px-4 py-2 rounded-md border border-line hover:bg-surface-2 text-sm font-medium text-fg transition flex items-center gap-1.5"
+              className="px-3.5 py-1.5 rounded-xl border border-slate-200/90 dark:border-slate-700 bg-slate-50/80 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              title="Resume draft"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              <svg className="w-3.5 h-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              Back
+              <span>Resume</span>
             </button>
-          )}
-          <button
-            onClick={handleDiscard}
-            className="px-4 py-2 rounded-md border border-line hover:bg-surface-2 text-sm font-medium text-fg transition flex items-center gap-1.5"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-            Discard
-          </button>
-          <button
-            onClick={handleSaveDraft}
-            disabled={savingDraft || publishing}
-            className="px-4 py-2 rounded-md border border-line hover:bg-surface-2 disabled:opacity-60 disabled:cursor-not-allowed text-sm font-medium text-fg transition flex items-center gap-1.5"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1-4l-3 3-3-3m3 3V3" />
-            </svg>
-            {savingDraft ? 'Saving…' : isLive ? 'Save changes' : 'Save draft'}
-          </button>
-          {step < 4 ? (
-            <button
-              onClick={() => setStep((s) => s + 1)}
-              className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium shadow-sm transition flex items-center gap-1.5"
-            >
-              Continue
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          ) : (
-            <button
-              onClick={handlePublish}
-              disabled={publishing}
-              className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium shadow-sm transition flex items-center gap-1.5"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-              {publishing ? 'Publishing…' : isEditMode ? 'Save & publish' : 'Publish workflow'}
-            </button>
-          )}
+
+            {step === 2 && (
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                className={`px-3.5 py-1.5 rounded-xl border transition flex items-center gap-1.5 shadow-2xs cursor-pointer text-xs font-semibold ${
+                  isStudioFullscreen
+                    ? 'border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300'
+                    : 'border-slate-200/90 dark:border-slate-700 bg-slate-50/80 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200'
+                }`}
+                title={isStudioFullscreen ? 'Exit Fullscreen' : 'Toggle Fullscreen'}
+              >
+                <svg className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                  {isStudioFullscreen ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 9L4 4m0 0v4m0-4h4m6 6l5-5m0 0v4m0-4h-4m-7 7l-5 5m0 0v-4m0 4h4m6-6l5 5m0 0v-4m0 4h-4" />
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75v4.5m0-4.5h-4.5m4.5 0L15 9m5.25 11.25v-4.5m0 4.5h-4.5m4.5 0L15 15" />
+                  )}
+                </svg>
+                <span>{isStudioFullscreen ? 'Exit fullscreen' : 'Fullscreen'}</span>
+              </button>
+            )}
+
+            <span className="inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-50/90 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200/80 dark:border-blue-800">
+              Step {step} of 4
+            </span>
+
+            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold ${
+              dirty
+                ? 'bg-rose-50/90 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800'
+                : 'bg-emerald-50/90 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800'
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${dirty ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+              {isLive ? 'Live' : dirty ? 'Unsaved' : 'Saved'}
+            </span>
+          </div>
         </div>
-      </footer>
+
+        {/* Stepper Header Horizontal Pill Tabs (NetFlow Indigo Theme) */}
+        {step !== 2 && stepperHeader}
+
+        {/* Main Wizard Content Area */}
+        <main
+          data-tour="workflow-builder-main"
+          className={
+            builderFullscreen || step === 2
+              ? 'flex-1 min-h-0 flex flex-col overflow-hidden'
+              : 'flex-1 min-h-0 p-6 overflow-y-auto'
+          }
+        >
+          {draftNotice && step !== 2 && (
+            <div className={`mb-4 shrink-0 ${builderFullscreen ? 'px-4 pt-3' : 'max-w-3xl mx-auto'}`}>
+              <AlertBanner
+                tone="info"
+                onRetry={async () => {
+                  const ok = await confirm({
+                    title: 'Start over?',
+                    message: 'Your restored draft will be thrown away and the builder resets to a blank workflow.',
+                    confirmLabel: 'Start fresh',
+                    danger: true,
+                  })
+                  if (!ok) return
+                  draftStore.clear()
+                  setDraftNotice(false)
+                  navigate(0)
+                }}
+                retryLabel="Start fresh"
+              >
+                Picked up where you left off — this is an unsaved draft from your last visit.
+              </AlertBanner>
+            </div>
+          )}
+
+          {step === 1 && !isEditMode && (
+            <Step1Template
+              selected={data.template}
+              onSelect={applyTemplate}
+              aiAvailable={aiAvailable}
+              aiPrompt={aiPrompt}
+              onAiPromptChange={onAiPromptChange}
+              onAiKeyDown={onAiKeyDown}
+              aiSuggestion={aiSuggestion}
+              aiBusy={aiBusy}
+              generateWithAI={generateWithAI}
+              aiError={aiError}
+              showAiPanel={showAiPanel}
+              setShowAiPanel={setShowAiPanel}
+              aiInputRef={aiInputRef}
+            />
+          )}
+          {step === 2 && (
+            <Step2Builder
+              data={data}
+              setData={setData}
+              fitKey={canvasFitKey}
+              stepperHeader={stepperHeader}
+            />
+          )}
+          {step === 3 && <Step3Settings data={data} setData={setData} forms={forms} editId={editId} />}
+          {step === 4 && (
+            <>
+              <Step4Review data={data} forms={forms} />
+              {publishError && (
+                <div className="max-w-3xl mx-auto mt-3 p-3 rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
+                  {publishError}
+                </div>
+              )}
+            </>
+          )}
+        </main>
+
+        {/* Bottom Bar Action Footer */}
+        <footer
+          data-tour="workflow-builder-actions"
+          className="h-16 shrink-0 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 px-6 flex items-center justify-between text-xs"
+        >
+          <div className="font-semibold text-slate-500 dark:text-slate-400">
+            Step {step} of 4 · {stepNames[step - 1]}
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            {step > 1 && (
+              <button
+                type="button"
+                onClick={() => setStep((s) => s - 1)}
+                className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 transition shadow-xs flex items-center gap-1.5"
+              >
+                ‹ Back
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleDiscard}
+              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition flex items-center gap-1.5"
+            >
+              ✕ Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveDraft}
+              disabled={savingDraft || publishing}
+              className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 font-bold transition disabled:opacity-50 flex items-center gap-1.5 shadow-xs"
+            >
+              ✓ {savingDraft ? 'Saving…' : 'Save as draft'}
+            </button>
+            {step < 4 ? (
+              <button
+                type="button"
+                onClick={() => setStep((s) => s + 1)}
+                className="px-7 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold shadow-sm hover:shadow transition flex items-center gap-1.5"
+              >
+                Continue ›
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handlePublish}
+                disabled={publishing}
+                className="px-7 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold shadow-sm hover:shadow transition flex items-center gap-1.5 disabled:opacity-70"
+              >
+                {publishing ? 'Publishing…' : isEditMode ? 'Save & publish' : 'Publish workflow'}
+              </button>
+            )}
+          </div>
+        </footer>
+      </div>
 
       <PublishSuccessModal
         open={!!publishSuccess}
@@ -2852,7 +3077,55 @@ function NewWorkflow() {
           navigate('/workflows')
         }}
       />
-    </div>
+
+      <Modal
+        open={renameModalOpen}
+        onClose={() => setRenameModalOpen(false)}
+        title="Rename workflow"
+        description="Give this workflow a clear, recognisable name."
+        size="md"
+        showClose={true}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setRenameModalOpen(false)}
+              className="px-4 py-2 rounded-xl border border-line bg-surface hover:bg-surface-2 text-sm font-semibold transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleRenameSave}
+              className="px-4 py-2 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-semibold transition flex items-center gap-1.5"
+            >
+              ✓ Save name
+            </button>
+          </>
+        }
+      >
+        <div>
+          <label htmlFor="rename-input" className="block text-xs font-semibold text-fg-muted mb-1">
+            Workflow name <span className="text-danger-fg">*</span>
+          </label>
+          <input
+            id="rename-input"
+            type="text"
+            placeholder="e.g. Employee Leave Approval"
+            value={renameInput}
+            onChange={(e) => setRenameInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                handleRenameSave()
+              }
+            }}
+            className="w-full px-3 py-2 rounded-lg border border-line bg-surface text-sm text-fg focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+            autoFocus
+          />
+        </div>
+      </Modal>
+    </AppShell>
   )
 }
 
@@ -2930,7 +3203,7 @@ function graphIssues(nodes, connections) {
         )
       }
     }
-    if ((n.type === 'approval' || n.type === 'multiApproval' || n.type === 'submit' || n.type === 'notify' || n.type === 'api' || n.type === 'timer') && outFrom(n.id).length === 0) {
+    if ((n.type === 'approval' || n.type === 'multiApproval' || n.type === 'submit' || n.type === 'api' || n.type === 'timer') && outFrom(n.id).length === 0) {
       push(
         `"${label(n)}" has no next step — connect it to the following node (e.g. the next approval or End).`,
         [n.id]

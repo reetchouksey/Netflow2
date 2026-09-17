@@ -9,7 +9,6 @@ const Task = require('../models/Task')
 const User = require('../models/User')
 const Role = require('../models/Role')
 const Organization = require('../models/Organization')
-const Form = require('../models/Form')
 
 const { getOrgId } = require('../tenancy/tenantContext')
 const { listFor: departmentsFor } = require('./departments')
@@ -58,7 +57,7 @@ const resolveDepartmentManager = async (token) => {
 const findFirstUserByRoleName = async (roleName) => {
   const roleId = await findRoleIdByName(roleName)
   if (!roleId) return null
-  const u = await User.findOne({ role: roleId, isActive: true }).lean()
+  const u = await User.findOne({ role: roleId, isActive: true }).sort({ createdAt: 1 }).lean()
   return u?._id || null
 }
 
@@ -98,37 +97,11 @@ const redirectIfOutOfOffice = async (assignedTo) => {
   return { assignedTo, reason: null }
 }
 
-// Find a reference user from the submitted form data
-const resolveFormAutoApprover = async (execution) => {
-  if (!execution?.formResponseId) return { userId: null, reason: null }
-
-  const FormResponse = require('../models/FormResponse')
-  const formResponse = await FormResponse.findById(execution.formResponseId).lean()
-  if (!formResponse || !formResponse.formData) return { userId: null, reason: null }
-
-  const form = await Form.findById(formResponse.formId).lean()
-  if (!form || !form.fields) return { userId: null, reason: null }
-
-  // Find the first field marked as referenceUser
-  const refField = form.fields.find(f => f.referenceUser)
-  if (!refField) return { userId: null, reason: null }
-
-  const userName = formResponse.formData[refField.id]
-  if (!userName) return { userId: null, reason: null }
-
-  // Lookup the user by exact name
-  const user = await User.findOne({ name: userName, isActive: true }).lean()
-  if (user) {
-    return { userId: user._id, reason: `Auto-routed to ${user.name} — selected in the form field "${refField.label}".` }
-  }
-  return { userId: null, reason: `${userName} was selected in the form but is not an active user.` }
-}
-
 // Resolve a semantic approver token using submitter context. Returns a User _id
 // or null if the token is not recognised / no matching user exists. Tokens are
 // case- and whitespace-insensitive ("Direct manager", "direct_manager", and
 // "DIRECT MANAGER" all resolve identically).
-const resolveSemanticApprover = async (rawToken, submitter, execution) => {
+const resolveSemanticApprover = async (rawToken, submitter) => {
   const token = normaliseToken(rawToken)
   if (!token) return null
 
@@ -383,15 +356,10 @@ const resolveAssignee = async (execution, node, workflow) => {
   // each with an active-check + escalation up that submitter's chain.
   if (!assignedTo && node.config?.approverRole) {
     const token = normaliseToken(node.config.approverRole)
-    if (token === 'direct_manager' || token === 'hr_partner' || token === 'form_auto') {
-      let routed = { userId: null, reason: null }
-      if (token === 'direct_manager') {
-        routed = await resolveDirectManager(submitter)
-      } else if (token === 'hr_partner') {
-        routed = await resolveHrPartner(submitter)
-      } else if (token === 'form_auto') {
-        routed = await resolveFormAutoApprover(execution)
-      }
+    if (token === 'direct_manager' || token === 'hr_partner') {
+      const routed = token === 'direct_manager'
+        ? await resolveDirectManager(submitter)
+        : await resolveHrPartner(submitter)
       if (routed.userId) {
         assignedTo = routed.userId
         routingReason = routed.reason
@@ -404,7 +372,7 @@ const resolveAssignee = async (execution, node, workflow) => {
         })
       }
     } else {
-      assignedTo = await resolveSemanticApprover(node.config.approverRole, submitter, execution)
+      assignedTo = await resolveSemanticApprover(node.config.approverRole, submitter)
     }
   }
 
@@ -984,6 +952,11 @@ const processNode = async (execution, nodeId, workflow) => {
     return await failExecution(execution, `Node ${nodeId} not found in workflow`)
   }
 
+  // Normalize legacy node.next to node.nextNode
+  if (node.next !== undefined && node.nextNode === undefined) {
+    node.nextNode = node.next
+  }
+
   execution.currentNodeId = nodeId
   execution.executionLog.push({
     nodeId: node.id,
@@ -1045,13 +1018,13 @@ const triggerWorkflow = async (workflowId, formResponseId, userId, extraVariable
   const Workflow = require('../models/Workflow')
   const FormResponse = require('../models/FormResponse')
 
-  const workflow = await Workflow.findById(workflowId)
+  const workflow = await Workflow.findById(workflowId).lean()
   if (!workflow) throw new Error('Workflow not found')
   if (workflow.status !== 'published') {
     throw new Error(`Workflow status is "${workflow.status}", cannot trigger`)
   }
 
-  const startNode = workflow.nodes.find(n => n.type === 'start')
+  const startNode = workflow.nodes.find(n => n.type === 'start' || n.type === 'trigger')
   if (!startNode) throw new Error('Workflow has no start node')
 
   const variables = { ...extraVariables }
@@ -1128,7 +1101,7 @@ const triggerWorkflow = async (workflowId, formResponseId, userId, extraVariable
 
   // Walk the graph. Will resolve when the engine pauses (approval node)
   // or completes / fails. Await so the caller knows the kick-off succeeded.
-  await processNode(execution, startNode.nextNode, workflow)
+  await processNode(execution, startNode.nextNode || startNode.next, workflow)
 
   return execution
 }
@@ -1148,7 +1121,7 @@ const advanceWorkflow = async (taskId, outcome = 'approved') => {
   const execution = await WorkflowExecution.findById(task.workflowExecutionId)
   if (!execution) throw new Error('Execution not found')
 
-  const workflow = await Workflow.findById(execution.workflowId)
+  const workflow = await Workflow.findById(execution.workflowId).lean()
   if (!workflow) throw new Error('Workflow not found')
 
   const currentNode = workflow.nodes.find(n => n.id === task.currentNode)
@@ -1219,15 +1192,16 @@ const advanceWorkflow = async (taskId, outcome = 'approved') => {
   // downstream to handle it. If the next node is a condition, we let it
   // branch (so the designer can build "approve goes here / reject goes there"
   // flows). Otherwise rejection ends the execution like before.
-  const nextNode = currentNode.nextNode
-    ? workflow.nodes.find(n => n.id === currentNode.nextNode)
+  const actualNextNodeId = currentNode.nextNode || currentNode.next
+  const nextNode = actualNextNodeId
+    ? workflow.nodes.find(n => n.id === actualNextNodeId)
     : null
 
   if (outcome === 'rejected' && (!nextNode || nextNode.type !== 'condition')) {
     return await failExecution(execution, `Rejected at node ${task.currentNode}`)
   }
 
-  return await processNode(execution, currentNode.nextNode, workflow)
+  return await processNode(execution, actualNextNodeId, workflow)
 }
 
 module.exports = { triggerWorkflow, advanceWorkflow, processNode, isUserOOO }

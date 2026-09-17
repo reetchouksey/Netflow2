@@ -105,11 +105,8 @@ export const adaptTask = (apiTask) => {
   const fieldMap = new Map(fieldDefs.map((f) => [f.id, f]))
 
   const fileValue = (v) => {
-    // A file field stores { name, url, ... } or { name, s3Key, ... }.
-    if (v && typeof v === 'object') {
-      if (v.s3Key) return { name: v.name || 'Attachment', url: `/api/s3/image?key=${encodeURIComponent(v.s3Key)}` }
-      if (v.url) return { name: v.name || 'Attachment', url: v.url }
-    }
+    // A file field stores { name, url, ... }. Older data may be a bare string.
+    if (v && typeof v === 'object' && v.url) return { name: v.name || 'Attachment', url: v.url }
     return null
   }
 
@@ -123,15 +120,9 @@ export const adaptTask = (apiTask) => {
     if (def?.type === 'grid' && Array.isArray(v)) {
       return { label, grid: { columns: def.columns || [], rows: v } }
     }
-    const file = def?.type === 'file' || def?.type === 'camera' ? fileValue(v) : null
+    const file = ['file', 'camera', 'signature'].includes(def?.type) ? fileValue(v) : null
     if (file) {
-      if (def?.type === 'camera') {
-        return { label, value: file.name, url: file.url, isCamera: true }
-      }
       return { label, value: file.name, href: file.url, isFile: true }
-    }
-    if (def?.type === 'signature' || (v && typeof v === 'object' && v.kind && (v.text || v.url || v.dataURL))) {
-      return { label, value: v, isSignature: true }
     }
     return {
       label,
@@ -305,7 +296,6 @@ export const adaptForm = (f) => ({
   title: f.title,
   description: f.description || '',
   category: f.department || 'General',
-  tags: f.tags || [],
   status: FORM_STATUS_MAP[f.status] || 'Draft',
   fields: Array.isArray(f.fields) ? f.fields.length : 0,
   fieldDefs: f.fields || [],
@@ -333,8 +323,8 @@ export const adaptWorkflow = (w) => ({
   title: w.title,
   description: w.description || '',
   category: w.department || 'General',
-  tags: w.tags || [],
-  status: w.status === 'published' ? 'Active' : w.status === 'paused' ? 'Paused' : 'Draft',
+  tags: w.tags || w.metadata?.tags || '',
+  status: WORKFLOW_STATUS_MAP[w.status] || 'Draft',
   steps: Array.isArray(w.nodes) ? w.nodes.length : 0,
   nodes: w.nodes || [],
   edges: w.edges || [],
@@ -349,7 +339,6 @@ export const adaptWorkflow = (w) => ({
         enabled: w.inboundWebhook.enabled === true,
         token: w.inboundWebhook.token || '',
         secret: w.inboundWebhook.secret || '',
-        requireSignature: w.inboundWebhook.requireSignature !== false,
         callbackUrl: w.inboundWebhook.callbackUrl || '',
         expectedFields: Array.isArray(w.inboundWebhook.expectedFields)
           ? w.inboundWebhook.expectedFields

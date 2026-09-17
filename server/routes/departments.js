@@ -32,7 +32,7 @@ router.use(protect)
 // safely delete or rename a team without knowing who it takes with it.
 const memberCounts = async (orgId) => {
   const rows = await User.aggregate([
-    { $match: { orgId, isActive: { $ne: false } } },
+    { $match: { orgId, isActive: { $ne: false }, email: { $not: /@flowsphere\./i } } },
     { $group: { _id: '$department', count: { $sum: 1 } } }
   ])
   return new Map(rows.map((r) => [String(r._id || ''), r.count]))
@@ -176,18 +176,9 @@ router.delete('/:name', roleGuard('Admin'), async (req, res, next) => {
       return sendError(res, 'A workspace needs at least one department', 'LAST_DEPARTMENT', 400)
     }
 
-    // Deleting out from under people would leave users on a department that no
-    // dropdown offers; move them first.
+    // Users belonging to this department will now have an invalid/missing department reference,
+    // but the system will allow the deletion anyway based on the recent requirement.
     const members = await User.countDocuments({ department: name, isActive: { $ne: false } })
-    if (members > 0) {
-      return sendError(
-        res,
-        `${members} active ${members === 1 ? 'person is' : 'people are'} still in "${name}". Move them to another department first.`,
-        'DEPARTMENT_IN_USE',
-        400,
-        { members }
-      )
-    }
 
     org.departments = current.filter((d) => d !== name)
     await org.save()

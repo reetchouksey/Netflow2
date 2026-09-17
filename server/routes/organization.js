@@ -63,6 +63,10 @@ router.post('/dms-login', async (req, res, next) => {
     const org = await loadOrg(req, res)
     if (!org) return undefined
 
+    if (!org.integrations?.dmsEnabled) {
+      return sendError(res, 'DMS is not enabled for this organization', 'FORBIDDEN', 403)
+    }
+
     const { email, password } = req.body
     if (!email || !password) {
       return sendError(res, 'Email and password required', 'BAD_REQUEST', 400)
@@ -220,7 +224,7 @@ router.get('/dms-status', async (req, res, next) => {
     const org = await loadOrg(req, res)
     if (!org) return undefined
 
-    const platformDmsEnabled = dms.isEnabled()
+    const platformDmsEnabled = dms.isEnabled(org)
     const orgDmsEnabled = Boolean(org.integrations?.dmsEnabled)
     const effectiveDmsEnabled = platformDmsEnabled || orgDmsEnabled
 

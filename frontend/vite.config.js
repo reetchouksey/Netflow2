@@ -6,11 +6,8 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    proxy: {
-      '/docs': {
-        target: 'http://[::1]:5174',
-        changeOrigin: true
-      }
+    watch: {
+      ignored: ['**/dist/**']
     }
   }
 })

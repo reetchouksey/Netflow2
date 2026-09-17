@@ -19,7 +19,6 @@ const BREACH_ACTIONS = [
 const ROLE_APPROVERS = [
   { value: "direct_manager",  label: "Reporting manager (auto)",  hint: "Auto-detected from the org chart — routes to the submitter's own reporting manager" },
   { value: "hr_partner",      label: "HR partner (auto)",         hint: "Auto-detected — routes to the submitter's own assigned HR partner" },
-  { value: "form_auto",       label: "Form Auto",                 hint: "Auto-detected from a Reference User field in the submitted form" },
   { value: "hr_admin",        label: "Admin",                    hint: "Any user with the Admin role" },
   { value: "ceo",             label: "CEO",                      hint: "Any user with the CEO role (falls back to Admin)" },
   { value: "hr_manager",      label: "HR Manager",               hint: "Manager in HR department" },
@@ -68,41 +67,62 @@ export default function NodeConfig({
   onClose,
 }) {
   if (!node) {
-    return null;
+    return (
+      <aside className="w-60 xl:w-[20%] min-w-[224px] max-w-[260px] shrink-0 border-l border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col min-h-0 select-none">
+        <div className="px-5 pt-4 pb-2.5 border-b border-slate-100 dark:border-slate-800 shrink-0 flex items-center justify-between">
+          <div className="text-[11px] font-extrabold tracking-wider text-slate-400 dark:text-slate-500 uppercase">
+            NODE CONFIG
+          </div>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-slate-50 dark:bg-slate-800/50 text-slate-300 dark:text-slate-600 flex items-center justify-center mb-4 border border-slate-100 dark:border-slate-700/50 shadow-sm">
+            <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
+              <path d="M12 12v9" />
+              <path d="m8 17 4-4 4 4" />
+            </svg>
+          </div>
+          <h4 className="text-[13px] font-bold text-slate-600 dark:text-slate-300">No node selected</h4>
+          <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-2 max-w-[200px] leading-relaxed">
+            Click on any node in the canvas to configure its settings, title, and properties.
+          </p>
+        </div>
+      </aside>
+    );
   }
 
   const s = NODE_STYLES[node.type] || NODE_STYLES.start;
   const update = (patch) => onChange({ ...node, ...patch });
 
   return (
-    <aside className="w-64 xl:w-80 shrink-0 border-l border-line bg-surface flex flex-col min-h-0">
-      <div className="px-4 xl:px-5 pt-4 pb-3 border-b border-line shrink-0 flex items-center justify-between">
-        <div className="text-[11px] font-semibold tracking-wider text-fg-muted">
+    <aside className="w-60 xl:w-[20%] min-w-[224px] max-w-[260px] shrink-0 border-l border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col min-h-0">
+      <div className="px-5 pt-4 pb-2.5 border-b border-slate-100 dark:border-slate-800 shrink-0 flex items-center justify-between">
+        <div className="text-[11px] font-extrabold tracking-wider text-slate-400 dark:text-slate-500 uppercase">
           NODE CONFIG
         </div>
         {onClose && (
           <button
             type="button"
             onClick={onClose}
-            className="w-6 h-6 flex items-center justify-center rounded hover:bg-surface-2 text-fg-muted hover:text-fg transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
             title="Close panel"
             aria-label="Close panel"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 xl:px-5 py-5">
-      <div className={`rounded-xl border px-4 py-3 mb-5 flex items-start gap-3 ${s.card}`}>
-        <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${s.tile}`}>
-          <NodeTypeIcon name={s.icon} />
+      <div className="flex-1 min-h-0 overflow-y-auto px-5 py-5 thin-scrollbar">
+      <div className={`rounded-xl border px-4 py-3.5 mb-6 flex items-start gap-3.5 ${s.card}`}>
+        <span className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 shadow-sm ${s.tile}`}>
+          <NodeTypeIcon name={s.icon} className="w-5 h-5" />
         </span>
-        <div className="min-w-0">
-          <div className={`text-sm font-semibold truncate ${s.title}`}>{node.title}</div>
-          <div className={`text-xs mt-0.5 ${s.subtitle}`}>{s.label}</div>
+        <div className="min-w-0 flex flex-col justify-center py-0.5">
+          <div className={`text-[14px] font-bold truncate leading-tight ${s.title}`}>{node.title}</div>
+          <div className={`text-[11.5px] mt-0.5 font-medium tracking-wide uppercase ${s.subtitle}`}>{s.label}</div>
         </div>
       </div>
 
@@ -120,6 +140,7 @@ export default function NodeConfig({
           type="text"
           value={node.subtitle || ""}
           onChange={(e) => update({ subtitle: e.target.value })}
+          placeholder="Optional description"
           className={inputCls}
         />
       </Field>
@@ -854,67 +875,6 @@ function FieldValidationEditor({ field, onChange }) {
 function SubmitFormBuilder({ fields, onChange }) {
   const list = Array.isArray(fields) ? fields : [];
 
-  // ── import-from-form state ──────────────────────────────────────────────
-  const [publishedForms, setPublishedForms] = useState([]);
-  const [loadingForms,   setLoadingForms]   = useState(false);
-  const [pickerOpen,     setPickerOpen]     = useState(false);
-  // mergePrompt = { fields: [] } — set when user has chosen a form but we need
-  // to ask Replace vs Merge because there are already fields in the node.
-  const [mergePrompt, setMergePrompt] = useState(null);
-  const [pickerSearch, setPickerSearch] = useState('');
-
-  const openPicker = async () => {
-    if (pickerOpen) { setPickerOpen(false); return; }
-    setPickerOpen(true);
-    if (publishedForms.length > 0) return;           // already cached
-    setLoadingForms(true);
-    try {
-      const res = await api.get('/api/forms');
-      const forms = (res.forms || res || []).filter(
-        (f) => f.status === 'published' || f.isPublished
-      );
-      setPublishedForms(forms);
-    } catch {
-      setPublishedForms([]);
-    } finally {
-      setLoadingForms(false);
-    }
-  };
-
-  // Called when the user clicks a form in the picker list.
-  const handleFormSelect = (form) => {
-    const incoming = (form.fields || []).map((f) => ({
-      ...f,
-      id: newFieldId(),                              // fresh ID to avoid collisions
-    }));
-    if (list.length === 0) {
-      // No existing fields — import directly.
-      onChange(incoming);
-      setPickerOpen(false);
-    } else {
-      // Existing fields — ask what to do.
-      setMergePrompt({ incoming });
-      setPickerOpen(false);
-    }
-  };
-
-  const doReplace = () => {
-    if (!mergePrompt) return;
-    onChange(mergePrompt.incoming);
-    setMergePrompt(null);
-  };
-
-  const doMerge = () => {
-    if (!mergePrompt) return;
-    const existingLabels = new Set(list.map((f) => (f.label || '').toLowerCase().trim()));
-    const toAdd = mergePrompt.incoming.filter(
-      (f) => !existingLabels.has((f.label || '').toLowerCase().trim())
-    );
-    onChange([...list, ...toAdd]);
-    setMergePrompt(null);
-  };
-
-  // ── existing manual-builder helpers ──────────────────────────────────────
   const addField = () =>
     onChange([
       ...list,
@@ -1027,7 +987,6 @@ function SubmitFormBuilder({ fields, onChange }) {
         ))}
       </div>
 
-      {/* ── Manual add button ── */}
       <button
         type="button"
         onClick={addField}
@@ -1035,188 +994,9 @@ function SubmitFormBuilder({ fields, onChange }) {
       >
         + Add field
       </button>
-
-      {/* ── Import from published form button ── */}
-      <button
-        type="button"
-        onClick={openPicker}
-        className={`mt-1.5 w-full px-3 py-2 text-sm rounded-md border border-dashed transition flex items-center justify-center gap-1.5 ${
-          pickerOpen
-            ? 'border-indigo-400 text-indigo-600 dark:text-indigo-400 bg-indigo-50/40 dark:bg-indigo-950/30'
-            : 'border-line text-fg-muted hover:border-indigo-300 hover:text-indigo-600 dark:hover:border-indigo-500/40 dark:hover:text-indigo-400'
-        }`}
-      >
-        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-        </svg>
-        {pickerOpen ? 'Close form picker' : 'Import from published form'}
-      </button>
-
-      {/* ── Inline published-form picker (Redesigned) ── */}
-      {pickerOpen && (() => {
-        const query = pickerSearch.trim().toLowerCase();
-        const filtered = publishedForms.filter((f) =>
-          !query ||
-          (f.name || f.title || '').toLowerCase().includes(query)
-        );
-        return (
-          <div className="mt-2 rounded-xl border border-indigo-200 dark:border-indigo-500/25 bg-surface shadow-lg shadow-indigo-500/5 overflow-hidden">
-
-            {/* Header */}
-            <div className="flex items-center justify-between px-3 py-2.5 bg-indigo-600">
-              <div className="flex items-center gap-1.5">
-                <svg className="w-3.5 h-3.5 text-indigo-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <span className="text-[11px] font-semibold text-white tracking-wide">Published Forms</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => { setPickerOpen(false); setPickerSearch(''); }}
-                className="w-5 h-5 flex items-center justify-center rounded hover:bg-indigo-500/50 text-indigo-200 hover:text-white transition-colors"
-                title="Close picker"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Search input */}
-            <div className="px-3 py-2 border-b border-line">
-              <div className="relative">
-                <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-fg-muted pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input
-                  autoFocus
-                  type="text"
-                  value={pickerSearch}
-                  onChange={(e) => setPickerSearch(e.target.value)}
-                  placeholder="Search forms…"
-                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-surface-2 border border-line rounded-md focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 outline-none text-fg placeholder:text-fg-muted transition"
-                />
-              </div>
-            </div>
-
-            {/* Result body */}
-            {loadingForms ? (
-              <div className="flex flex-col items-center justify-center gap-2 py-6">
-                <svg className="w-5 h-5 animate-spin text-indigo-500" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                <span className="text-[11px] text-fg-muted">Loading forms…</span>
-              </div>
-            ) : filtered.length === 0 ? (
-              <div className="flex flex-col items-center gap-1.5 py-6 px-3 text-center">
-                <svg className="w-8 h-8 text-fg-subtle" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-[11px] text-fg-muted">
-                  {pickerSearch ? `No forms match "${pickerSearch}"` : 'No published forms yet.'}
-                </p>
-                {!pickerSearch && (
-                  <p className="text-[10px] text-fg-subtle">Publish a form first, then import it here.</p>
-                )}
-              </div>
-            ) : (
-              <>
-                {/* Result count */}
-                <div className="px-3 pt-2 pb-1">
-                  <span className="text-[10px] font-medium text-fg-muted">
-                    {filtered.length} form{filtered.length !== 1 ? 's' : ''}
-                    {pickerSearch && ` for "${pickerSearch}"`}
-                  </span>
-                </div>
-
-                {/* Scrollable list */}
-                <div className="divide-y divide-line max-h-52 overflow-y-auto">
-                  {filtered.map((form) => {
-                    const fieldCount = (form.fields || []).length;
-                    const initial = (form.name || form.title || 'F')[0].toUpperCase();
-                    return (
-                      <button
-                        key={form._id || form.id}
-                        type="button"
-                        onClick={() => handleFormSelect(form)}
-                        className="w-full text-left px-3 py-2.5 flex items-center gap-2.5 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors group"
-                      >
-                        {/* Avatar */}
-                        <span className="w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-900/50 border border-indigo-200 dark:border-indigo-500/30 flex items-center justify-center text-[11px] font-bold text-indigo-600 dark:text-indigo-400 flex-shrink-0">
-                          {initial}
-                        </span>
-
-                        {/* Name + description */}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-fg truncate group-hover:text-indigo-700 dark:group-hover:text-indigo-300 transition-colors leading-snug">
-                            {form.name || form.title || 'Untitled form'}
-                          </p>
-                          {form.description && (
-                            <p className="text-[10px] text-fg-muted truncate leading-snug mt-0.5">
-                              {form.description}
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Field count badge */}
-                        <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/50 border border-indigo-200 dark:border-indigo-500/30 px-1.5 py-0.5 rounded-full flex-shrink-0">
-                          {fieldCount}F
-                        </span>
-
-                        {/* Hover chevron */}
-                        <svg className="w-3 h-3 text-fg-subtle opacity-0 group-hover:opacity-100 flex-shrink-0 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                        </svg>
-                      </button>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </div>
-        );
-      })()}
-
-      {/* ── Merge / Replace confirmation prompt ── */}
-      {mergePrompt && (
-        <div className="mt-1.5 border border-amber-200 dark:border-amber-500/30 rounded-md bg-amber-50/40 dark:bg-amber-950/20 px-3 py-3">
-          <p className="text-[11px] font-semibold text-amber-800 dark:text-amber-300 mb-2">
-            You already have {list.length} field{list.length !== 1 ? 's' : ''} in this node.
-            What would you like to do?
-          </p>
-          <p className="text-[11px] text-fg-muted mb-3">
-            Importing <strong className="text-fg">{mergePrompt.incoming.length} field{mergePrompt.incoming.length !== 1 ? 's' : ''}</strong> from the selected form.
-          </p>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={doReplace}
-              className="flex-1 px-2 py-1.5 text-xs font-semibold text-white bg-red-500 hover:bg-red-600 rounded-md transition-colors"
-            >
-              Replace all
-            </button>
-            <button
-              type="button"
-              onClick={doMerge}
-              className="flex-1 px-2 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-md transition-colors"
-            >
-              Merge (append new)
-            </button>
-            <button
-              type="button"
-              onClick={() => setMergePrompt(null)}
-              className="px-2 py-1.5 text-xs font-medium text-fg-muted border border-line rounded-md hover:bg-surface-2 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
     </Field>
   );
 }
-
 
 function ReviewConfig({ node, update, nodes, connections, onConnectionsChange }) {
   // The Review (viewer) node assigns a task to a reviewer (e.g. Brand Rep) who

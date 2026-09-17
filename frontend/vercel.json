@@ -1,13 +1,8 @@
 {
-  "cleanUrls": true,
-  "rewrites": [
-    {
-      "source": "/docs/(.*)",
-      "destination": "/docs/$1"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/"
-    }
-  ]
-}
+    "rewrites": [
+      {
+        "source": "/(.*)",
+        "destination": "/index.html"
+      }
+    ]
+  }

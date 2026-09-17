@@ -41,7 +41,7 @@ const isPeopleAdmin = (user) => user?.role?.name === 'Admin'
 
 // Applies the right projection for the caller to a User query.
 const scopeToCaller = (query, user) => (isPeopleAdmin(user)
-  ? query.select('-password').populate('role')
+  ? query.select('-password').populate('role').populate('managerId', 'name email department')
   : query.select(DIRECTORY_FIELDS).populate('role', 'name'))
 
 // Departments are per-tenant (utils/departments), so "is this a real one?" is a
@@ -79,10 +79,17 @@ router.get('/', protect, async (req, res, next) => {
     if (department) query.department = department
     if (isActive !== undefined) query.isActive = isActive === 'true'
 
+    const superAdminRole = await Role.findOne({ name: 'SuperAdmin' }).select('_id').lean()
+
     if (role) {
       const roleDoc = await Role.findOne({ name: role }).lean()
-      if (roleDoc) query.role = roleDoc._id
-      else query.role = null
+      if (roleDoc && (!superAdminRole || String(roleDoc._id) !== String(superAdminRole._id))) {
+        query.role = roleDoc._id
+      } else {
+        query.role = null
+      }
+    } else if (superAdminRole) {
+      query.role = { $ne: superAdminRole._id }
     }
 
     if (search) {
@@ -144,6 +151,69 @@ router.get('/me/profile', protect, async (req, res, next) => {
       .lean()
 
     return sendSuccess(res, { user, reports })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// PUT /api/users/me/profile
+// Update current user's profile details (name, email, designation, phone, photo / avatar).
+router.put('/me/profile', protect, async (req, res, next) => {
+  try {
+    const { name, email, designation, phone, photo, avatar } = req.body || {}
+    const updates = {}
+    if (name !== undefined) updates.name = String(name).trim()
+    if (designation !== undefined) updates.designation = String(designation).trim()
+    if (phone !== undefined) updates.phone = String(phone).trim()
+    if (email !== undefined && String(email).trim()) {
+      const normEmail = String(email).trim().toLowerCase()
+      if (!EMAIL_RE.test(normEmail)) {
+        return sendError(res, 'Please provide a valid email address', 'INVALID_EMAIL', 400)
+      }
+      const existing = await User.findOne({
+        email: normEmail,
+        orgId: req.user.orgId,
+        _id: { $ne: req.user._id }
+      })
+      if (existing) {
+        return sendError(res, 'This email address is already in use', 'EMAIL_IN_USE', 400)
+      }
+      updates.email = normEmail
+    }
+    if (photo !== undefined) {
+      updates.photo = photo
+      updates.avatar = photo
+    } else if (avatar !== undefined) {
+      updates.photo = avatar
+      updates.avatar = avatar
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { $set: updates },
+      { new: true, runValidators: true }
+    )
+      .select('-password')
+      .populate('role')
+      .populate({
+        path: 'managerId',
+        select: 'name email department',
+        populate: { path: 'role', select: 'name' }
+      })
+      .populate({
+        path: 'hrId',
+        select: 'name email department',
+        populate: { path: 'role', select: 'name' }
+      })
+      .populate({
+        path: 'outOfOffice.delegateId',
+        select: 'name email department'
+      })
+      .lean()
+
+    if (!user) return sendError(res, 'User not found', 'USER_NOT_FOUND', 404)
+
+    return sendSuccess(res, { user })
   } catch (err) {
     next(err)
   }
@@ -265,7 +335,7 @@ router.get('/:id', protect, async (req, res, next) => {
 // POST /api/users
 router.post('/', protect, roleGuard('Admin'), requireQuota('users'), async (req, res, next) => {
   try {
-    const { name, email, department, roleId, managerId, hrId } = req.body
+    const { name, email, department, roleId, managerId, hrId, employeeId } = req.body
     if (!name || !email || !department || !roleId) {
       return sendError(res, 'name, email, department and roleId are required', 'MISSING_FIELDS', 400)
     }
@@ -310,6 +380,7 @@ router.post('/', protect, roleGuard('Admin'), requireQuota('users'), async (req,
       password: tempPassword,
       department: deptName,
       role: roleId,
+      employeeId: employeeId ? String(employeeId).trim() : undefined,
       canBuild,
       managerId: managerId || undefined,
       hrId: hrId || undefined,
@@ -521,6 +592,7 @@ router.post('/import', protect, roleGuard('Admin'), async (req, res, next) => {
 router.put('/:id', protect, roleGuard('Admin'), async (req, res, next) => {
   try {
     const { password, _id, role, name, email, ...rest } = req.body
+    console.log('PUT /api/users/:id payload:', req.body)
     const updates = { ...rest }
 
     const target = await User.findById(req.params.id).select('name email isProtected isActive canBuild countsTowardSeats avatar').lean()
@@ -611,6 +683,10 @@ router.put('/:id', protect, roleGuard('Admin'), async (req, res, next) => {
       }
     }
 
+    if ('employeeId' in updates) {
+      updates.employeeId = updates.employeeId ? String(updates.employeeId).trim() : null
+    }
+
     // Snapshot identity (already loaded above) so we can record what changed.
     const before = (updates.name !== undefined || updates.email !== undefined) ? target : null
 
@@ -618,6 +694,7 @@ router.put('/:id', protect, roleGuard('Admin'), async (req, res, next) => {
     // deactivation) so the affected user's old tokens stop working immediately.
     const revokeSessions = updates.role !== undefined || updates.isActive === false
     const mutation = revokeSessions ? { ...updates, $inc: { tokenVersion: 1 } } : updates
+    require('fs').appendFileSync('users_debug.log', 'PUT MUTATION: ' + JSON.stringify(mutation) + '\n');
 
     const user = await User.findByIdAndUpdate(req.params.id, mutation, {
       new: true,

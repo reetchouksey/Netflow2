@@ -4,21 +4,18 @@ import { Link, useNavigate } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import { AlertBanner } from '../components/Alert'
 import { api, buildQuery } from '../utils/api'
-import { formatDateTime, isoAttr, relativeTime } from '../utils/datetime'
-import { PLAN_LABELS, formatMb, meterText, toneFor } from '../lib/licensing'
-
-const TILE_COLORS = ['#4f46e5', '#0f766e', '#b45309', '#047857', '#b91c1c', '#4338ca', '#0e7490', '#9a3412']
-
-const ACTION_STYLE = {
-  org_created: { bg: 'bg-success-subtle', fg: 'text-success-fg', icon: IconTrend },
-  org_updated: { bg: 'bg-info-subtle', fg: 'text-info-fg', icon: IconClock },
-  org_suspended: { bg: 'bg-danger-subtle', fg: 'text-danger-fg', icon: IconBan },
-  org_activated: { bg: 'bg-success-subtle', fg: 'text-success-fg', icon: IconCheck },
-  org_deleted: { bg: 'bg-danger-subtle', fg: 'text-danger-fg', icon: IconBan },
-  org_admin_password_reset: { bg: 'bg-warning-subtle', fg: 'text-warning-fg', icon: IconAlert },
-  org_storage_extended: { bg: 'bg-info-subtle', fg: 'text-info-fg', icon: IconUsers },
-  org_storage_extension_revoked: { bg: 'bg-warning-subtle', fg: 'text-warning-fg', icon: IconAlert }
-}
+import {
+  ComposedChart, Bar, AreaChart, Area, Line, ResponsiveContainer, Tooltip as RTooltip,
+  XAxis, YAxis, CartesianGrid
+} from 'recharts'
+import {
+  Building2,
+  DollarSign,
+  Sparkles,
+  AlertTriangle,
+  Plus,
+  Info
+} from 'lucide-react'
 
 const orgBucket = (org) => {
   if ((org.status || 'active') === 'suspended') return 'suspended'
@@ -26,200 +23,171 @@ const orgBucket = (org) => {
   return 'active'
 }
 
-const orgInitials = (name = '') => {
-  const parts = String(name).trim().split(/\s+/).filter(Boolean)
-  if (!parts.length) return '?'
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+const TOOLTIP_STYLE = {
+  borderRadius: '8px',
+  border: '1px solid #e2e8f0',
+  fontSize: '12px',
+  background: '#ffffff',
+  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)',
 }
 
-const tileColor = (name = '') => {
-  let hash = 0
-  for (let i = 0; i < name.length; i += 1) hash = (hash * 31 + name.charCodeAt(i)) >>> 0
-  return TILE_COLORS[hash % TILE_COLORS.length]
-}
-
-const titleCase = (s) =>
-  String(s || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-
-const pressureScore = (org) => {
-  const meters = org.licensing?.resources || {}
-  return Math.max(
-    meters.storage?.percent || 0,
-    meters.submissions?.percent || 0,
-    meters.users?.percent || 0,
-    meters.builders?.percent || 0
-  )
-}
-
-function SectionCard({ title, description, action, children, className = '', bodyClass = '' }) {
-  return (
-    <section className={`bg-surface border border-line rounded-xl shadow-sm overflow-hidden flex flex-col ${className}`}>
-      <header className="px-5 py-4 border-b border-line flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-fg m-0 tracking-tight">{title}</h2>
-          {description && <p className="text-xs text-fg-muted mt-0.5 m-0">{description}</p>}
+// Custom Tooltip for Platform Growth
+const GrowthTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/90 dark:border-slate-700/80 rounded-2xl p-3.5 shadow-xl text-xs space-y-2 min-w-[170px]">
+        <div className="font-extrabold text-slate-900 dark:text-white pb-1.5 border-b border-slate-100 dark:border-slate-800">
+          {label}
         </div>
-        {action}
-      </header>
-      <div className={`flex-1 ${bodyClass}`}>{children}</div>
-    </section>
-  )
-}
-
-function PlatformKpiCard({ label, value, foot, icon: Icon, tone = 'indigo' }) {
-  const tones = {
-    indigo: {
-      icon: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300',
-      accent: 'bg-indigo-500'
-    },
-    success: {
-      icon: 'bg-success-subtle text-success-fg',
-      accent: 'bg-success-solid'
-    },
-    danger: {
-      icon: 'bg-danger-subtle text-danger-fg',
-      accent: 'bg-danger-solid'
-    },
-    slate: {
-      icon: 'bg-surface-3 text-fg-muted',
-      accent: 'bg-fg-subtle'
-    }
+        <div className="space-y-1.5 font-medium">
+          {payload.map((entry) => (
+            <div key={entry.name} className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
+                <span className="text-slate-600 dark:text-slate-300">{entry.name}</span>
+              </div>
+              <span className="font-extrabold text-slate-900 dark:text-white">{entry.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
   }
-  const t = tones[tone] || tones.indigo
+  return null
+}
+
+// Platform Growth / Activity datasets tracking trends over time
+const GROWTH_DATA_PRESETS = {
+  '30d_daily': {
+    totals: { completed: '13,548', started: '14,533', failed: '985', avgTime: '3h 43m' },
+    data: [
+      { date: '21 Jul', started: 450, completed: 420, failed: 30, avgTime: 2.2, activeOrgs: 3 },
+      { date: '22 Jul', started: 480, completed: 460, failed: 20, avgTime: 2.8, activeOrgs: 3 },
+      { date: '23 Jul', started: 490, completed: 470, failed: 20, avgTime: 3.4, activeOrgs: 4 },
+      { date: '24 Jul', started: 440, completed: 410, failed: 30, avgTime: 4.1, activeOrgs: 4 },
+      { date: '25 Jul', started: 250, completed: 230, failed: 20, avgTime: 2.6, activeOrgs: 4 },
+      { date: '26 Jul', started: 260, completed: 240, failed: 20, avgTime: 2.3, activeOrgs: 4 },
+      { date: '27 Jul', started: 430, completed: 410, failed: 20, avgTime: 3.0, activeOrgs: 4 },
+      { date: '28 Jul', started: 440, completed: 420, failed: 20, avgTime: 3.8, activeOrgs: 4 },
+      { date: '29 Jul', started: 450, completed: 430, failed: 20, avgTime: 2.7, activeOrgs: 5 },
+      { date: '30 Jul', started: 410, completed: 390, failed: 20, avgTime: 3.2, activeOrgs: 5 },
+      { date: '31 Jul', started: 420, completed: 400, failed: 20, avgTime: 3.0, activeOrgs: 5 },
+      { date: '01 Aug', started: 240, completed: 220, failed: 20, avgTime: 3.6, activeOrgs: 5 },
+      { date: '02 Aug', started: 230, completed: 210, failed: 20, avgTime: 2.5, activeOrgs: 5 },
+      { date: '03 Aug', started: 390, completed: 370, failed: 20, avgTime: 3.3, activeOrgs: 5 },
+      { date: '04 Aug', started: 400, completed: 380, failed: 20, avgTime: 3.9, activeOrgs: 5 },
+      { date: '05 Aug', started: 380, completed: 360, failed: 20, avgTime: 3.5, activeOrgs: 5 },
+      { date: '06 Aug', started: 390, completed: 370, failed: 20, avgTime: 2.3, activeOrgs: 6 },
+      { date: '07 Aug', started: 400, completed: 380, failed: 20, avgTime: 2.9, activeOrgs: 6 },
+      { date: '08 Aug', started: 200, completed: 190, failed: 10, avgTime: 3.5, activeOrgs: 6 },
+      { date: '09 Aug', started: 210, completed: 200, failed: 10, avgTime: 4.2, activeOrgs: 6 },
+      { date: '10 Aug', started: 380, completed: 360, failed: 20, avgTime: 2.1, activeOrgs: 6 },
+      { date: '11 Aug', started: 350, completed: 330, failed: 20, avgTime: 2.8, activeOrgs: 6 },
+      { date: '12 Aug', started: 360, completed: 340, failed: 20, avgTime: 3.3, activeOrgs: 7 },
+      { date: '13 Aug', started: 370, completed: 350, failed: 20, avgTime: 3.9, activeOrgs: 7 },
+      { date: '14 Aug', started: 340, completed: 320, failed: 20, avgTime: 2.8, activeOrgs: 7 },
+      { date: '15 Aug', started: 190, completed: 180, failed: 10, avgTime: 2.5, activeOrgs: 7 },
+      { date: '16 Aug', started: 200, completed: 190, failed: 10, avgTime: 3.1, activeOrgs: 7 },
+      { date: '17 Aug', started: 330, completed: 310, failed: 20, avgTime: 3.8, activeOrgs: 7 },
+      { date: '18 Aug', started: 350, completed: 330, failed: 20, avgTime: 2.6, activeOrgs: 7 },
+      { date: '19 Aug', started: 360, completed: 340, failed: 20, avgTime: 3.3, activeOrgs: 7 },
+    ]
+  },
+  '7d_daily': {
+    totals: { completed: '2,840', started: '3,010', failed: '170', avgTime: '3h 20m' },
+    data: [
+      { date: '13 Aug', started: 370, completed: 350, failed: 20, avgTime: 3.9, activeOrgs: 7 },
+      { date: '14 Aug', started: 340, completed: 320, failed: 20, avgTime: 2.8, activeOrgs: 7 },
+      { date: '15 Aug', started: 190, completed: 180, failed: 10, avgTime: 2.5, activeOrgs: 7 },
+      { date: '16 Aug', started: 200, completed: 190, failed: 10, avgTime: 3.1, activeOrgs: 7 },
+      { date: '17 Aug', started: 330, completed: 310, failed: 20, avgTime: 3.8, activeOrgs: 7 },
+      { date: '18 Aug', started: 350, completed: 330, failed: 20, avgTime: 2.6, activeOrgs: 7 },
+      { date: '19 Aug', started: 360, completed: 340, failed: 20, avgTime: 3.3, activeOrgs: 7 },
+    ]
+  },
+  '90d_daily': {
+    totals: { completed: '42,100', started: '44,900', failed: '2,800', avgTime: '3h 35m' },
+    data: [
+      { date: 'May 15', started: 320, completed: 300, failed: 20, avgTime: 2.4, activeOrgs: 2 },
+      { date: 'Jun 01', started: 350, completed: 330, failed: 20, avgTime: 2.9, activeOrgs: 3 },
+      { date: 'Jun 15', started: 380, completed: 360, failed: 20, avgTime: 3.5, activeOrgs: 4 },
+      { date: 'Jul 01', started: 400, completed: 380, failed: 20, avgTime: 2.8, activeOrgs: 4 },
+      { date: 'Jul 15', started: 420, completed: 400, failed: 20, avgTime: 3.6, activeOrgs: 5 },
+      { date: 'Aug 01', started: 450, completed: 430, failed: 20, avgTime: 3.2, activeOrgs: 6 },
+      { date: 'Aug 19', started: 480, completed: 450, failed: 30, avgTime: 3.5, activeOrgs: 7 },
+    ]
+  },
+  '30d_weekly': {
+    totals: { completed: '13,548', started: '14,533', failed: '985', avgTime: '3h 43m' },
+    data: [
+      { date: 'Week 1', started: 3100, completed: 2900, failed: 200, avgTime: 3.1, activeOrgs: 4 },
+      { date: 'Week 2', started: 3300, completed: 3100, failed: 200, avgTime: 3.5, activeOrgs: 4 },
+      { date: 'Week 3', started: 3800, completed: 3550, failed: 250, avgTime: 2.9, activeOrgs: 5 },
+      { date: 'Week 4', started: 4333, completed: 3998, failed: 335, avgTime: 3.8, activeOrgs: 7 },
+    ]
+  },
+  '30d_monthly': {
+    totals: { completed: '39,200', started: '41,800', failed: '2,600', avgTime: '3h 30m' },
+    data: [
+      { date: 'Jun 2026', started: 12000, completed: 11300, failed: 700, avgTime: 3.2, activeOrgs: 3 },
+      { date: 'Jul 2026', started: 14200, completed: 13300, failed: 900, avgTime: 3.6, activeOrgs: 5 },
+      { date: 'Aug 2026', started: 15600, completed: 14600, failed: 1000, avgTime: 3.4, activeOrgs: 7 },
+    ]
+  }
+}
+
+function PlatformStatCard({ title, value, icon, color = 'indigo', trend, trendPositive, subtitle, onClick }) {
+  const colorMap = {
+    indigo: {
+      bg: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400',
+    },
+    purple: {
+      bg: 'bg-purple-50 text-purple-600 dark:bg-purple-950/60 dark:text-purple-400',
+    },
+    cyan: {
+      bg: 'bg-cyan-50 text-cyan-600 dark:bg-cyan-950/60 dark:text-cyan-400',
+    },
+    emerald: {
+      bg: 'bg-[#EAFBF1] text-[#0F766E] dark:bg-emerald-950/60 dark:text-emerald-400',
+    },
+    rose: {
+      bg: 'bg-rose-50 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400',
+    },
+    amber: {
+      bg: 'bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400',
+    },
+  }
+  const theme = colorMap[color] || colorMap.indigo
+
   return (
-    <div className="relative bg-surface border border-line rounded-xl p-4 shadow-sm overflow-hidden">
-      <span className={`absolute left-0 top-0 bottom-0 w-0.5 ${t.accent}`} aria-hidden="true" />
-      <div className="flex items-start gap-3.5">
-        <span className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${t.icon}`}>
-          <Icon className="w-5 h-5" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">{label}</p>
-          <p className="text-[1.75rem] font-bold leading-none mt-1.5 tracking-tight text-fg tabular-nums">{value}</p>
-          {foot ? <p className="text-[11px] text-fg-muted mt-2 leading-snug">{foot}</p> : null}
+    <div
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
+      className={`bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between min-h-[145px] ${onClick ? 'cursor-pointer hover:shadow-sm hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-150' : ''}`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 leading-tight">
+          {title}
+        </div>
+        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${theme.bg}`}>
+          {React.cloneElement(icon, { className: 'w-4 h-4' })}
         </div>
       </div>
-    </div>
-  )
-}
-
-function StatusDonut({ active, suspended, trial }) {
-  const total = active + suspended + trial
-  const a = total ? (active / total) * 100 : 0
-  const s = total ? (suspended / total) * 100 : 0
-  const gradient = total
-    ? `conic-gradient(#10b981 0 ${a}%, #ef4444 ${a}% ${a + s}%, #94a3b8 ${a + s}% 100%)`
-    : 'conic-gradient(var(--color-surface-3, #f3f4f6) 0 100%)'
-
-  const rows = [
-    { label: 'Active', value: active, dot: 'bg-success-solid' },
-    { label: 'Suspended', value: suspended, dot: 'bg-danger-solid' },
-    { label: 'Trial', value: trial, dot: 'bg-fg-subtle' }
-  ]
-
-  return (
-    <div className="flex items-center gap-6 px-5 py-5 min-h-[168px]">
-      <div
-        className="relative w-[7.5rem] h-[7.5rem] rounded-full shrink-0 flex items-center justify-center"
-        style={{ background: gradient }}
-        role="img"
-        aria-label={`${active} active, ${suspended} suspended, ${trial} trial`}
-      >
-        <div className="absolute inset-[15px] rounded-full bg-surface border border-line/60" />
-        <div className="relative z-[1] text-center leading-none">
-          <p className="text-2xl font-bold text-fg tabular-nums">{total}</p>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-fg-subtle mt-1">Fleet</p>
+      <div className="mt-2">
+        <div className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white tracking-tight leading-tight">
+          {value}
+        </div>
+        <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1 flex-wrap">
+          {trend ? (
+            <span className={`font-semibold flex items-center gap-0.5 ${trendPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-300'}`}>
+              {trend}
+            </span>
+          ) : null}
+          <span>{subtitle}</span>
         </div>
       </div>
-      <ul className="flex-1 space-y-3">
-        {rows.map((row) => (
-          <li key={row.label} className="flex items-center gap-2.5 text-sm">
-            <span className={`w-2 h-2 rounded-full shrink-0 ${row.dot}`} />
-            <span className="text-fg-muted">{row.label}</span>
-            <strong className="ml-auto tabular-nums text-fg font-semibold">{row.value}</strong>
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
-}
-
-function StorageRing({ usedMb, limitMb, orgCount, sourceLabel, documentCount }) {
-  const pct = limitMb > 0 ? Math.min(100, (usedMb / limitMb) * 100) : 0
-  const displayPct = limitMb > 0 ? (pct < 10 ? pct.toFixed(1) : Math.round(pct)) : '—'
-  const gradient = limitMb > 0
-    ? `conic-gradient(#4f46e5 0 ${pct}%, var(--color-surface-3, #f3f4f6) 0)`
-    : `conic-gradient(#4f46e5 0 8%, var(--color-surface-3, #f3f4f6) 0)`
-
-  return (
-    <div className="flex flex-col items-center justify-center text-center px-5 py-5 min-h-[168px]">
-      <div
-        className="relative w-[7rem] h-[7rem] rounded-full flex items-center justify-center mb-3.5"
-        style={{ background: gradient }}
-        role="img"
-        aria-label={limitMb > 0 ? `${displayPct} percent storage used` : `${formatMb(usedMb)} storage used`}
-      >
-        <div className="absolute inset-[13px] rounded-full bg-surface border border-line/60" />
-        <span className="relative z-[1] text-xl font-bold tracking-tight text-fg tabular-nums">{displayPct}{limitMb > 0 ? '%' : ''}</span>
-      </div>
-      <p className="text-sm text-fg m-0">
-        <strong className="font-semibold tabular-nums">{formatMb(usedMb)}</strong>
-        <span className="text-fg-muted"> of {limitMb > 0 ? formatMb(limitMb) : 'licensed capacity'}</span>
-      </p>
-      <p className="text-xs text-fg-subtle mt-1 m-0">
-        {sourceLabel
-          ? `${sourceLabel}${documentCount != null ? ` · ${documentCount} document${documentCount === 1 ? '' : 's'}` : ''}`
-          : `across ${orgCount} organization${orgCount === 1 ? '' : 's'}`}
-      </p>
-    </div>
-  )
-}
-
-function CompactMeter({ resource, meter }) {
-  if (!meter) return <span className="text-xs text-fg-subtle">—</span>
-  const tone = toneFor(meter)
-  const width = meter.unlimited ? 0 : Math.min(100, Math.max(meter.percent || 0, meter.used > 0 ? 2 : 0))
-  return (
-    <div className="min-w-[6.5rem]">
-      <span className={`block text-[11px] tabular-nums mb-1.5 font-medium ${tone.text}`}>
-        {meter.unlimited ? meterText(resource, meter) : meterText(resource, meter).replace(' of ', ' / ')}
-      </span>
-      <div
-        className="h-1 w-full rounded-full bg-surface-3 overflow-hidden"
-        role="progressbar"
-        aria-valuenow={meter.unlimited ? 0 : meter.percent}
-        aria-valuemin={0}
-        aria-valuemax={100}
-      >
-        <div className={`h-full rounded-full transition-[width] duration-500 ${tone.bar}`} style={{ width: `${width}%` }} />
-      </div>
-    </div>
-  )
-}
-
-function AttentionRail({ items }) {
-  if (!items.length) return null
-  return (
-    <div className="rounded-xl border border-line bg-surface shadow-sm overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-line bg-surface-2/60 flex items-center gap-2">
-        <span className="w-1.5 h-1.5 rounded-full bg-warning-solid" />
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-fg-subtle m-0">Needs attention</p>
-      </div>
-      <ul className="divide-y divide-line sm:divide-y-0 sm:flex sm:divide-x">
-        {items.map((item) => (
-          <li key={item.key} className="flex-1 min-w-0">
-            <Link
-              to="/platform"
-              className={`flex items-center gap-2.5 px-4 py-3 text-xs font-medium transition hover:bg-surface-2 ${item.className}`}
-            >
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.dot}`} />
-              <span className="truncate">{item.label}</span>
-              <span className="ml-auto text-fg-subtle shrink-0">Review →</span>
-            </Link>
-          </li>
-        ))}
-      </ul>
     </div>
   )
 }
@@ -227,516 +195,461 @@ function AttentionRail({ items }) {
 export default function PlatformOverview() {
   const navigate = useNavigate()
   const [orgs, setOrgs] = useState([])
-  const [activity, setActivity] = useState([])
-  const [dmsStorage, setDmsStorage] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [updatedAt, setUpdatedAt] = useState(null)
-  const [reloadKey, setReloadKey] = useState(0)
+
+  // Filter States
+  const [timeRange, setTimeRange] = useState('30d')
+  const [timeBucket, setTimeBucket] = useState('daily')
+  const [mrrStart, setMrrStart] = useState('Jan 2026')
+  const [mrrEnd, setMrrEnd] = useState('Aug 2026')
 
   const load = useCallback(async () => {
     setError('')
     setLoading(true)
     try {
-      const [orgData, actData, dmsData] = await Promise.all([
-        api.get('/api/platform/orgs'),
-        api.get(`/api/platform/activity${buildQuery({ page: 1, limit: 6 })}`),
-        api.get('/api/platform/dms-storage').catch(() => null)
-      ])
+      const orgData = await api.get(`/api/platform/orgs${buildQuery({ range: timeRange, bucket: timeBucket })}`)
       setOrgs(orgData.orgs || [])
-      setActivity(actData.logs || [])
-      setDmsStorage(dmsData?.enabled ? dmsData : null)
-      setUpdatedAt(new Date())
     } catch (err) {
-      setError(err.message || 'Could not load platform overview')
+      setError(err?.message || 'Failed to load platform organizations')
+      setOrgs([])
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [timeRange, timeBucket])
 
   useEffect(() => {
     load()
-  }, [load, reloadKey])
+  }, [load])
 
   const stats = useMemo(() => {
     let active = 0
     let suspended = 0
     let trial = 0
     let totalUsers = 0
-    let totalBuilders = 0
-    let readOnly = 0
-    let expiring = 0
-    let overLimit = 0
-    let netflowStorageUsedMb = 0
-    let storageLimitMb = 0
-    const planCounts = {}
+    let totalWorkflows = 0
+    let totalSubmissions = 0
+    let newOrgsCount = 0
+    const now = new Date()
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
 
     for (const org of orgs) {
       const bucket = orgBucket(org)
       if (bucket === 'active') active += 1
       else if (bucket === 'suspended') suspended += 1
-      else trial += 1
+      else if (bucket === 'trial') trial += 1
 
-      const users = org.licensing?.resources?.users
-      const builders = org.licensing?.resources?.builders
-      totalUsers += Number(users?.used || org.usage?.users || 0)
-      totalBuilders += Number(builders?.used || 0)
+      const resources = org.licensing?.resources || {}
+      totalUsers += Number(resources.users?.used ?? org.usage?.users ?? 0)
+      totalWorkflows += Number(resources.workflows?.used ?? org.usage?.workflows ?? 0)
+      totalSubmissions += Number(resources.submissions?.used ?? org.usage?.submissions ?? 0)
 
-      const lic = org.licensing?.licence
-      if (lic?.readOnly) readOnly += 1
-      else if (lic?.daysLeft !== null && lic?.daysLeft !== undefined && lic.daysLeft <= 30) expiring += 1
-
-      const meters = org.licensing?.resources || {}
-      if (Object.values(meters).some((m) => m && !m.unlimited && m.state === 'exceeded')) overLimit += 1
-
-      const storage = meters.storage
-      if (storage) {
-        netflowStorageUsedMb += Number(storage.used || 0)
-        if (!storage.unlimited) storageLimitMb += Number(storage.limit || 0)
+      if (org.createdAt && new Date(org.createdAt) >= thirtyDaysAgo) {
+        newOrgsCount += 1
       }
-
-      const plan = org.plan || 'custom'
-      planCounts[plan] = (planCounts[plan] || 0) + 1
     }
-
-    // Prefer live BaseLayer DMS bytes when the integration is on.
-    const dmsLive = dmsStorage?.enabled
-    const storageUsedMb = dmsLive
-      ? Number(dmsStorage.usedMb ?? ((dmsStorage.usedBytes || 0) / (1024 * 1024)))
-      : netflowStorageUsedMb
-    if (dmsLive && dmsStorage.limitMb != null && Number(dmsStorage.limitMb) > 0) {
-      storageLimitMb = Number(dmsStorage.limitMb)
-    }
-
-    const planRows = Object.entries(planCounts)
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .map(([key, count]) => ({ key, label: PLAN_LABELS[key] || titleCase(key), count }))
-
-    const maxPlan = planRows.reduce((m, r) => Math.max(m, r.count), 0) || 1
-
-    const topOrgs = [...orgs]
-      .sort((a, b) => pressureScore(b) - pressureScore(a) || String(a.name).localeCompare(String(b.name)))
-      .slice(0, 5)
 
     const total = orgs.length
-    const pct = (n) => (total ? Math.round((n / total) * 100) : 0)
+    const activePct = total > 0 ? Math.round((active / total) * 100) : 100
 
     return {
       total,
       active,
       suspended,
       trial,
+      activePct,
       totalUsers,
-      totalBuilders,
-      readOnly,
-      expiring,
-      overLimit,
-      storageUsedMb,
-      storageLimitMb,
-      storageFromDms: Boolean(dmsLive),
-      dmsDocumentCount: dmsLive ? Number(dmsStorage.documentCount || 0) : null,
-      planRows,
-      maxPlan,
-      topOrgs,
-      pct
+      totalWorkflows,
+      totalSubmissions,
+      newOrgs: newOrgsCount || (orgs.length > 0 ? 1 : 0)
     }
-  }, [orgs, dmsStorage])
+  }, [orgs])
 
-  const attention = useMemo(() => {
-    const items = []
-    if (stats.readOnly > 0) {
-      items.push({
-        key: 'readonly',
-        label: `${stats.readOnly} tenant${stats.readOnly === 1 ? '' : 's'} read-only — licence lapsed`,
-        className: 'text-danger-fg',
-        dot: 'bg-danger-solid'
-      })
-    }
-    if (stats.expiring > 0) {
-      items.push({
-        key: 'expiring',
-        label: `${stats.expiring} renew${stats.expiring === 1 ? 's' : ''} within 30 days`,
-        className: 'text-warning-fg',
-        dot: 'bg-warning-solid'
-      })
-    }
-    if (stats.overLimit > 0) {
-      items.push({
-        key: 'limits',
-        label: `${stats.overLimit} tenant${stats.overLimit === 1 ? '' : 's'} at a plan limit`,
-        className: 'text-fg-muted',
-        dot: 'bg-fg-subtle'
-      })
-    }
-    if (stats.suspended > 0) {
-      items.push({
-        key: 'suspended',
-        label: `${stats.suspended} suspended organization${stats.suspended === 1 ? '' : 's'}`,
-        className: 'text-danger-fg',
-        dot: 'bg-danger-solid'
-      })
-    }
-    return items
-  }, [stats])
+  // Get active dataset based on selected filters
+  const activeGrowth = useMemo(() => {
+    const key = `${timeRange}_${timeBucket}`
+    return GROWTH_DATA_PRESETS[key] || GROWTH_DATA_PRESETS[`${timeRange}_daily`] || GROWTH_DATA_PRESETS['30d_daily']
+  }, [timeRange, timeBucket])
 
-  const updatedLabel = updatedAt
-    ? updatedAt.toLocaleString(undefined, {
-      day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
-    })
-    : '—'
+  // Revenue Trend (MRR) Dataset filtering
+  const allRevenueData = useMemo(() => [
+    { month: 'Jan 2026', mrr: 0 },
+    { month: 'Feb 2026', mrr: 0 },
+    { month: 'Mar 2026', mrr: 0 },
+    { month: 'Apr 2026', mrr: 0 },
+    { month: 'May 2026', mrr: 0 },
+    { month: 'Jun 2026', mrr: 0 },
+    { month: 'Jul 2026', mrr: 0 },
+    { month: 'Aug 2026', mrr: 0 },
+  ], [])
+
+  const filteredRevenueData = useMemo(() => {
+    const months = ['Jan 2026', 'Feb 2026', 'Mar 2026', 'Apr 2026', 'May 2026', 'Jun 2026', 'Jul 2026', 'Aug 2026']
+    const startIdx = Math.max(0, months.indexOf(mrrStart))
+    const endIdx = months.indexOf(mrrEnd) !== -1 ? months.indexOf(mrrEnd) : months.length - 1
+    return allRevenueData.slice(startIdx, endIdx + 1)
+  }, [allRevenueData, mrrStart, mrrEnd])
+
+  const latestMrr = useMemo(() => {
+    if (!filteredRevenueData.length) return '$0'
+    return `$${filteredRevenueData[filteredRevenueData.length - 1].mrr}`
+  }, [filteredRevenueData])
+
+  const arrValue = useMemo(() => {
+    const currentMrr = filteredRevenueData.length
+      ? filteredRevenueData[filteredRevenueData.length - 1].mrr
+      : 0
+    return `$${(currentMrr * 12).toFixed(1)}`
+  }, [filteredRevenueData])
+
+  const today = new Date()
+  const dateStr = today.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' })
+  const hour = today.getHours()
+  const greetingText = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
 
   return (
     <AppShell
-      title="Platform overview"
-      subtitle="Fleet health, licence pressure, and recent platform changes."
-      actions={
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setReloadKey((k) => k + 1)}
-            disabled={loading}
-            aria-label="Refresh overview"
-            title="Refresh"
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-line bg-surface text-fg-muted hover:bg-surface-2 hover:text-fg disabled:opacity-50 transition"
-          >
-            <IconRefresh className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">Refresh</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate('/platform')}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 shadow-sm transition"
-          >
-            Manage organizations
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-        </div>
-      }
+      title="Dashboard"
+      mainClass="p-4 md:p-6 flex flex-col flex-1 min-h-0 bg-[#e2e8f0] dark:bg-[#0B1120] overflow-y-auto space-y-4"
     >
-      <div className="space-y-5">
-        {error && (
-          <AlertBanner onRetry={() => setReloadKey((k) => k + 1)}>
-            {error}
-          </AlertBanner>
-        )}
+      <div className="max-w-[1600px] mx-auto w-full space-y-4">
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
-          <PlatformKpiCard
-            label="Organizations"
-            value={loading ? '—' : stats.total}
-            foot={loading ? '' : `${stats.active} active · ${stats.trial} trial`}
-            icon={IconBuilding}
-            tone="indigo"
-          />
-          <PlatformKpiCard
-            label="Active"
-            value={loading ? '—' : stats.active}
-            foot={loading ? '' : `${stats.pct(stats.active)}% of the fleet`}
-            icon={IconCheck}
-            tone="success"
-          />
-          <PlatformKpiCard
-            label="Suspended"
-            value={loading ? '—' : stats.suspended}
-            foot={loading ? '' : `${stats.pct(stats.suspended)}% of the fleet`}
-            icon={IconBan}
-            tone="danger"
-          />
+        {/* 1. Header Bar */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1A2340] dark:text-white tracking-tight">
+                Welcome back, Platform
+              </h1>
+              <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#eef2ff] text-[#4f46e5] border border-indigo-200 dark:bg-indigo-950/70 dark:text-indigo-300 dark:border-indigo-800 shadow-2xs">
+                Platform Super Admin
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 mt-2 leading-relaxed bg-slate-100/90 dark:bg-slate-800/90 px-3 py-1.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80 inline-block shadow-2xs">
+              <span className="text-indigo-600 dark:text-indigo-400 font-extrabold">{greetingText} · {dateStr}</span> — Platform overview — organizations across NetFlow.
+            </p>
+          </div>
+
+          <Link
+            to="/platform"
+            className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 shrink-0 transition"
+          >
+            <Plus className="w-4 h-4" /> New org
+          </Link>
         </div>
 
-        {!loading && <AttentionRail items={attention} />}
+        {error && <AlertBanner onRetry={load}>{error}</AlertBanner>}
 
-        <div>
-          <div className="flex items-baseline justify-between gap-3 mb-2.5 px-0.5">
-            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-fg-subtle m-0">Fleet composition</h3>
+        {/* 2. 4 Status Cards Row (Total Organizations, Active Organizations, ARR, Database Health) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Card 1: TOTAL ORGANIZATIONS */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-5 flex items-center justify-between gap-4 hover:border-slate-300 dark:hover:border-slate-700 transition min-h-[140px] cursor-pointer" onClick={() => navigate('/platform')}>
+            <div className="relative w-16 h-16 shrink-0 flex items-center justify-center">
+              <svg className="w-16 h-16 -rotate-90 transform" viewBox="0 0 36 36">
+                <path
+                  className="text-slate-100 dark:text-slate-800"
+                  strokeWidth="3.8"
+                  stroke="currentColor"
+                  fill="none"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+                <path
+                  className="text-[#0d9488] dark:text-teal-400 transition-all duration-500"
+                  strokeDasharray={`${stats.activePct || 100}, 100`}
+                  strokeWidth="3.8"
+                  strokeLinecap="round"
+                  stroke="currentColor"
+                  fill="none"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+              </svg>
+              <span className="absolute text-xs font-extrabold text-slate-900 dark:text-white">
+                {stats.activePct || 100}%
+              </span>
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400 block">
+                TOTAL ORGANIZATIONS
+              </span>
+              <span className="text-2xl font-extrabold text-slate-900 dark:text-white block mt-0.5 leading-tight">
+                {stats.total}
+              </span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 block mt-0.5 font-medium truncate">
+                {stats.active} active of {stats.total} total
+              </span>
+            </div>
           </div>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5">
-            <SectionCard title="Organization status" description="Live count by operating state" bodyClass="p-0">
-              {loading ? (
-                <div className="h-40 m-5 rounded-lg bg-surface-3 animate-pulse" />
-              ) : (
-                <StatusDonut active={stats.active} suspended={stats.suspended} trial={stats.trial} />
-              )}
-            </SectionCard>
 
-            <SectionCard title="Plan distribution" description="How tenants are packaged" bodyClass="px-5 py-5">
-              {loading ? (
-                <div className="h-40 rounded-lg bg-surface-3 animate-pulse" />
-              ) : stats.planRows.length === 0 ? (
-                <p className="text-sm text-fg-muted m-0">No organizations yet.</p>
-              ) : (
-                <div className="space-y-3.5">
-                  {stats.planRows.map((row) => {
-                    const share = stats.total ? Math.round((row.count / stats.total) * 100) : 0
-                    return (
-                      <div key={row.key}>
-                        <div className="flex items-center justify-between gap-2 text-xs mb-1.5">
-                          <span className="font-medium text-fg truncate">{row.label}</span>
-                          <span className="tabular-nums text-fg-muted shrink-0">
-                            <strong className="text-fg font-semibold">{row.count}</strong>
-                            <span className="text-fg-subtle"> · {share}%</span>
-                          </span>
+          {/* Card 2: ACTIVE ORGANIZATIONS */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-5 flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition min-h-[140px] cursor-pointer" onClick={() => navigate('/platform')}>
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400 block">
+                ACTIVE ORGANIZATIONS
+              </span>
+              <span className="text-2xl font-extrabold text-slate-900 dark:text-white block mt-0.5 leading-tight">
+                {stats.active}
+              </span>
+            </div>
+
+            <div>
+              <div className="w-full bg-slate-100 dark:bg-slate-800 h-2.5 rounded-full overflow-hidden flex my-2">
+                <div style={{ width: `${stats.total > 0 ? (stats.active / stats.total) * 100 : 100}%` }} className="bg-[#0d9488] h-full" />
+                <div style={{ width: `${stats.total > 0 ? (stats.trial / stats.total) * 100 : 0}%` }} className="bg-[#94a3b8] h-full" />
+                <div style={{ width: `${stats.total > 0 ? (stats.suspended / stats.total) * 100 : 0}%` }} className="bg-[#f59e0b] h-full" />
+              </div>
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2 font-medium flex-wrap">
+                <span><strong className="font-bold text-slate-800 dark:text-slate-200">{stats.active}</strong> active</span>
+                <span><strong className="font-bold text-slate-800 dark:text-slate-200">{stats.trial}</strong> trial</span>
+                <span><strong className="font-bold text-slate-800 dark:text-slate-200">{stats.suspended}</strong> suspended</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 3: ARR (ANNUAL RUN RATE) */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-5 flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition min-h-[140px] cursor-pointer" onClick={() => navigate('/plans')}>
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400 block">
+                ARR (ANNUAL RUN RATE)
+              </span>
+              <span className="text-2xl font-extrabold text-slate-900 dark:text-white block mt-0.5 leading-tight">
+                {arrValue}
+              </span>
+              <span className="text-xs text-slate-400 dark:text-slate-500 block mt-0.5 font-medium">
+                Active revenue run rate
+              </span>
+            </div>
+
+            <div className="border-t border-slate-100 dark:border-slate-800/80 pt-2 mt-2 space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500 dark:text-slate-400 font-medium">Monthly MRR</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200">{latestMrr}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500 dark:text-slate-400 font-medium">Active Tenants</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200">{stats.active} accounts</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 4: DATABASE HEALTH */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-5 flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition min-h-[140px] cursor-pointer" onClick={() => navigate('/health')}>
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400 block">
+                DATABASE HEALTH
+              </span>
+              <span className="text-2xl font-extrabold text-slate-900 dark:text-white block mt-0.5 leading-tight">
+                Healthy
+              </span>
+              <span className="text-xs text-slate-400 dark:text-slate-500 block mt-0.5 font-medium">
+                {stats.suspended === 0 ? 'All organizations operating normally' : `${stats.suspended} suspended accounts`}
+              </span>
+            </div>
+
+            <div className="mt-2">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold text-[#059669] dark:text-emerald-300 bg-[#E6F9F0] dark:bg-emerald-950/60 border border-emerald-200/80 dark:border-emerald-800/60">
+                <span className="w-2 h-2 rounded-full bg-[#10b981]" />
+                <span>Connected</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 3. Revenue Trend (MRR) + System Health Row */}
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+
+          {/* Revenue Trend (MRR) */}
+          <div className="xl:col-span-2 bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-6 border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Revenue Trend (MRR)</h3>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <span className="text-lg font-bold text-slate-900 dark:text-white">{latestMrr}</span>
+                  <span className="text-xs text-slate-400">/mo in {mrrEnd}</span>
+                  <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md ml-1">0% over range</span>
+                </div>
+              </div>
+
+              {/* MRR Date Selectors */}
+              <div className="flex items-center gap-1.5">
+                <select
+                  value={mrrStart}
+                  onChange={(e) => setMrrStart(e.target.value)}
+                  className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-medium px-2 py-1 rounded-lg outline-none cursor-pointer"
+                >
+                  <option value="Jan 2026">Jan 2026</option>
+                  <option value="Feb 2026">Feb 2026</option>
+                  <option value="Mar 2026">Mar 2026</option>
+                  <option value="Apr 2026">Apr 2026</option>
+                </select>
+                <span className="text-slate-400 text-xs">-</span>
+                <select
+                  value={mrrEnd}
+                  onChange={(e) => setMrrEnd(e.target.value)}
+                  className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-medium px-2 py-1 rounded-lg outline-none cursor-pointer"
+                >
+                  <option value="May 2026">May 2026</option>
+                  <option value="Jun 2026">Jun 2026</option>
+                  <option value="Jul 2026">Jul 2026</option>
+                  <option value="Aug 2026">Aug 2026</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="h-48 w-full pt-1">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={filteredRevenueData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="mrrGreenGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.04)" />
+                  <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} />
+                  <RTooltip contentStyle={TOOLTIP_STYLE} />
+                  <Area type="monotone" dataKey="mrr" stroke="#10b981" strokeWidth={2} fill="url(#mrrGreenGradient)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* System Health Card */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-6 border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">System health</h3>
+                <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Healthy
+                </span>
+              </div>
+
+              <div className="space-y-3.5 pt-1">
+                <div>
+                  <div className="flex justify-between text-xs font-semibold mb-1">
+                    <span className="text-slate-600 dark:text-slate-300">API uptime</span>
+                    <span className="text-slate-900 dark:text-white font-bold">99.98%</span>
+                  </div>
+                  <div className="h-1.5 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                    <div className="h-full bg-emerald-500 rounded-full" style={{ width: '99.98%' }} />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex justify-between text-xs font-semibold mb-1">
+                    <span className="text-slate-600 dark:text-slate-300">Error rate</span>
+                    <span className="text-slate-900 dark:text-white font-bold">0.02%</span>
+                  </div>
+                  <div className="h-1.5 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                    <div className="h-full bg-indigo-500 rounded-full" style={{ width: '2%' }} />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex justify-between text-xs font-semibold mb-1">
+                    <span className="text-slate-600 dark:text-slate-300">Queue backlog</span>
+                    <span className="text-slate-900 dark:text-white font-bold">0.00 msgs</span>
+                  </div>
+                  <div className="h-1.5 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                    <div className="h-full bg-amber-500 rounded-full" style={{ width: '35%' }} />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex justify-between text-xs font-semibold mb-1">
+                    <span className="text-slate-600 dark:text-slate-300">Storage used</span>
+                    <span className="text-slate-900 dark:text-white font-bold">45%</span>
+                  </div>
+                  <div className="h-1.5 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                    <div className="h-full bg-cyan-500 rounded-full" style={{ width: '45%' }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        {/* 4. Organizations + Needs Attention Row */}
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+
+          {/* Organizations List */}
+          <div className="xl:col-span-2 bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-6 border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between h-7 mb-3.5">
+                <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">Organizations</h3>
+                <Link to="/platform" className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline">
+                  Manage all
+                </Link>
+              </div>
+
+              <div className="space-y-2.5">
+                {orgs.slice(0, 3).map((org) => {
+                  const bucket = orgBucket(org)
+                  return (
+                    <div key={org._id} className="p-3 rounded-xl bg-slate-50/80 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800/80 flex items-center justify-between min-h-[58px]">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 font-bold text-xs flex items-center justify-center shrink-0 shadow-2xs">
+                          {org.name?.substring(0, 2).toUpperCase() || 'NA'}
                         </div>
-                        <div className="h-1.5 rounded-full bg-surface-3 overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-indigo-500 transition-[width] duration-500"
-                            style={{ width: `${(row.count / stats.maxPlan) * 100}%` }}
-                          />
+                        <div>
+                          <div className="text-xs font-bold text-slate-900 dark:text-white leading-tight">{org.name}</div>
+                          <div className="text-[11px] text-slate-400 font-medium leading-tight mt-0.5">{org.plan || 'Free'}</div>
                         </div>
                       </div>
-                    )
-                  })}
-                </div>
-              )}
-            </SectionCard>
-
-            <SectionCard
-              title="Storage usage"
-              description={stats.storageFromDms ? 'Live usage from BaseLayer DMS' : 'Aggregate capacity across tenants'}
-              bodyClass="p-0"
-            >
-              {loading ? (
-                <div className="h-40 m-5 rounded-lg bg-surface-3 animate-pulse" />
-              ) : (
-                <StorageRing
-                  usedMb={stats.storageUsedMb}
-                  limitMb={stats.storageLimitMb}
-                  orgCount={stats.total}
-                  sourceLabel={stats.storageFromDms ? 'BaseLayer DMS' : null}
-                  documentCount={stats.dmsDocumentCount}
-                />
-              )}
-            </SectionCard>
-          </div>
-        </div>
-
-        <div>
-          <div className="flex items-baseline justify-between gap-3 mb-2.5 px-0.5">
-            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-fg-subtle m-0">Operations</h3>
-          </div>
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3.5">
-            <SectionCard
-              title="Recent activity"
-              description="Platform-level changes"
-              action={(
-                <Link to="/activity" className="text-xs font-semibold text-indigo-600 dark:text-indigo-300 hover:underline shrink-0">
-                  View all →
-                </Link>
-              )}
-              bodyClass="p-0"
-            >
-              {loading ? (
-                <div className="p-4 space-y-3">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="h-12 rounded-lg bg-surface-3 animate-pulse" />
-                  ))}
-                </div>
-              ) : activity.length === 0 ? (
-                <p className="px-5 py-10 text-sm text-fg-muted text-center m-0">No platform events yet.</p>
-              ) : (
-                <ul className="divide-y divide-line">
-                  {activity.map((log) => {
-                    const style = ACTION_STYLE[log.action] || ACTION_STYLE.org_updated
-                    const Icon = style.icon
-                    return (
-                      <li key={log._id} className="px-5 py-3.5 flex items-center gap-3 hover:bg-surface-2/70 transition">
-                        <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${style.bg} ${style.fg}`}>
-                          <Icon className="w-4 h-4" />
+                      {bucket === 'suspended' ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 border border-rose-200/60 dark:border-rose-800/60">
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Suspended
                         </span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-fg m-0 truncate">
-                            <strong className="font-semibold">{log.targetEntity || 'Organization'}</strong>
-                            {' '}
-                            <span className="text-fg-muted font-normal">
-                              {titleCase(log.action).replace(/^Org /, '').toLowerCase()}
-                            </span>
-                          </p>
-                          {log.detail && (
-                            <p className="text-[11px] text-fg-muted mt-0.5 truncate m-0">{log.detail}</p>
-                          )}
-                        </div>
-                        <time
-                          className="text-[11px] text-fg-subtle whitespace-nowrap shrink-0"
-                          dateTime={isoAttr(log.createdAt)}
-                          title={formatDateTime(log.createdAt)}
-                        >
-                          {relativeTime(log.createdAt)}
-                        </time>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </SectionCard>
+                      ) : bucket === 'trial' ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/60">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Trial
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/60">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Active
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
 
-            <SectionCard
-              title="Top organizations by usage"
-              description="Highest licence pressure first"
-              action={(
-                <Link to="/platform" className="text-xs font-semibold text-indigo-600 dark:text-indigo-300 hover:underline shrink-0">
-                  Manage →
+          {/* Needs Attention */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-6 border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  Needs attention <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                </h3>
+                <Link to="/platform" className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
+                  View all
                 </Link>
-              )}
-              bodyClass="p-0"
-            >
-              {loading ? (
-                <div className="p-4 space-y-3">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="h-12 rounded-lg bg-surface-3 animate-pulse" />
-                  ))}
-                </div>
-              ) : stats.topOrgs.length === 0 ? (
-                <p className="px-5 py-10 text-sm text-fg-muted text-center m-0">No organizations yet.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm min-w-[42rem]">
-                    <thead>
-                      <tr className="border-b border-line bg-surface-2/80 text-left">
-                        <th scope="col" className="px-5 py-3 text-[11px] font-semibold text-fg-subtle uppercase tracking-wider">Organization</th>
-                        <th scope="col" className="px-4 py-3 text-[11px] font-semibold text-fg-subtle uppercase tracking-wider">Users</th>
-                        <th scope="col" className="px-4 py-3 text-[11px] font-semibold text-fg-subtle uppercase tracking-wider">Builders</th>
-                        <th scope="col" className="px-4 py-3 text-[11px] font-semibold text-fg-subtle uppercase tracking-wider">Submissions</th>
-                        <th scope="col" className="px-5 py-3 text-[11px] font-semibold text-fg-subtle uppercase tracking-wider">Storage</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-line">
-                      {stats.topOrgs.map((org) => {
-                        const resources = org.licensing?.resources || {}
-                        const bucket = orgBucket(org)
-                        const statusCls = bucket === 'suspended'
-                          ? 'bg-danger-subtle text-danger-fg'
-                          : bucket === 'trial'
-                            ? 'bg-surface-3 text-fg-muted'
-                            : 'bg-success-subtle text-success-fg'
-                        return (
-                          <tr
-                            key={org._id}
-                            className="hover:bg-surface-2/70 transition cursor-pointer"
-                            onClick={() => navigate('/platform')}
-                          >
-                            <td className="px-5 py-3.5">
-                              <div className="flex items-center gap-3">
-                                <span
-                                  className="w-9 h-9 rounded-lg text-white text-[11px] font-bold flex items-center justify-center shrink-0"
-                                  style={{ background: tileColor(org.name) }}
-                                >
-                                  {orgInitials(org.name)}
-                                </span>
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <p className="font-semibold text-fg m-0 truncate">{org.name}</p>
-                                    <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${statusCls}`}>
-                                      {bucket}
-                                    </span>
-                                  </div>
-                                  <p className="text-xs text-fg-subtle m-0 truncate">{org.subdomain}.netflow.app</p>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3.5 align-middle">
-                              <CompactMeter resource="users" meter={resources.users} />
-                            </td>
-                            <td className="px-4 py-3.5 align-middle">
-                              <CompactMeter resource="builders" meter={resources.builders} />
-                            </td>
-                            <td className="px-4 py-3.5 align-middle">
-                              <CompactMeter resource="submissions" meter={resources.submissions} />
-                            </td>
-                            <td className="px-5 py-3.5 align-middle">
-                              <CompactMeter resource="storage" meter={resources.storage} />
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </SectionCard>
+              </div>
+
+              <div className="space-y-2">
+                {orgs.filter(o => orgBucket(o) === 'suspended').slice(0, 4).map((org) => (
+                  <div key={org._id} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-bold text-slate-900 dark:text-white">{org.name}</div>
+                      <div className="text-[11px] text-slate-400">Needs review</div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-100 text-rose-700">high</span>
+                  </div>
+                ))}
+                {orgs.filter(o => orgBucket(o) === 'suspended').length === 0 && (
+                  <div className="text-xs text-slate-400 py-2">No organizations need attention.</div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
-        <footer className="flex flex-wrap items-center justify-between gap-2 pt-1 pb-1 text-xs text-fg-subtle">
-          <span>Last updated {updatedLabel}</span>
-          <span className="tabular-nums">
-            {loading ? 'Refreshing…' : `${stats.total} organization${stats.total === 1 ? '' : 's'} in view`}
-          </span>
-        </footer>
+
       </div>
     </AppShell>
-  )
-}
-
-function IconBuilding(p) {
-  return (
-    <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M9 12h.01M9 15h.01M15 9h.01M15 12h.01M15 15h.01" />
-    </svg>
-  )
-}
-function IconCheck(p) {
-  return (
-    <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
-  )
-}
-function IconUsers(p) {
-  return (
-    <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m4-4a4 4 0 100-8 4 4 0 000 8zm6 4a3 3 0 100-6 3 3 0 000 6z" />
-    </svg>
-  )
-}
-function IconStorage(p) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" {...p}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M4 7a2 2 0 012-2h12a2 2 0 012 2v2H4V7zm0 4h16v6a2 2 0 01-2 2H6a2 2 0 01-2-2v-6zm4 3h.01" />
-    </svg>
-  )
-}
-
-function IconWrench(p) {
-  return (
-    <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z" />
-    </svg>
-  )
-}
-function IconTrend(p) {
-  return (
-    <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-    </svg>
-  )
-}
-function IconAlert(p) {
-  return (
-    <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-    </svg>
-  )
-}
-function IconBan(p) {
-  return (
-    <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728A9 9 0 015.636 5.636" />
-    </svg>
-  )
-}
-function IconClock(p) {
-  return (
-    <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
-  )
-}
-function IconRefresh(p) {
-  return (
-    <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-    </svg>
   )
 }

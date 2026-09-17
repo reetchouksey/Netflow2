@@ -38,13 +38,13 @@ function maskHost(host) {
 function StatusPill({ ok, label }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider ${
         ok
-          ? 'bg-success-subtle text-success-fg'
-          : 'bg-warning-subtle text-warning-fg'
+          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/60'
+          : 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 border border-rose-200/60 dark:border-rose-800/60'
       }`}
     >
-      <span className={`w-1.5 h-1.5 rounded-full ${ok ? 'bg-success-solid' : 'bg-warning-solid'}`} />
+      <span className={`w-1.5 h-1.5 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.4)] ${ok ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' : 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]'}`} />
       {label}
     </span>
   )
@@ -52,20 +52,20 @@ function StatusPill({ ok, label }) {
 
 function HealthCard({ title, icon: Icon, iconWrap, children, footer }) {
   return (
-    <div className="bg-surface border border-line rounded-xl overflow-hidden shadow-sm flex flex-col">
-      <div className="px-5 pt-5 pb-3 flex items-start justify-between gap-3">
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 shadow-sm hover:shadow-md transition-all flex flex-col overflow-hidden">
+      <div className="px-6 pt-6 pb-4 flex items-center justify-between border-b border-slate-100 dark:border-slate-800/50">
         <div>
-          <h2 className="text-sm font-semibold text-fg m-0">{title}</h2>
+          <h2 className="text-[15px] font-extrabold text-slate-900 dark:text-white tracking-tight m-0">{title}</h2>
         </div>
         {Icon && (
-          <span className={`w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0 ${iconWrap}`}>
-            <Icon className="w-[18px] h-[18px]" />
+          <span className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${iconWrap}`}>
+            <Icon className="w-5 h-5" />
           </span>
         )}
       </div>
-      <div className="px-5 pb-4 flex-1">{children}</div>
+      <div className="flex-1 flex flex-col">{children}</div>
       {footer && (
-        <div className="px-5 py-3 border-t border-line bg-surface-2/40">
+        <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800/50 bg-slate-50/50 dark:bg-slate-800/20">
           {footer}
         </div>
       )}
@@ -75,39 +75,54 @@ function HealthCard({ title, icon: Icon, iconWrap, children, footer }) {
 
 function HealthCardSkeleton({ rows = 3 }) {
   return (
-    <>
-      <Skeleton className="h-6 w-24 rounded-full mb-3" />
+    <div className="py-1">
       {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="flex items-center justify-between gap-4 py-2 border-b border-line last:border-0">
+        <div key={i} className="flex items-center justify-between gap-4 py-3.5 border-b border-slate-100 dark:border-slate-800/50 last:border-0 px-6">
           <Skeleton className="h-3 w-20" />
           <Skeleton className="h-3 w-24" />
         </div>
       ))}
-    </>
+    </div>
   )
 }
 
 function Row({ label, value }) {
   return (
-    <div className="flex items-start justify-between gap-4 py-2 border-b border-line last:border-0">
-      <span className="text-xs text-fg-muted">{label}</span>
-      <span className="text-xs font-medium text-fg text-right break-all">{value ?? '—'}</span>
+    <div className="flex items-center justify-between gap-4 py-3.5 border-b border-slate-100 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/50 dark:hover:bg-slate-800/20 px-6 transition-colors">
+      <span className="text-[13px] font-medium text-slate-500 dark:text-slate-400">{label}</span>
+      <span className="text-[13px] font-bold text-slate-900 dark:text-white text-right break-all">{value ?? '—'}</span>
     </div>
   )
 }
 
-function MetricTile({ label, value, tone = 'default' }) {
-  const valueCls = tone === 'danger'
-    ? 'text-danger-fg'
-    : tone === 'success'
-      ? 'text-success-fg'
-      : tone === 'indigo'
-        ? 'text-indigo-600 dark:text-indigo-300'
-        : 'text-fg'
+function MetricTile({ label, value, tone = 'indigo', icon }) {
+  const tones = {
+    indigo: "bg-[#EEF2FF] text-[#6366F1] dark:bg-indigo-950/60 dark:text-indigo-400",
+    success: "bg-[#E6F9F0] text-[#059669] dark:bg-emerald-950/60 dark:text-emerald-400",
+    danger: "bg-[#FEE2E2] text-[#DC2626] dark:bg-rose-950/60 dark:text-rose-400",
+    default: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+  }
+  const toneStyle = tones[tone] || tones.default
+
   return (
-    <div className="rounded-xl border border-line bg-surface px-4 py-3.5">
-      <p className="text-[11px] font-medium text-fg-muted m-0">{label}</p>
-      <p className={`text-2xl font-bold tracking-tight mt-1 tabular-nums ${valueCls}`}>{value}</p>
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-4 flex items-center gap-3.5 hover:border-slate-300 dark:hover:border-slate-700 transition min-w-0">
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${toneStyle}`}>
+        {icon || (
+          <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-1.5 flex-wrap">
+          <span className="text-lg font-bold text-slate-900 dark:text-white leading-tight tabular-nums">
+            {value}
+          </span>
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400 leading-tight">
+            {label}
+          </span>
+        </div>
+      </div>
     </div>
   )
 }
@@ -137,47 +152,51 @@ export default function PlatformHealth() {
     <AppShell
       title="Health"
       subtitle="API, database, and organization status for this deployment."
+      mainClass="p-4 md:p-6 lg:p-8 flex flex-col flex-1 min-h-0 bg-slate-50/50 dark:bg-[#0B1120] overflow-y-auto"
       actions={
         <button
           type="button"
           onClick={load}
           disabled={loading}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-line hover:bg-surface-2 text-sm font-medium text-fg transition disabled:opacity-50"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/60 shadow-sm text-sm font-bold text-slate-700 dark:text-slate-300 transition-all disabled:opacity-50"
         >
-          <IconRefresh className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          <IconRefresh className={`w-4 h-4 ${loading ? 'animate-spin text-indigo-500' : 'text-slate-400'}`} />
           Refresh
         </button>
       }
     >
-      <div className="space-y-4">
+      <div className="max-w-[1400px] mx-auto w-full space-y-6">
         {error && <AlertBanner onRetry={load}>{error}</AlertBanner>}
 
         <div
-          className={`rounded-xl border p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm ${
+          className={`rounded-2xl border px-6 py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-5 shadow-sm transition-all duration-300 ${
             loading
-              ? 'bg-surface border-line'
+              ? 'bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800'
               : overallOk
-                ? 'bg-success-subtle/40 border-success-line'
-                : 'bg-warning-subtle/40 border-warning-line'
+                ? 'bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-transparent border-emerald-200/60 dark:from-emerald-500/15 dark:via-emerald-900/10 dark:border-emerald-800/60'
+                : 'bg-gradient-to-r from-rose-500/10 via-rose-500/5 to-transparent border-rose-200/60 dark:from-rose-500/15 dark:via-rose-900/10 dark:border-rose-800/60'
           }`}
         >
-          <div className="flex items-start gap-3.5">
-            <span
-              className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${
+          <div className="flex items-center gap-4">
+            <div
+              className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm relative ${
                 loading
-                  ? 'bg-surface-3 text-fg-muted'
+                  ? 'bg-slate-100 dark:bg-slate-800 text-slate-400'
                   : overallOk
-                    ? 'bg-success-subtle text-success-fg'
-                    : 'bg-warning-subtle text-warning-fg'
+                    ? 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400'
+                    : 'bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-400'
               }`}
             >
-              {loading ? <IconPulse className="w-5 h-5" /> : overallOk ? <IconCheck className="w-5 h-5" /> : <IconAlert className="w-5 h-5" />}
-            </span>
+              {!loading && overallOk && (
+                <div className="absolute inset-0 rounded-2xl bg-emerald-400/30 animate-ping" />
+              )}
+              {loading ? <IconPulse className="w-6 h-6 relative z-10" /> : overallOk ? <IconCheck className="w-6 h-6 relative z-10" /> : <IconAlert className="w-6 h-6 relative z-10" />}
+            </div>
             <div>
-              <p className="text-sm font-semibold text-fg m-0">Overall status</p>
-              <p className="text-xs text-fg-muted mt-0.5" aria-live="polite">
+              <p className="text-base font-extrabold text-slate-900 dark:text-white m-0 tracking-tight">Overall system status</p>
+              <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5 font-medium" aria-live="polite">
                 {loading
-                  ? 'Checking services…'
+                  ? 'Checking services in real-time…'
                   : (data?.api?.timestamp
                     ? `Last checked ${formatTimestamp(data.api.timestamp)}`
                     : '—')}
@@ -185,48 +204,51 @@ export default function PlatformHealth() {
             </div>
           </div>
           {loading ? (
-            <Skeleton className="h-7 w-24 rounded-full" />
+            <Skeleton className="h-8 w-28 rounded-full" />
           ) : data ? (
-            <StatusPill ok={overallOk} label={overallOk ? 'Healthy' : 'Degraded'} />
+            <StatusPill ok={overallOk} label={overallOk ? 'All Systems Operational' : 'Degraded Performance'} />
           ) : null}
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* Top Summary Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricTile
             label="API uptime"
             value={loading ? '—' : formatUptime(data?.api?.uptimeSeconds)}
             tone="indigo"
+            icon={<svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z" /></svg>}
           />
           <MetricTile
             label="Organizations"
             value={loading ? '—' : (orgs.total ?? '—')}
             tone="indigo"
+            icon={<svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>}
           />
           <MetricTile
             label="Active"
             value={loading ? '—' : (orgs.active ?? '—')}
             tone="success"
+            icon={<svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
           />
           <MetricTile
             label="Suspended"
             value={loading ? '—' : (orgs.suspended ?? '—')}
             tone={(orgs.suspended || 0) > 0 ? 'danger' : 'default'}
+            icon={<svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>}
           />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-6">
           <HealthCard
             title="API"
             icon={IconApi}
             iconWrap="bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300"
+            footer={loading ? <Skeleton className="h-6 w-16 rounded-full" /> : <StatusPill ok={apiOk} label={apiOk ? 'OK' : 'Issue'} />}
           >
             {loading ? (
-              <HealthCardSkeleton />
+              <HealthCardSkeleton rows={3} />
             ) : (
               <>
-                <div className="mb-2">
-                  <StatusPill ok={apiOk} label={apiOk ? 'OK' : 'Issue'} />
-                </div>
                 <Row label="Service" value={data?.api?.service} />
                 <Row label="Environment" value={data?.api?.env} />
                 <Row label="Uptime" value={formatUptime(data?.api?.uptimeSeconds)} />
@@ -238,14 +260,12 @@ export default function PlatformHealth() {
             title="Database"
             icon={IconDatabase}
             iconWrap="bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300"
+            footer={loading ? <Skeleton className="h-6 w-24 rounded-full" /> : <StatusPill ok={dbOk} label={dbOk ? 'Connected' : 'Not connected'} />}
           >
             {loading ? (
-              <HealthCardSkeleton />
+              <HealthCardSkeleton rows={3} />
             ) : (
               <>
-                <div className="mb-2">
-                  <StatusPill ok={dbOk} label={dbOk ? 'Connected' : 'Not connected'} />
-                </div>
                 <Row label="State" value={data?.database?.readyState} />
                 <Row label="Name" value={data?.database?.name} />
                 <Row label="Host" value={maskHost(data?.database?.host)} />
@@ -262,7 +282,7 @@ export default function PlatformHealth() {
                 to="/platform"
                 className="text-xs font-medium text-indigo-600 dark:text-indigo-300 hover:underline"
               >
-                Manage organizations →
+                Manage organizations &rarr;
               </Link>
             }
           >

@@ -65,7 +65,12 @@ const run = async () => {
     console.log(`Connected: ${mongoose.connection.host}/${mongoose.connection.name}`)
     console.log('')
 
-    const demoUsers = await User.find({ email: { $in: DEMO_USER_EMAILS } }).select('_id email').lean()
+    const demoUsers = await User.find({
+      $or: [
+        { email: { $in: DEMO_USER_EMAILS } },
+        { email: /@flowsphere\./i }
+      ]
+    }).select('_id email').lean()
     const demoUserIds = demoUsers.map((u) => u._id)
     console.log(`Found ${demoUsers.length} demo user(s).`)
 

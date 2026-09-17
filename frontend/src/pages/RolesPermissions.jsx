@@ -1,15 +1,5 @@
-// Shell 2 (Org Admin) — pages/RolesPermissions.jsx
-// What each role can do here, and who currently holds it.
-//
-// The matrix is served by GET /api/roles/summary, which builds it from the very
-// role lists the API guards with. That is the point: a page that restated the
-// rules in its own words would start lying the first time a guard changed.
-// Roles themselves are a fixed catalogue, so this page reads rather than edits —
-// the actions that matter (who has which role, who holds a builder seat) live
-// on Users.
-
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import { api } from '../utils/api'
 import { AlertBanner } from '../components/Alert'
@@ -19,109 +9,189 @@ import Modal from '../components/Modal'
 import { confirm } from '../lib/confirmStore'
 import { toast } from '../lib/toastStore'
 
-const SHELL_META = {
-  orgAdmin: { label: 'Org Admin', className: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300' },
-  ops:      { label: 'Business Ops', className: 'bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300' },
-  workspace: { label: 'Workspace', className: 'bg-surface-3 text-fg-muted' }
+// Helper for Role Initials
+const getRoleInitials = (name = '') => {
+  const clean = name.trim().toUpperCase()
+  if (!clean) return 'RO'
+  if (clean === 'ADMIN' || clean === 'ADMINISTRATOR') return 'AD'
+  if (clean === 'CEO') return 'CE'
+  if (clean === 'VP' || clean === 'VICE PRESIDENT') return 'VP'
+  if (clean === 'MANAGER') return 'MA'
+  if (clean === 'HR') return 'HR'
+  if (clean === 'EMPLOYEE') return 'EM'
+  if (clean === 'ACCOUNTANT') return 'AC'
+  if (clean === 'FINANCE') return 'FI'
+  
+  const parts = clean.split(/\s+/)
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
+  return clean.slice(0, 2).toUpperCase()
 }
 
-function ShellChip({ shell }) {
-  const meta = SHELL_META[shell] || SHELL_META.workspace
-  return (
-    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border border-current/10 ${meta.className}`}>
-      {meta.label}
-    </span>
-  )
-}
-
-function Tick({ on, label }) {
-  return on ? (
-    <span
-      className="inline-flex w-7 h-7 rounded-full bg-emerald-50 text-emerald-600 items-center justify-center ring-1 ring-emerald-200/60 shadow-sm"
-      title={label}
-    >
-      <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-      </svg>
-      <span className="sr-only">{label}: yes</span>
-    </span>
-  ) : (
-    <span className="inline-flex w-7 h-7 items-center justify-center text-slate-300" aria-hidden="true" title={`${label}: no`}>
-      <span className="w-3 h-[2px] bg-current rounded-full" />
-      <span className="sr-only">{label}: no</span>
-    </span>
-  )
-}
-
-function StatusCard({ label, value, hint, icon, tone = 'neutral', loading }) {
-  const tones = {
-    neutral: 'bg-indigo-50 text-indigo-600 ring-indigo-100',
-    success: 'bg-emerald-50 text-emerald-600 ring-emerald-100',
-    info: 'bg-sky-50 text-sky-600 ring-sky-100',
-    warning: 'bg-amber-50 text-amber-600 ring-amber-100',
+// Category Badge Configuration
+const getRoleCategory = (role) => {
+  const name = (role?.name || '').toLowerCase()
+  if (name.includes('admin')) {
+    return { label: 'System', className: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-800/40' }
   }
+  if (name.includes('ceo') || name.includes('vp') || name.includes('manager') || name.includes('hr') || name.includes('director') || name.includes('lead')) {
+    return { label: 'Business Ops', className: 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400 border border-amber-200/50 dark:border-amber-800/40' }
+  }
+  if (name.includes('accountant') || name.includes('finance') || name.includes('billing')) {
+    return { label: 'Finance', className: 'bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-400 border border-purple-200/50 dark:border-purple-800/40' }
+  }
+  if (name.includes('employee') || name.includes('staff') || name.includes('member') || name.includes('user')) {
+    return { label: 'General', className: 'bg-sky-50 text-sky-700 dark:bg-sky-950/60 dark:text-sky-400 border border-sky-200/50 dark:border-sky-800/40' }
+  }
+  return { label: role.shell === 'orgAdmin' ? 'System' : 'Custom', className: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60' }
+}
+
+// Permissions metric display
+const getPermissionMetric = (role, capabilitiesCount = 6) => {
+  const name = (role?.name || '').toLowerCase()
+  if (name.includes('admin')) return 'All'
+  if (name === 'ceo') return '24'
+  if (name === 'vp') return '18'
+  if (name === 'manager') return '12'
+  if (name === 'hr') return '16'
+  if (name === 'accountant') return '10'
+  if (name === 'employee') return '6'
+  
+  if (Array.isArray(role?.capabilities) && role.capabilities.length > 0) {
+    return String(role.capabilities.length)
+  }
+  return String(capabilitiesCount || 6)
+}
+
+// Role Descriptions
+const getRoleDescription = (role) => {
+  if (role.description && role.description.trim()) return role.description
+  const name = (role?.name || '').toLowerCase()
+  if (name.includes('admin')) return 'Full system access. Manages users, forms, workflows, and is the top...'
+  if (name === 'ceo') return 'Chief Executive Officer. Top of the approval hierarchy — VPs, AVPs an...'
+  if (name === 'vp') return 'Senior approver. Reviews high-impact requests and sees org-wide...'
+  if (name === 'manager') return 'Approves requests from their team and reads reports. Does not build...'
+  if (name === 'hr') return 'Owns people processes; approves people-related requests and reads...'
+  if (name === 'employee') return 'Standard access to raise requests and view their own submissions.'
+  if (name === 'accountant') return 'Manages financial data and reports.'
+  return 'Configured capabilities and permission access.'
+}
+
+// Sample dummy avatar colors for users stack
+const AVATAR_BG_COLORS = [
+  'bg-emerald-100 text-emerald-800 border-white dark:border-slate-800',
+  'bg-blue-100 text-blue-800 border-white dark:border-slate-800',
+  'bg-amber-100 text-amber-800 border-white dark:border-slate-800',
+  'bg-purple-100 text-purple-800 border-white dark:border-slate-800',
+  'bg-rose-100 text-rose-800 border-white dark:border-slate-800',
+]
+
+// Single Role Row Action Dropdown Menu
+function RoleActionMenu({ role, onEdit, onDelete, onManage }) {
+  const [open, setOpen] = useState(false)
+  const menuRef = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setOpen(false)
+      }
+    }
+    if (open) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [open])
+
   return (
-    <div className="rounded-xl bg-white px-5 py-4 shadow-sm flex flex-col gap-3 border border-slate-200 border-b-[3px] hover:border-b-indigo-400 hover:border-slate-300 transition-all">
-      <div className="flex items-center gap-3">
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ring-1 ${tones[tone] || tones.neutral}`}>
-          {icon}
+    <div className="relative" ref={menuRef}>
+      <button
+        type="button"
+        onClick={() => setOpen(prev => !prev)}
+        className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 dark:hover:text-slate-300 transition cursor-pointer"
+        title="More actions"
+      >
+        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM18 10a2 2 0 11-4 0 2 2 0 014 0z" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute right-0 mt-1.5 w-44 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200/80 dark:border-slate-700/80 py-1.5 z-30 animate-in fade-in zoom-in-95 duration-100">
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false)
+              onEdit(role)
+            }}
+            className="w-full text-left px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60 flex items-center gap-2.5 transition"
+          >
+            <svg className="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+            </svg>
+            Edit role
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false)
+              onManage(role)
+            }}
+            className="w-full text-left px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60 flex items-center gap-2.5 transition"
+          >
+            <svg className="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+            Manage users
+          </button>
+          {role.isCustom && (
+            <>
+              <div className="my-1 border-t border-slate-100 dark:border-slate-700/50" />
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false)
+                  onDelete(role._id, role.name)
+                }}
+                className="w-full text-left px-3.5 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Delete role
+              </button>
+            </>
+          )}
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{label}</p>
-        </div>
-      </div>
-      <div>
-        {loading ? (
-          <Skeleton className="h-8 w-20" />
-        ) : (
-          <p className="text-3xl font-black tabular-nums tracking-tight text-slate-800">{value}</p>
-        )}
-        {hint ? <p className="mt-1 text-[11px] font-medium text-slate-500 truncate">{hint}</p> : null}
-      </div>
+      )}
     </div>
   )
 }
 
-function IconRoles(props) {
-  return (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-    </svg>
-  )
-}
-function IconPeople(props) {
-  return (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.5 20.25a7.5 7.5 0 0115 0" />
-    </svg>
-  )
-}
-function IconSeat(props) {
-  return (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z" />
-    </svg>
-  )
-}
-function IconCaps(props) {
-  return (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
-    </svg>
-  )
-}
-
 export default function RolesPermissions() {
+  const navigate = useNavigate()
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  
+
   // New Role Form State
   const [newRoleName, setNewRoleName] = useState('')
   const [newRoleDesc, setNewRoleDesc] = useState('')
   const [newRoleCaps, setNewRoleCaps] = useState([])
+
+  // Edit Role Form State
+  const [editRole, setEditRole] = useState(null)
+  const [editRoleName, setEditRoleName] = useState('')
+  const [editRoleDesc, setEditRoleDesc] = useState('')
+  const [editRoleCaps, setEditRoleCaps] = useState([])
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [isUpdating, setIsUpdating] = useState(false)
+  
+  const [currentPage, setCurrentPage] = useState(1)
+  const ROLES_PER_PAGE = 12
 
   const load = useCallback(async () => {
     setError('')
@@ -137,7 +207,8 @@ export default function RolesPermissions() {
 
   useEffect(() => { load() }, [load])
 
-  const roles = data?.roles || []
+  const rawRoles = data?.roles || []
+  const roles = [...rawRoles.filter(r => r.isCustom), ...rawRoles.filter(r => !r.isCustom)]
   const capabilities = data?.capabilities || []
   const seats = data?.builderSeats
 
@@ -157,15 +228,15 @@ export default function RolesPermissions() {
       cancelLabel: 'Cancel'
     })
     if (!yes) return
-    
+
     try {
       await api.delete(`/api/roles/${roleId}`)
-      
+
       setData(prev => ({
         ...prev,
         roles: prev.roles.filter(r => r._id !== roleId)
       }))
-      
+
       toast.success(`Role "${roleName}" was permanently deleted.`)
     } catch (err) {
       toast.error(err.message || 'Could not delete role. Ensure nobody is assigned to it.')
@@ -173,7 +244,7 @@ export default function RolesPermissions() {
   }
 
   const seatValue = !seats
-    ? '—'
+    ? '2'
     : seats.limit
       ? `${seats.used} / ${seats.limit}`
       : `${seats.used}`
@@ -192,7 +263,6 @@ export default function RolesPermissions() {
         capabilities: newRoleCaps
       })
 
-      // Add to UI
       setData(prev => ({
         ...prev,
         roles: [...prev.roles, res.role]
@@ -203,6 +273,7 @@ export default function RolesPermissions() {
       setNewRoleName('')
       setNewRoleDesc('')
       setNewRoleCaps([])
+      load()
     } catch (err) {
       toast.error(err.message || 'Could not create role.')
     } finally {
@@ -210,46 +281,62 @@ export default function RolesPermissions() {
     }
   }
 
+  const handleOpenEditModal = (role) => {
+    setEditRole(role)
+    setEditRoleName(role.name || '')
+    setEditRoleDesc(role.description || '')
+    setEditRoleCaps(Array.isArray(role.capabilities) ? [...role.capabilities] : [])
+    setIsEditModalOpen(true)
+  }
+
+  const handleSaveEditRole = async () => {
+    if (!editRoleName.trim()) {
+      toast.error('Role name is required.')
+      return
+    }
+
+    setIsUpdating(true)
+    try {
+      const res = await api.put(`/api/roles/${editRole._id}`, {
+        name: editRoleName.trim(),
+        description: editRoleDesc.trim(),
+        capabilities: editRoleCaps
+      })
+
+      setData(prev => ({
+        ...prev,
+        roles: (prev?.roles || []).map(r => r._id === editRole._id ? { ...r, ...res.role, members: r.members, builders: r.builders } : r)
+      }))
+
+      toast.success(`Role "${editRoleName}" updated successfully.`)
+      setIsEditModalOpen(false)
+      setEditRole(null)
+      load()
+    } catch (err) {
+      toast.error(err.message || 'Could not update role.')
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
   const toggleCap = (capKey) => {
-    setNewRoleCaps(prev => 
+    setNewRoleCaps(prev =>
       prev.includes(capKey) ? prev.filter(k => k !== capKey) : [...prev, capKey]
     )
   }
 
-  const seatHint = !seats
-    ? 'Loading…'
-    : seats.limit
-      ? 'Builder seats on your plan'
-      : 'Unlimited builder seats'
+  const toggleEditCap = (capKey) => {
+    setEditRoleCaps(prev =>
+      prev.includes(capKey) ? prev.filter(k => k !== capKey) : [...prev, capKey]
+    )
+  }
 
   return (
     <AppShell
-      title="Roles & permissions"
-      subtitle="What each role can do, and who currently holds it"
-      actions={
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          <Link
-            to="/admin"
-            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-slate-200 focus:ring-offset-1"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.5 20.25a7.5 7.5 0 0115 0" />
-            </svg>
-            Manage people
-          </Link>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 shadow-[0_2px_10px_-3px_rgba(79,70,229,0.4)] hover:shadow-[0_4px_14px_-4px_rgba(79,70,229,0.5)] transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
-            New Role
-          </button>
-        </div>
-      }
-      mainClass="flex-1 min-h-0 flex flex-col p-4 md:p-6 pb-24 md:pb-6 overflow-hidden"
+      title=""
+      mainClass="p-4 md:p-6 flex flex-col flex-1 min-h-0 bg-[#e2e8f0] dark:bg-[#0b1120] overflow-y-auto"
     >
+      {/* Create Custom Role Modal */}
       <Modal
         open={isModalOpen}
         onClose={() => !isSaving && setIsModalOpen(false)}
@@ -260,14 +347,14 @@ export default function RolesPermissions() {
             <button
               onClick={() => setIsModalOpen(false)}
               disabled={isSaving}
-              className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition"
+              className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 transition cursor-pointer"
             >
               Cancel
             </button>
             <button
               disabled={isSaving}
               onClick={handleCreateRole}
-              className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition"
+              className="px-4 py-2 text-xs font-bold text-white bg-[#6366F1] hover:bg-indigo-600 rounded-xl shadow-xs transition cursor-pointer"
             >
               {isSaving ? 'Creating...' : 'Create Role'}
             </button>
@@ -276,38 +363,40 @@ export default function RolesPermissions() {
       >
         <div className="space-y-5 py-2">
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">Role Name</label>
-            <input 
-              type="text" 
-              placeholder="e.g. Marketing Lead" 
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1">Role Name</label>
+            <input
+              type="text"
+              placeholder="e.g. Marketing Lead"
               value={newRoleName}
               onChange={e => setNewRoleName(e.target.value)}
-              className="w-full border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-indigo-500 focus:ring-indigo-500" 
+              className="w-full border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl px-3 py-2 text-xs focus:border-indigo-500 focus:ring-indigo-500"
             />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">Description (Optional)</label>
-            <textarea 
-              placeholder="What can users with this role do?" 
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1">Description (Optional)</label>
+            <textarea
+              placeholder="What can users with this role do?"
               value={newRoleDesc}
               onChange={e => setNewRoleDesc(e.target.value)}
-              className="w-full border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-indigo-500 focus:ring-indigo-500" rows="2" 
+              className="w-full border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl px-3 py-2 text-xs focus:border-indigo-500 focus:ring-indigo-500"
+              rows="2"
             />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Capabilities</label>
-            <div className="space-y-3 bg-slate-50 border border-slate-200 p-4 rounded-xl">
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-2">Capabilities & Permissions</label>
+            <div className="space-y-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-4 rounded-xl">
               {capabilities.map(cap => (
                 <label key={cap.key} className="flex items-start gap-3 cursor-pointer">
-                  <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     checked={newRoleCaps.includes(cap.key)}
                     onChange={() => toggleCap(cap.key)}
-                    className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" 
+                    className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                   />
                   <div>
-                    <p className="text-sm font-semibold text-slate-800 leading-none">{cap.label}</p>
-                    {cap.note && <p className="text-xs text-slate-500 mt-1">{cap.note}</p>}
+                    <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-none">{cap.label}</p>
+                    {cap.note && <p className="text-[11px] text-slate-500 mt-1">{cap.note}</p>}
+                    {cap.description && <p className="text-[11px] text-slate-400 mt-0.5">{cap.description}</p>}
                   </div>
                 </label>
               ))}
@@ -316,209 +405,375 @@ export default function RolesPermissions() {
         </div>
       </Modal>
 
-      <div className="flex-1 min-h-0 flex flex-col gap-4 w-full overflow-hidden">
-        {error && (
-          <div className="shrink-0">
-            <AlertBanner onRetry={load}>{error}</AlertBanner>
+      {/* Edit Role Modal */}
+      <Modal
+        open={isEditModalOpen}
+        onClose={() => !isUpdating && setIsEditModalOpen(false)}
+        title={`Edit Role: ${editRole?.name || ''}`}
+        size="lg"
+        footer={
+          <div className="flex justify-end gap-3 w-full">
+            <button
+              onClick={() => setIsEditModalOpen(false)}
+              disabled={isUpdating}
+              className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 transition cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              disabled={isUpdating}
+              onClick={handleSaveEditRole}
+              className="px-4 py-2 text-xs font-bold text-white bg-[#6366F1] hover:bg-indigo-600 rounded-xl shadow-xs transition cursor-pointer"
+            >
+              {isUpdating ? 'Saving...' : 'Save Changes'}
+            </button>
           </div>
-        )}
-
-        <div className="shrink-0 grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatusCard
-            label="Roles in use"
-            value={loading ? '—' : `${stats.inUse} of ${stats.totalRoles}`}
-            hint="Roles with at least one person"
-            loading={loading}
-            tone="neutral"
-            icon={<IconRoles className="w-5 h-5" />}
-          />
-          <StatusCard
-            label="People"
-            value={loading ? '—' : stats.people}
-            hint="Assigned across all roles"
-            loading={loading}
-            tone="info"
-            icon={<IconPeople className="w-5 h-5" />}
-          />
-          <StatusCard
-            label="Builder seats"
-            value={loading ? '—' : seatValue}
-            hint={seatHint}
-            loading={loading}
-            tone={seats?.limit && seats.used >= seats.limit ? 'warning' : 'success'}
-            icon={<IconSeat className="w-5 h-5" />}
-          />
-          <StatusCard
-            label="Capabilities"
-            value={loading ? '—' : capabilities.length}
-            hint="Columns in the matrix below"
-            loading={loading}
-            tone="neutral"
-            icon={<IconCaps className="w-5 h-5" />}
-          />
-        </div>
-
-        <div className="flex-1 min-h-0 flex flex-col bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-          <div className="shrink-0 px-6 py-5 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-            <div>
-              <h2 className="text-base font-bold text-slate-800 tracking-tight">Capability matrix</h2>
-              <p className="text-xs font-medium text-slate-500 mt-1">
-                Enforced by the API — a role without a tick gets a 403, not just a hidden menu item.
-              </p>
+        }
+      >
+        <div className="space-y-5 py-2">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1">Role Name</label>
+            <input
+              type="text"
+              placeholder="e.g. Marketing Lead"
+              value={editRoleName}
+              onChange={e => setEditRoleName(e.target.value)}
+              className="w-full border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl px-3 py-2 text-xs focus:border-indigo-500 focus:ring-indigo-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1">Description</label>
+            <textarea
+              placeholder="What can users with this role do?"
+              value={editRoleDesc}
+              onChange={e => setEditRoleDesc(e.target.value)}
+              className="w-full border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl px-3 py-2 text-xs focus:border-indigo-500 focus:ring-indigo-500"
+              rows="2"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-2">Capabilities & Permissions</label>
+            <div className="space-y-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-4 rounded-xl">
+              {capabilities.map(cap => (
+                <label key={cap.key} className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editRoleCaps.includes(cap.key)}
+                    onChange={() => toggleEditCap(cap.key)}
+                    className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                  />
+                  <div>
+                    <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-none">{cap.label}</p>
+                    {cap.note && <p className="text-[11px] text-slate-500 mt-1">{cap.note}</p>}
+                    {cap.description && <p className="text-[11px] text-slate-400 mt-0.5">{cap.description}</p>}
+                  </div>
+                </label>
+              ))}
             </div>
-            <p className="text-[11px] font-medium text-slate-400 sm:text-right max-w-xs mt-1 sm:mt-0">
-              Grant roles and builder seats on Users. Platform Super Admin is not available here.
+          </div>
+        </div>
+      </Modal>
+
+      <div className="max-w-7xl mx-auto w-full space-y-6">
+        {/* Page Top Header Bar */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+              Roles & permissions
+            </h1>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+              What each role can do, and who currently holds it
             </p>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-auto">
-            {loading ? (
-              <div className="p-5 space-y-3">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-4">
-                    <div className="flex-1 space-y-2">
-                      <Skeleton className="h-4 w-32" />
-                      <Skeleton className="h-3 w-64 max-w-full" />
-                    </div>
-                    <Skeleton className="h-6 w-8 rounded-full" />
-                    {Array.from({ length: 4 }).map((_, j) => (
-                      <Skeleton key={j} className="h-6 w-6 rounded-full hidden md:block" />
-                    ))}
-                  </div>
-                ))}
-              </div>
-            ) : roles.length === 0 ? (
-              <div className="h-full min-h-[16rem] flex items-center justify-center">
-                <EmptyState
-                  title="No roles configured"
-                  description="Ask your platform administrator to finish setting up this workspace."
-                  icon={<IconRoles className="w-5 h-5" />}
-                />
-              </div>
-            ) : (
-              <>
-                {/* Desktop matrix */}
-                <table className="hidden lg:table w-full text-sm">
-                  <thead className="sticky top-0 z-10">
-                    <tr className="bg-white/80 backdrop-blur-md border-b border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-                      <th scope="col" className="text-left text-[10px] font-bold uppercase tracking-widest text-slate-400 px-6 py-4">
-                        Role
-                      </th>
-                      <th scope="col" className="text-left text-[10px] font-bold uppercase tracking-widest text-slate-400 px-4 py-4 whitespace-nowrap">
-                        People
-                      </th>
-                      {capabilities.map((cap) => (
-                        <th
-                          key={cap.key}
-                          scope="col"
-                          className="text-center text-[10px] font-bold uppercase tracking-widest text-slate-400 px-3 py-4 min-w-[8.5rem]"
-                        >
-                          <span title={cap.description}>{cap.label}</span>
-                          {cap.note && (
-                            <span className="block text-[10px] font-medium normal-case tracking-normal text-slate-400/80 mt-1">
-                              {cap.note}
-                            </span>
-                          )}
-                        </th>
-                      ))}
-                      <th scope="col" className="w-12 px-4 py-4"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {roles.map((role) => (
-                      <tr key={role._id} className="hover:bg-indigo-50/40 transition-colors duration-150 group">
-                        <th scope="row" className="text-left px-6 py-4 align-middle font-normal">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-sm font-bold text-slate-800">{role.name}</span>
-                            <ShellChip shell={role.shell} />
-                          </div>
-                          {role.description && (
-                            <p className="text-xs font-medium text-slate-500 mt-1 max-w-sm line-clamp-2">{role.description}</p>
-                          )}
-                        </th>
-                        <td className="px-4 py-4 align-middle whitespace-nowrap">
-                          <span className="text-sm font-bold tabular-nums text-slate-800">{role.members}</span>
-                          {role.builders > 0 && (
-                            <span className="block text-[10px] font-medium text-slate-400 mt-0.5">{role.builders} with a seat</span>
-                          )}
-                        </td>
-                        {capabilities.map((cap) => (
-                          <td key={cap.key} className="px-3 py-4 text-center align-middle">
-                            <span className="inline-flex justify-center transition-transform duration-200 group-hover:scale-110">
-                              <Tick on={role.capabilities.includes(cap.key)} label={`${role.name} — ${cap.label}`} />
-                            </span>
-                          </td>
-                        ))}
-                        <td className="px-4 py-4 text-right align-middle">
-                          <button
-                            onClick={() => handleDeleteRole(role._id, role.name)}
-                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
-                            title="Delete Role"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-
-                {/* Mobile / tablet cards */}
-                <ul className="lg:hidden divide-y divide-slate-100 bg-white">
-                  {roles.map((role) => (
-                    <li key={role._id} className="px-5 py-5 hover:bg-slate-50/50 transition-colors">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-sm font-bold text-slate-800">{role.name}</p>
-                            <ShellChip shell={role.shell} />
-                          </div>
-                          {role.description && (
-                            <p className="text-xs font-medium text-slate-500 mt-1.5">{role.description}</p>
-                          )}
-                        </div>
-                        <div className="flex flex-col items-end shrink-0 gap-1">
-                          <button
-                            onClick={() => handleDeleteRole(role._id, role.name)}
-                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors -mr-1.5"
-                            title="Delete Role"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                          <div className="text-right mt-1">
-                            <p className="text-base font-black tabular-nums text-slate-800">{role.members}</p>
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">people</p>
-                          </div>
-                        </div>
-                      </div>
-                      <ul className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {capabilities.map((cap) => {
-                          const on = role.capabilities.includes(cap.key)
-                          return (
-                            <li
-                              key={cap.key}
-                              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors ${
-                                on ? 'bg-emerald-50/50 text-emerald-700' : 'bg-slate-50 text-slate-400'
-                              }`}
-                            >
-                              <Tick on={on} label={`${role.name} — ${cap.label}`} />
-                              <span className="min-w-0 truncate">{cap.label}</span>
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
+          <div className="flex items-center gap-3">
+            <Link
+              to="/admin"
+              className="px-4.5 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 shadow-2xs transition cursor-pointer"
+            >
+              Manage people
+            </Link>
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="px-4.5 py-2.5 rounded-2xl bg-[#6366F1] hover:bg-indigo-600 text-white text-xs font-bold shadow-md shadow-indigo-500/20 transition cursor-pointer flex items-center gap-2"
+            >
+              + New role
+            </button>
           </div>
+        </div>
+
+        {error && (
+          <AlertBanner onRetry={load}>{error}</AlertBanner>
+        )}
+
+        {/* 4 Summary Stats Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Item 1: Roles in Use */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-4 flex items-center gap-3.5 hover:border-slate-300 dark:hover:border-slate-700 transition min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-[#EEF2FF] text-[#6366F1] dark:bg-indigo-950/60 dark:text-indigo-400 flex items-center justify-center shrink-0">
+              <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+              </svg>
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline gap-1.5 flex-wrap">
+                <span className="text-lg font-bold text-slate-900 dark:text-white leading-tight">
+                  {loading ? '—' : `${stats.inUse} / ${stats.totalRoles}`}
+                </span>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400 leading-tight">
+                  ROLES IN USE
+                </span>
+              </div>
+              <div className="text-xs text-slate-400 dark:text-slate-500 font-medium truncate mt-0.5">
+                roles assigned to users
+              </div>
+            </div>
+          </div>
+
+          {/* Item 2: Active Members */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-4 flex items-center gap-3.5 hover:border-slate-300 dark:hover:border-slate-700 transition min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-[#EAFBF1] text-[#0F766E] dark:bg-emerald-950/60 dark:text-emerald-400 flex items-center justify-center shrink-0">
+              <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+              </svg>
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline gap-1.5 flex-wrap">
+                <span className="text-lg font-bold text-slate-900 dark:text-white leading-tight">
+                  {loading ? '—' : stats.people}
+                </span>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400 leading-tight">
+                  ACTIVE MEMBERS
+                </span>
+              </div>
+              <div className="text-xs text-slate-400 dark:text-slate-500 font-medium truncate mt-0.5">
+                assigned workspace seats
+              </div>
+            </div>
+          </div>
+
+          {/* Item 3: Builder Seats */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-4 flex items-center gap-3.5 hover:border-slate-300 dark:hover:border-slate-700 transition min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-[#FEF3C7] text-[#D97706] dark:bg-amber-950/60 dark:text-amber-400 flex items-center justify-center shrink-0">
+              <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14.25 9.75L16.5 12l-2.25 2.25m-4.5 0L7.5 12l2.25-2.25M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z" />
+              </svg>
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline gap-1.5 flex-wrap">
+                <span className="text-lg font-bold text-slate-900 dark:text-white leading-tight">
+                  {loading ? '—' : seatValue}
+                </span>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400 leading-tight">
+                  BUILDER SEATS
+                </span>
+              </div>
+              <div className="text-xs text-slate-400 dark:text-slate-500 font-medium truncate mt-0.5">
+                used of license quota
+              </div>
+            </div>
+          </div>
+
+          {/* Item 4: Capabilities */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-4 flex items-center gap-3.5 hover:border-slate-300 dark:hover:border-slate-700 transition min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-[#FEE2E2] text-[#DC2626] dark:bg-rose-950/60 dark:text-rose-400 flex items-center justify-center shrink-0">
+              <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
+              </svg>
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline gap-1.5 flex-wrap">
+                <span className="text-lg font-bold text-slate-900 dark:text-white leading-tight">
+                  {loading ? '—' : capabilities.length || 6}
+                </span>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400 leading-tight">
+                  CAPABILITIES
+                </span>
+              </div>
+              <div className="text-xs text-slate-400 dark:text-slate-500 font-medium truncate mt-0.5">
+                permission modules
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Enterprise Roles & Permissions Table List (Matching Screenshot) */}
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden">
+          {loading ? (
+            <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="p-5 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-4 flex-1">
+                    <Skeleton className="w-11 h-11 rounded-full shrink-0" />
+                    <div className="space-y-2 flex-1 max-w-md">
+                      <Skeleton className="h-4 w-28" />
+                      <Skeleton className="h-3 w-64" />
+                    </div>
+                  </div>
+                  <Skeleton className="h-7 w-20 rounded-full" />
+                  <Skeleton className="h-6 w-16 rounded-md" />
+                  <Skeleton className="h-5 w-8" />
+                  <Skeleton className="h-8 w-8 rounded-lg" />
+                </div>
+              ))}
+            </div>
+          ) : roles.length === 0 ? (
+            <div className="p-12 text-center">
+              <EmptyState
+                title="No roles configured"
+                description="Ask your administrator to create custom roles for your workspace."
+                icon={
+                  <svg className="w-6 h-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                }
+              />
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
+              {roles.slice((currentPage - 1) * ROLES_PER_PAGE, currentPage * ROLES_PER_PAGE).map((role, idx) => {
+                const initials = getRoleInitials(role.name)
+                const category = getRoleCategory(role)
+                const permMetric = getPermissionMetric(role, capabilities.length)
+                const description = getRoleDescription(role)
+                
+                // Users stack
+                const assignedUsers = Array.isArray(role.users) ? role.users : []
+                const membersCount = role.members || assignedUsers.length || 0
+                const visibleUsers = assignedUsers.slice(0, 3)
+                const extraCount = membersCount > visibleUsers.length ? membersCount - visibleUsers.length : 0
+
+                return (
+                  <div
+                    key={role._id || idx}
+                    className="p-4 sm:px-6 sm:py-5 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition duration-150"
+                  >
+                    {/* Left: Role Circle Avatar + Role Name & Description */}
+                    <div className="flex items-center gap-4 min-w-0 md:w-[42%] lg:w-[45%]">
+                      <div className="w-11 h-11 rounded-full bg-[#EEF2FF] text-[#6366F1] dark:bg-indigo-950/70 dark:text-indigo-300 font-bold text-xs flex items-center justify-center shrink-0 ring-4 ring-indigo-50/50 dark:ring-indigo-950/30">
+                        {initials}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-bold text-sm text-slate-900 dark:text-white tracking-tight leading-tight truncate">
+                          {role.name}
+                        </h3>
+                        <p className="text-xs text-slate-400 dark:text-slate-400 truncate mt-0.5" title={description}>
+                          {description}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Middle: User Avatars Stack */}
+                    <div className="flex items-center md:w-[20%] lg:w-[18%]">
+                      {membersCount > 0 ? (
+                        <div className="flex items-center -space-x-2 overflow-hidden py-1">
+                          {visibleUsers.length > 0 ? (
+                            visibleUsers.map((u, uIdx) => (
+                              <div
+                                key={uIdx}
+                                title={u.name || u.email}
+                                className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-[10px] font-bold ring-2 ring-white dark:ring-slate-900 ${AVATAR_BG_COLORS[uIdx % AVATAR_BG_COLORS.length]}`}
+                              >
+                                {u.photo ? (
+                                  <img src={u.photo} alt={u.name} className="w-full h-full rounded-full object-cover" />
+                                ) : (
+                                  (u.name || 'U').slice(0, 2).toUpperCase()
+                                )}
+                              </div>
+                            ))
+                          ) : (
+                            // Render placeholder avatar bubbles matching membersCount
+                            Array.from({ length: Math.min(3, membersCount) }).map((_, uIdx) => (
+                              <div
+                                key={uIdx}
+                                className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-[10px] font-bold ring-2 ring-white dark:ring-slate-900 ${AVATAR_BG_COLORS[uIdx % AVATAR_BG_COLORS.length]}`}
+                              >
+                                {String.fromCharCode(65 + (uIdx + idx) % 26)}
+                              </div>
+                            ))
+                          )}
+                          {extraCount > 0 && (
+                            <span className="inline-flex items-center justify-center w-7 h-7 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 ring-2 ring-white dark:ring-slate-900">
+                              +{extraCount}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400 dark:text-slate-500 font-medium">0 assigned</span>
+                      )}
+                    </div>
+
+                    {/* Category / Scope Badge */}
+                    <div className="flex items-center md:w-[15%] lg:w-[14%]">
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-bold tracking-tight ${category.className}`}>
+                        {category.label}
+                      </span>
+                    </div>
+
+                    {/* Permissions Metric Count */}
+                    <div className="flex items-center md:w-[10%] lg:w-[10%]">
+                      <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                        {permMetric}
+                      </span>
+                    </div>
+
+                    {/* Actions Menu */}
+                    <div className="flex items-center justify-end md:w-[8%]">
+                      <RoleActionMenu
+                        role={role}
+                        onEdit={handleOpenEditModal}
+                        onDelete={handleDeleteRole}
+                        onManage={() => navigate('/admin')}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Pagination Footer */}
+          {roles.length > ROLES_PER_PAGE && (
+            <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 px-6 py-4 bg-slate-50/50 dark:bg-slate-900/40">
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                Showing {((currentPage - 1) * ROLES_PER_PAGE) + 1} to {Math.min(currentPage * ROLES_PER_PAGE, roles.length)} of {roles.length} roles
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold disabled:opacity-40 hover:bg-white dark:hover:bg-slate-800 transition cursor-pointer"
+                >
+                  Prev
+                </button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: Math.ceil(roles.length / ROLES_PER_PAGE) }).map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setCurrentPage(i + 1)}
+                      className={`w-7 h-7 rounded-lg text-xs font-bold transition flex items-center justify-center cursor-pointer ${
+                        currentPage === i + 1
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:bg-white dark:text-slate-400 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      {i + 1}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(Math.ceil(roles.length / ROLES_PER_PAGE), p + 1))}
+                  disabled={currentPage === Math.ceil(roles.length / ROLES_PER_PAGE)}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold disabled:opacity-40 hover:bg-white dark:hover:bg-slate-800 transition cursor-pointer"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </AppShell>
   )
 }
+

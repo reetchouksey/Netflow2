@@ -54,18 +54,35 @@ router.get('/summary', protect, roleGuard('Admin'), async (req, res, next) => {
     ])
     const byRoleId = new Map(counts.map((c) => [String(c._id), c]))
 
+    const activeUsers = await User.find({ orgId: req.orgId, isActive: { $ne: false } })
+      .select('name email role avatar photo')
+      .lean()
+    const usersByRoleId = new Map()
+    for (const u of activeUsers) {
+      const rId = String(u.role)
+      if (!usersByRoleId.has(rId)) usersByRoleId.set(rId, [])
+      usersByRoleId.get(rId).push(u)
+    }
+
     const payload = roles.map((role) => {
       const stats = byRoleId.get(String(role._id)) || { members: 0, builders: 0 }
+      const roleUsers = usersByRoleId.get(String(role._id)) || []
+      const defaultCaps = CAPABILITIES
+        .filter((cap) => cap.roles.includes(role.name))
+        .map((cap) => cap.key)
+      const capabilities = (Array.isArray(role.permissions) && role.permissions.length > 0)
+        ? role.permissions
+        : defaultCaps
+
       return {
         _id: role._id,
         name: role.name,
         description: role.description || '',
         shell: shellFor(role.name),
-        members: stats.members,
+        members: stats.members || roleUsers.length,
         builders: stats.builders,
-        capabilities: CAPABILITIES
-          .filter((cap) => cap.roles.includes(role.name))
-          .map((cap) => cap.key)
+        users: roleUsers.slice(0, 5),
+        capabilities
       }
     }).sort(byDisplayOrder)
 
@@ -107,6 +124,52 @@ router.delete('/:id', protect, roleGuard('Admin'), async (req, res, next) => {
 
     await Role.findByIdAndDelete(roleId)
     return sendSuccess(res, { message: 'Role permanently deleted.' })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// PUT /api/roles/:id
+router.put('/:id', protect, roleGuard('Admin'), async (req, res, next) => {
+  try {
+    const roleId = req.params.id
+    const { name, description, capabilities = [] } = req.body
+
+    const role = await Role.findById(roleId)
+    if (!role) {
+      return sendError(res, 'Role not found', 'NOT_FOUND', 404)
+    }
+
+    if (name && name.trim() !== '') {
+      const trimmed = name.trim()
+      if (trimmed !== role.name) {
+        const existing = await Role.findOne({ name: trimmed, _id: { $ne: roleId } })
+        if (existing) {
+          return sendError(res, `A role named "${trimmed}" already exists.`, 'DUPLICATE_ROLE', 400)
+        }
+        role.name = trimmed
+      }
+    }
+
+    if (description !== undefined) {
+      role.description = description?.trim() || ''
+    }
+
+    if (Array.isArray(capabilities)) {
+      role.permissions = capabilities
+    }
+
+    await role.save()
+
+    const payload = {
+      _id: role._id,
+      name: role.name,
+      description: role.description,
+      shell: shellFor(role.name),
+      capabilities: role.permissions || []
+    }
+
+    return sendSuccess(res, { role: payload })
   } catch (err) {
     next(err)
   }

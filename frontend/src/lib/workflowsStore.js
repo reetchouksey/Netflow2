@@ -44,7 +44,7 @@ export const workflowsStore = {
       title: input.name || input.title,
       description: input.description,
       department: input.category || input.department,
-      tags: input.tags || [],
+      tags: input.tags,
       linkedFormId: input.linkedFormId,
       linkedFormIds: input.linkedFormIds,
       access: input.access,
@@ -57,6 +57,7 @@ export const workflowsStore = {
       edges: input.edges || []
     })
     const adapted = adaptWorkflow(workflow)
+    if (input.tags && !adapted.tags) adapted.tags = input.tags
     cache = [adapted, ...cache]
     emit()
     return adapted
@@ -90,7 +91,7 @@ export const workflowsStore = {
       title: input.name || input.title,
       description: input.description,
       department: input.category || input.department,
-      tags: input.tags || [],
+      tags: input.tags,
       linkedFormId: input.linkedFormId,
       linkedFormIds: input.linkedFormIds,
       access: input.access,
@@ -103,6 +104,7 @@ export const workflowsStore = {
       edges: input.edges || []
     })
     const adapted = adaptWorkflow(workflow)
+    if (input.tags && !adapted.tags) adapted.tags = input.tags
     cache = cache.map((w) => (w.id === id ? adapted : w))
     emit()
     return adapted

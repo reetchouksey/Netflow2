@@ -116,7 +116,8 @@ router.get('/summary', async (req, res, next) => {
       totalWorkflows,
       totalSubmissions,
       approvalAgg,
-      slaAgg
+      slaAgg,
+      avgCompletionAgg
     ] = await Promise.all([
       WorkflowExecution.countDocuments(execFilter),
       WorkflowExecution.countDocuments({ ...execFilter, status: 'running' }),
@@ -158,6 +159,22 @@ router.get('/summary', async (req, res, next) => {
             withinSla: { $sum: { $cond: ['$withinSla', 1, 0] } }
           }
         }
+      ]),
+      // Gap 1: avg completion time in ms across all completed executions in scope
+      WorkflowExecution.aggregate([
+        {
+          $match: {
+            ...execFilter,
+            status: 'completed',
+            completedAt: { $exists: true, $ne: null }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            avgMs: { $avg: { $subtract: ['$completedAt', '$startedAt'] } }
+          }
+        }
       ])
     ])
 
@@ -177,6 +194,17 @@ router.get('/summary', async (req, res, next) => {
       ? Math.round((slaRow.withinSla / slaRow.total) * 100)
       : null
 
+    // Gap 1: mean completion time in hours (null when no completed runs in scope)
+    const avgCompletionRow = avgCompletionAgg[0]
+    const avgCompletionHours = avgCompletionRow && avgCompletionRow.avgMs != null
+      ? Number((avgCompletionRow.avgMs / 3600000).toFixed(2))
+      : null
+
+    // Gap 9: raw breach count derived from already-computed slaAgg (zero extra query)
+    const slaBreaches = slaRow
+      ? Math.max(0, (slaRow.total || 0) - (slaRow.withinSla || 0))
+      : 0
+
     return sendSuccess(res, {
       // What the numbers below cover, so the page can say so out loud rather
       // than letting a Manager read their own slice as an org-wide total.
@@ -195,7 +223,14 @@ router.get('/summary', async (req, res, next) => {
         approvedTasks: approved,
         rejectedTasks: rejected,
         approvalRate,
-        slaCompliance
+        slaCompliance,
+        // Gap 1: mean time to finish a workflow execution, in hours
+        avgCompletionHours,
+        // Gap 2: on-time completion % — same value as slaCompliance, named for
+        // the AdminDashboard which references it as onTimePct
+        onTimePct: slaCompliance,
+        // Gap 9: count of completed executions that exceeded the 7-day SLA window
+        slaBreaches
       }
     })
   } catch (err) {
@@ -212,15 +247,22 @@ router.get('/completion-time', async (req, res, next) => {
     cutoff.setUTCDate(1)
     cutoff.setUTCHours(0, 0, 0, 0)
 
+    const dateFilter = buildDateFilter(req)
     const scope = await buildScope(req)
+    const match = {
+      ...scope.exec,
+      status: 'completed',
+      completedAt: { $ne: null }
+    }
+    if (dateFilter.createdAt) {
+      match.createdAt = dateFilter.createdAt
+    } else {
+      match.createdAt = { $gte: cutoff }
+    }
+
     const rows = await WorkflowExecution.aggregate([
       {
-        $match: {
-          ...scope.exec,
-          status: 'completed',
-          completedAt: { $ne: null },
-          createdAt: { $gte: cutoff }
-        }
+        $match: match
       },
       {
         $group: {
@@ -257,15 +299,22 @@ router.get('/sla-breaches', async (req, res, next) => {
     cutoff.setUTCDate(cutoff.getUTCDate() - weeks * 7)
     cutoff.setUTCHours(0, 0, 0, 0)
 
+    const dateFilter = buildDateFilter(req)
     const scope = await buildScope(req)
+    const match = {
+      ...scope.task,
+      dueDate: { $ne: null },
+      $expr: { $gt: ['$updatedAt', '$dueDate'] }
+    }
+    if (dateFilter.createdAt) {
+      match.createdAt = dateFilter.createdAt
+    } else {
+      match.createdAt = { $gte: cutoff }
+    }
+
     const rows = await Task.aggregate([
       {
-        $match: {
-          ...scope.task,
-          createdAt: { $gte: cutoff },
-          dueDate: { $ne: null },
-          $expr: { $gt: ['$updatedAt', '$dueDate'] }
-        }
+        $match: match
       },
       {
         $group: {
@@ -344,7 +393,7 @@ router.get('/activity', async (req, res, next) => {
 
     const scope = await buildScope(req)
 
-    // Historical aggregation: group by local (IST) date + status
+    // Historical aggregation: group by local (IST) date + status with avg duration
     const [rows, liveRunning, livePaused] = await Promise.all([
       WorkflowExecution.aggregate([
         { $match: { ...scope.exec, createdAt: { $gte: cutoffUtc } } },
@@ -354,7 +403,16 @@ router.get('/activity', async (req, res, next) => {
               day:    { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: TZ } },
               status: '$status'
             },
-            count: { $sum: 1 }
+            count: { $sum: 1 },
+            avgDurationHours: {
+              $avg: {
+                $cond: [
+                  { $and: [{ $eq: ['$status', 'completed'] }, { $ne: ['$completedAt', null] }] },
+                  { $divide: [{ $subtract: ['$completedAt', '$startedAt'] }, 3600000] },
+                  null
+                ]
+              }
+            }
           }
         },
         { $sort: { '_id.day': 1 } }
@@ -370,7 +428,7 @@ router.get('/activity', async (req, res, next) => {
       const d = new Date(nowUtc + IST_OFFSET_MS)
       d.setDate(d.getDate() - i)
       const key = d.toISOString().slice(0, 10)
-      dayMap.set(key, { isoDate: key, completed: 0, inProgress: 0, onHold: 0, failed: 0 })
+      dayMap.set(key, { isoDate: key, completed: 0, inProgress: 0, onHold: 0, failed: 0, avgTime: 0 })
     }
 
     // Fill in historical counts from the aggregation.
@@ -378,7 +436,12 @@ router.get('/activity', async (req, res, next) => {
       const { day, status } = row._id
       const entry = dayMap.get(day)
       if (!entry) continue
-      if (status === 'completed')    entry.completed  += row.count
+      if (status === 'completed') {
+        entry.completed += row.count
+        if (row.avgDurationHours != null) {
+          entry.avgTime = Math.max(1, Math.round(row.avgDurationHours))
+        }
+      }
       else if (status === 'running') entry.inProgress += row.count
       else if (status === 'paused')  entry.onHold     += row.count
       else if (status === 'failed')  entry.failed     += row.count

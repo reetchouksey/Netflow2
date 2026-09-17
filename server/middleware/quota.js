@@ -196,7 +196,7 @@ const requireQuota = (resource) => async (req, res, next) => {
 // a tenant.
 const requireCanBuild = (req, res, next) => {
   if (!enforcementEnabled()) return next()
-  if (req.user?.role?.name === 'SuperAdmin') return next()
+  if (req.user?.role?.name === 'SuperAdmin' || req.user?.role?.name === 'Admin') return next()
   if (req.user?.canBuild === true) return next()
 
   return sendError(

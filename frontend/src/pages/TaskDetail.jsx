@@ -5,12 +5,13 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import { tasksStore, useTask } from '../lib/tasksStore'
 import { useUser } from '../utils/auth'
-import { api, toAbsoluteUrl } from '../utils/api'
+import { toAbsoluteUrl } from '../utils/api'
 import { SignaturePad, SignatureMark, FieldRow, validateFields, FieldValueView, isFieldVisible, stripHiddenValues } from '../components/FormFields'
 import { confirm } from '../lib/confirmStore'
 import { ListRowSkeleton } from '../components/Skeleton'
 import { ErrorState } from '../components/Alert'
 import { formatDateTime, isoAttr } from '../utils/datetime'
+import Modal from '../components/Modal'
 
 const APPROVER_ROLES = new Set(['Admin', 'CEO', 'Manager', 'HR', 'VP'])
 
@@ -84,48 +85,7 @@ function GridValueTable({ grid }) {
   )
 }
 
-function CameraS3Link({ data }) {
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-
-  const handleClick = async (e) => {
-    e.preventDefault()
-    if (loading) return
-    setLoading(true)
-    setError('')
-    try {
-      const res = await api.get(`/api/s3/download?key=${encodeURIComponent(data.s3Key)}`)
-      if (res?.data?.url || res?.url) {
-        window.open(res.data?.url || res.url, '_blank', 'noopener,noreferrer')
-      } else {
-        setError('Could not get download URL')
-      }
-    } catch (err) {
-      setError(err.message || 'Failed to open image')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-1 items-start">
-      <button
-        type="button"
-        onClick={handleClick}
-        disabled={loading}
-        className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700 underline text-left disabled:opacity-50"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-        </svg>
-        {loading ? 'Opening...' : data.name || 'Camera Image'}
-      </button>
-      {error && <span className="text-xs text-danger-fg">{error}</span>}
-    </div>
-  )
-}
-
-function SubmissionDetails({ task }) {
+function SubmissionDetails({ task, onPreviewDoc }) {
   const pill = statusPill(requestStatus(task))
   return (
     <section className="bg-surface border border-line rounded-lg px-6 py-5">
@@ -144,36 +104,16 @@ function SubmissionDetails({ task }) {
                 {row.grid ? (
                   <GridValueTable grid={row.grid} />
                 ) : row.href ? (
-                  <a
-                    href={toAbsoluteUrl(row.href)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700 underline"
+                  <button
+                    type="button"
+                    onClick={() => onPreviewDoc?.({ url: row.href, name: row.value || 'Document' })}
+                    className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700 underline cursor-pointer text-left font-medium"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
                     </svg>
-                    {row.value || 'Download'}
-                  </a>
-                               ) : row.isCamera ? (
-                  row.url ? (
-                    <a
-                      href={toAbsoluteUrl(row.url)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700 underline"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      {row.value || 'View photo'}
-                    </a>
-                  ) : (
-                    <span className="text-fg">{row.value}</span>
-                  )
-                ) : row.isSignature ? (
-                  <SignatureMark signature={row.value} />
+                    {row.value || 'View Document'}
+                  </button>
                 ) : (
                   row.value
                 )}
@@ -332,9 +272,7 @@ function SubmitActions({ task, onSubmitted }) {
     }
     setBusy(true)
     try {
-      const payload = stripHiddenValues(shownFields, values)
-      const uploadedPayload = await api.uploadPendingFiles(payload)
-      await tasksStore.submit(task.id, { comment, formData: uploadedPayload })
+      await tasksStore.submit(task.id, { comment, formData: stripHiddenValues(shownFields, values) })
       onSubmitted?.()
     } catch (err) {
       setError(err.message || 'Submit failed')
@@ -474,8 +412,9 @@ function ReviewActions({ task, onReviewed }) {
 }
 
 // Read-only list of files attached to a submit task (visible to everyone once
+// Read-only list of files attached to a submit task (visible to everyone once
 // the assignee has submitted).
-function SubmittedFiles({ task }) {
+function SubmittedFiles({ task, onPreviewDoc }) {
   if (!task.attachments || task.attachments.length === 0) return null
   return (
     <section className="bg-surface border border-line rounded-lg px-6 py-5 mt-4">
@@ -483,17 +422,16 @@ function SubmittedFiles({ task }) {
       <ul className="space-y-2">
         {task.attachments.map((a, i) => (
           <li key={`${a.url}-${i}`}>
-            <a
-              href={toAbsoluteUrl(a.url)}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-700 underline"
+            <button
+              type="button"
+              onClick={() => onPreviewDoc?.(a)}
+              className="inline-flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-700 underline cursor-pointer text-left"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
               </svg>
               {a.name || 'Attachment'}
-            </a>
+            </button>
           </li>
         ))}
       </ul>
@@ -504,7 +442,7 @@ function SubmittedFiles({ task }) {
 // Read-only list of documents uploaded at EARLIER workflow steps (e.g. a submit
 // node's costing doc). Lets the current assignee/approver review everything that
 // came before — not just their own step's files.
-function PriorDocuments({ task }) {
+function PriorDocuments({ task, onPreviewDoc }) {
   if (!task.priorDocuments || task.priorDocuments.length === 0) return null
   return (
     <section className="bg-surface border border-line rounded-lg px-6 py-5 mt-4">
@@ -512,17 +450,16 @@ function PriorDocuments({ task }) {
       <ul className="space-y-2">
         {task.priorDocuments.map((d, i) => (
           <li key={`${d.url}-${i}`} className="flex items-center gap-2">
-            <a
-              href={toAbsoluteUrl(d.url)}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-700 underline"
+            <button
+              type="button"
+              onClick={() => onPreviewDoc?.(d)}
+              className="inline-flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-700 underline cursor-pointer text-left"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
               </svg>
               {d.name || 'Attachment'}
-            </a>
+            </button>
             {d.step && <span className="text-xs text-fg-subtle truncate">— {d.step}</span>}
           </li>
         ))}
@@ -531,10 +468,132 @@ function PriorDocuments({ task }) {
   )
 }
 
+function DocumentPreviewModal({ doc, onClose }) {
+  const [blobUrl, setBlobUrl] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
+
+  const absUrl = doc?.url ? toAbsoluteUrl(doc.url) : ''
+  const name = doc?.name || 'Document'
+  const isPdf = name.toLowerCase().endsWith('.pdf') || absUrl.toLowerCase().includes('.pdf')
+  const isImage = /\.(jpg|jpeg|png|webp|gif|svg)(\?.*)?$/i.test(name) || /\.(jpg|jpeg|png|webp|gif|svg)(\?.*)?$/i.test(absUrl)
+
+  useEffect(() => {
+    if (!doc?.url) return
+    let active = true
+    setLoading(true)
+    setLoadError(false)
+    setBlobUrl(null)
+
+    const token = localStorage.getItem('token')
+    const headers = token ? { Authorization: `Bearer ${token}` } : {}
+
+    fetch(absUrl, { headers })
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to load file')
+        return res.blob()
+      })
+      .then((blob) => {
+        if (active) {
+          const type = isPdf ? 'application/pdf' : blob.type
+          const finalBlob = new Blob([blob], { type })
+          const url = URL.createObjectURL(finalBlob)
+          setBlobUrl(url)
+          setLoading(false)
+        }
+      })
+      .catch((err) => {
+        if (active) {
+          console.error('Document preview fetch error:', err)
+          setLoadError(true)
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      active = false
+      if (blobUrl) URL.revokeObjectURL(blobUrl)
+    }
+  }, [absUrl, isPdf])
+
+  if (!doc || !doc.url) return null
+
+  return (
+    <Modal
+      open={true}
+      onClose={onClose}
+      title={name}
+      size="3xl"
+      bodyClass="p-0 overflow-hidden flex flex-col h-[78vh]"
+      footer={
+        <div className="flex items-center justify-between w-full">
+          <a
+            href={blobUrl || absUrl}
+            download={name}
+            target="_blank"
+            rel="noreferrer"
+            className="px-3.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-slate-50 transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Download file
+          </a>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition cursor-pointer"
+          >
+            Close
+          </button>
+        </div>
+      }
+    >
+      <div className="w-full h-full bg-slate-900 flex items-center justify-center overflow-hidden relative">
+        {loading ? (
+          <div className="flex flex-col items-center gap-3 text-slate-400">
+            <div className="w-8 h-8 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-xs font-semibold">Loading document…</p>
+          </div>
+        ) : loadError ? (
+          <div className="p-6 text-center text-white space-y-3">
+            <p className="text-sm font-semibold text-slate-300">Unable to preview document directly</p>
+            <a
+              href={absUrl}
+              download={name}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-sm transition"
+            >
+              Download {name}
+            </a>
+          </div>
+        ) : isPdf ? (
+          <iframe
+            src={blobUrl}
+            title={name}
+            className="w-full h-full border-0 bg-white"
+          />
+        ) : isImage ? (
+          <div className="max-w-full max-h-full flex items-center justify-center p-4">
+            <img src={blobUrl} alt={name} className="max-w-full max-h-[72vh] object-contain rounded-lg shadow-lg" />
+          </div>
+        ) : (
+          <iframe
+            src={blobUrl}
+            title={name}
+            className="w-full h-full border-0 bg-white"
+          />
+        )}
+      </div>
+    </Modal>
+  )
+}
+
 // Read-only label→value grid for a submitted form. File fields are skipped here
 // because they already render as attachments / "Documents from previous steps".
 function SubmittedFormFields({ fields, data }) {
-  const list = (fields || []).filter((f) => f.type !== 'file' && f.type !== 'heading')
+  const list = (fields || []).filter((f) => f.type !== 'file')
   if (!list.length) return null
   return (
     <dl className="divide-y divide-line">
@@ -884,6 +943,7 @@ function TaskDetail() {
   const [busy, setBusy] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [previewDoc, setPreviewDoc] = useState(null)
 
   const load = useCallback(() => {
     if (!id) return
@@ -1007,10 +1067,10 @@ function TaskDetail() {
     >
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 space-y-0">
-          <SubmissionDetails task={task} />
+          <SubmissionDetails task={task} onPreviewDoc={setPreviewDoc} />
           <PriorForms task={task} />
           <IntegrationEvents task={task} />
-          <PriorDocuments task={task} />
+          <PriorDocuments task={task} onPreviewDoc={setPreviewDoc} />
           {canAct && myVote ? (
             <section className="bg-surface border border-line rounded-lg px-6 py-5 mt-4">
               <h2 className="text-sm font-semibold text-fg mb-1">Your decision</h2>
@@ -1063,7 +1123,7 @@ function TaskDetail() {
             </section>
           )}
           <SubmittedForm task={task} />
-          <SubmittedFiles task={task} />
+          <SubmittedFiles task={task} onPreviewDoc={setPreviewDoc} />
         </div>
 
         <aside className="space-y-4">
@@ -1073,6 +1133,8 @@ function TaskDetail() {
           <SlaStatus task={task} />
         </aside>
       </div>
+
+      <DocumentPreviewModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />
     </AppShell>
   )
 }

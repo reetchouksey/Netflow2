@@ -8,6 +8,7 @@ import React, { useEffect, useState } from 'react'
 import AppShell from '../components/AppShell'
 import { api } from '../utils/api'
 import { useUser, initials } from '../utils/auth'
+import { useDepartmentNames } from '../lib/departmentsStore'
 
 const CATEGORIES = [
   { value: 'expense', label: 'Expense claim' },
@@ -15,8 +16,6 @@ const CATEGORIES = [
   { value: 'leave', label: 'Leave request' },
   { value: 'ANY', label: 'Other / generic' }
 ]
-
-const DEPARTMENTS = ['HR', 'Finance', 'IT', 'Operations', 'Sales', 'Legal']
 
 const SOURCE_BADGE = {
   llm: { label: 'AI inferred', cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
@@ -43,6 +42,7 @@ const money = (n) => {
 
 export default function ApprovalRouting() {
   const me = useUser()
+  const departments = useDepartmentNames()
 
   const [users, setUsers] = useState([])
   const [status, setStatus] = useState(null)
@@ -143,7 +143,7 @@ export default function ApprovalRouting() {
           <Field label="Department (optional)">
             <select value={department} onChange={(e) => setDepartment(e.target.value)} className={inputCls}>
               <option value="">Auto (from submitter)</option>
-              {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
+              {departments.map((d) => <option key={d} value={d}>{d}</option>)}
             </select>
           </Field>
 

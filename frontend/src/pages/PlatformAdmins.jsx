@@ -39,7 +39,8 @@ function CredsModal({ data, onClose }) {
         </div>
         <div className="space-y-2">
           <CredRow label="Login email" value={data.email} />
-          <CredRow label="Temporary password" value={data.tempPassword} mono />
+          {data.tempPassword && <CredRow label="Temporary password" value={data.tempPassword} mono />}
+          {data.resetUrl && <CredRow label="Reset password link" value={data.resetUrl} />}
         </div>
       </div>
     </Modal>
@@ -67,6 +68,7 @@ function CredRow({ label, value, mono }) {
 function InviteDialog({ onClose, onCreated }) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [employeeId, setEmployeeId] = useState('')
   const [saving, setSaving] = useState(false)
 
   const submit = async (e) => {
@@ -78,7 +80,8 @@ function InviteDialog({ onClose, onCreated }) {
     try {
       const res = await api.post('/api/platform/admins', {
         name: name.trim(),
-        email: email.trim().toLowerCase()
+        email: email.trim().toLowerCase(),
+        employeeId: employeeId.trim() || undefined
       })
       toast.success('Platform admin created')
       onCreated(res)
@@ -110,6 +113,15 @@ function InviteDialog({ onClose, onCreated }) {
             onChange={(e) => setEmail(e.target.value)}
             placeholder="ops@netflow.app"
             required
+            className={fieldCls}
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-medium text-fg-muted">Employee ID</span>
+          <input
+            value={employeeId}
+            onChange={(e) => setEmployeeId(e.target.value)}
+            placeholder="EMP-001"
             className={fieldCls}
           />
         </label>
@@ -163,8 +175,10 @@ export default function PlatformAdmins() {
       setCreds({
         title: 'New password',
         email: res.admin.email,
-        tempPassword: res.admin.tempPassword
+        tempPassword: res.admin.tempPassword,
+        resetUrl: res.admin.resetUrl
       })
+      toast.success(`Password reset email & link sent to ${res.admin.email}`)
     } catch (err) {
       toast.error(err.message || 'Could not reset password')
     } finally {
@@ -248,6 +262,11 @@ export default function PlatformAdmins() {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <p className="text-sm font-semibold text-fg m-0 truncate">{admin.name}</p>
+                      {admin.employeeId && (
+                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-purple-50 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300">
+                          {admin.employeeId}
+                        </span>
+                      )}
                       {admin.isSelf && (
                         <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300">
                           You

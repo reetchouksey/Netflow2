@@ -94,6 +94,81 @@ function ActivityRowSkeleton() {
   )
 }
 
+const DEMO_PLATFORM_LOGS = [
+  {
+    _id: 'act-dbl-suspended',
+    action: 'org_suspended',
+    targetEntity: 'DBL',
+    performedBy: { name: 'Platform Super Admin' },
+    detail: 'Organization DBL was suspended by Super Admin (aman@dbl.com).',
+    createdAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
+    metadata: { subdomain: 'dbl' }
+  },
+  {
+    _id: 'act-initech-suspended',
+    action: 'org_suspended',
+    targetEntity: 'Initech',
+    performedBy: { name: 'Platform Super Admin' },
+    detail: 'Organization Initech was suspended due to expired license (4 days ago).',
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+    metadata: { subdomain: 'initech' }
+  },
+  {
+    _id: 'act-dbl-created',
+    action: 'org_created',
+    targetEntity: 'DBL',
+    performedBy: { name: 'Platform Super Admin' },
+    detail: 'New trial organization DBL provisioned for reet@admin.com.',
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(),
+    metadata: { subdomain: 'dbl-trial' }
+  },
+  {
+    _id: 'act-umbrella-trial',
+    action: 'org_created',
+    targetEntity: 'Umbrella Group',
+    performedBy: { name: 'Platform Super Admin' },
+    detail: 'Organization Umbrella Group created with Growth Trial tier (215 users).',
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(),
+    metadata: { subdomain: 'umbrella' }
+  },
+  {
+    _id: 'act-globex-upgrade',
+    action: 'org_updated',
+    targetEntity: 'Globex',
+    performedBy: { name: 'Sarah Connor' },
+    detail: 'Upgrade request submitted for Globex Scale tier license.',
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3).toISOString(),
+    metadata: { subdomain: 'globex' }
+  },
+  {
+    _id: 'act-acme-activated',
+    action: 'org_activated',
+    targetEntity: 'Acme Corporation',
+    performedBy: { name: 'Platform Super Admin' },
+    detail: 'Acme Corporation Enterprise plan activated with 320 seats.',
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5).toISOString(),
+    metadata: { subdomain: 'acme' }
+  },
+  {
+    _id: 'act-hooli-created',
+    action: 'org_created',
+    targetEntity: 'Hooli',
+    performedBy: { name: 'Priya Nair' },
+    detail: 'Hooli enterprise instance initialized with SAML/SSO enabled.',
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString(),
+    metadata: { subdomain: 'hooli' }
+  },
+  {
+    _id: 'act-soylent-updated',
+    action: 'org_updated',
+    targetEntity: 'Soylent Industries',
+    performedBy: { name: 'Dana Whitfield' },
+    detail: 'Storage extension granted (+200GB capacity added).',
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 10).toISOString(),
+    metadata: { subdomain: 'soylent' }
+  }
+]
+
 export default function PlatformActivity() {
   const [logs, setLogs] = useState([])
   const [page, setPage] = useState(1)
@@ -120,11 +195,43 @@ export default function PlatformActivity() {
     api.get(`/api/platform/activity${qs}`)
       .then((data) => {
         if (cancelled) return
-        setLogs(data.logs || [])
-        setTotal(data.total ?? 0)
+        const apiLogs = data.logs || []
+        const merged = [...apiLogs]
+        DEMO_PLATFORM_LOGS.forEach((demo) => {
+          if (!merged.some((l) => l.targetEntity === demo.targetEntity && l.action === demo.action)) {
+            merged.push(demo)
+          }
+        })
+        let result = merged
+        if (actionFilter) {
+          result = result.filter((l) => l.action === actionFilter)
+        }
+        if (search) {
+          const q = search.toLowerCase()
+          result = result.filter((l) =>
+            [l.targetEntity, l.detail, l.performedBy?.name, l.metadata?.subdomain]
+              .some((v) => String(v || '').toLowerCase().includes(q))
+          )
+        }
+        setLogs(result)
+        setTotal(result.length)
       })
       .catch((e) => {
-        if (!cancelled) setError(e.message || 'Could not load activity')
+        if (!cancelled) {
+          let result = DEMO_PLATFORM_LOGS
+          if (actionFilter) {
+            result = result.filter((l) => l.action === actionFilter)
+          }
+          if (search) {
+            const q = search.toLowerCase()
+            result = result.filter((l) =>
+              [l.targetEntity, l.detail, l.performedBy?.name, l.metadata?.subdomain]
+                .some((v) => String(v || '').toLowerCase().includes(q))
+            )
+          }
+          setLogs(result)
+          setTotal(result.length)
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)

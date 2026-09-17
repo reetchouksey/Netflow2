@@ -30,35 +30,35 @@ export default function ConfirmDialog() {
       onClick={confirmController.cancel}
     >
       <div
-        className="w-full max-w-md rounded-xl bg-surface border border-line shadow-2xl"
+        className="w-full max-w-md rounded-3xl bg-white dark:bg-[#111a2e] border border-slate-100 dark:border-slate-800 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
         aria-describedby={message ? 'confirm-dialog-message' : undefined}
       >
-        <div className="px-6 pt-5 pb-4">
-          <h2 id="confirm-dialog-title" className="text-base font-semibold text-fg">{title}</h2>
+        <div className="px-7 pt-7 pb-4">
+          <h2 id="confirm-dialog-title" className={`text-base font-bold tracking-tight ${danger ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>{title}</h2>
           {message && (
-            <p id="confirm-dialog-message" className="mt-2 text-sm text-fg-muted whitespace-pre-line">
+            <p id="confirm-dialog-message" className="mt-2 text-xs text-slate-500 dark:text-slate-400 whitespace-pre-line leading-relaxed">
               {message}
             </p>
           )}
         </div>
-        <div className="flex justify-end gap-2 border-t border-line px-6 py-3">
+        <div className="flex items-center justify-end gap-3 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/50 px-7 py-4">
           {/* Destructive dialogs open with Cancel focused so Enter is a safe default. */}
           <button
             onClick={confirmController.cancel}
             autoFocus={danger}
-            className="px-4 py-2 rounded-lg text-sm font-medium text-fg-muted hover:bg-surface-3 transition"
+            className="px-5 py-2.5 rounded-2xl text-xs font-semibold border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-slate-50 transition cursor-pointer shadow-2xs"
           >
             {cancelLabel}
           </button>
           <button
             onClick={confirmController.accept}
             autoFocus={!danger}
-            className={`px-4 py-2 rounded-lg text-sm font-medium text-white transition ${
-              danger ? 'bg-rose-600 hover:bg-rose-700' : 'bg-indigo-600 hover:bg-indigo-700'
+            className={`px-5 py-2.5 rounded-2xl text-xs font-bold text-white transition cursor-pointer shadow-md ${
+              danger ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-500/25' : 'bg-[#6366F1] hover:bg-indigo-600 shadow-indigo-500/25'
             }`}
           >
             {confirmLabel}

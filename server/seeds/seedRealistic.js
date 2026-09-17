@@ -329,49 +329,53 @@ async function getRoleMap() {
   return map
 }
 
-async function ensureUser({ name, roleId, roleName, department, managerId, hrId }) {
+async function ensureUser({ name, roleId, roleName, department, managerId, hrId, orgId }) {
   const email = `${slug(name)}@${SEED_DOMAIN}`
+  const canBuild = roleName === 'Admin'
   let user = await User.findOne({ email })
   if (!user) {
-    user = await User.create({ name, email, password: DEFAULT_PASSWORD, role: roleId, department, isActive: true, managerId, hrId })
-  } else if (managerId || hrId) {
-    if (managerId) user.managerId = managerId
-    if (hrId) user.hrId = hrId
-    await user.save()
+    user = await User.create({ name, email, password: DEFAULT_PASSWORD, role: roleId, department, isActive: true, managerId, hrId, orgId, canBuild })
+  } else {
+    let changed = false
+    if (roleName === 'Admin' && !user.canBuild) { user.canBuild = true; changed = true }
+    if (managerId && String(user.managerId) !== String(managerId)) { user.managerId = managerId; changed = true }
+    if (hrId && String(user.hrId) !== String(hrId)) { user.hrId = hrId; changed = true }
+    if (orgId && !user.orgId) { user.orgId = orgId; changed = true }
+    if (changed) await user.save()
   }
   return { _id: user._id, name: user.name, email: user.email, department: user.department, roleName }
 }
 
-async function buildRoster(roleMap) {
+async function buildRoster(roleMap, defaultOrgId) {
   // Managers (one per dept)
   const managers = {}
   for (const dept of USER_DEPTS) {
-    managers[dept] = await ensureUser({ name: ROSTER_MANAGERS[dept], roleId: roleMap.Manager, roleName: 'Manager', department: dept })
+    managers[dept] = await ensureUser({ name: ROSTER_MANAGERS[dept], roleId: roleMap.Manager, roleName: 'Manager', department: dept, orgId: defaultOrgId })
   }
   // HR partners + VPs
   const hrPool = []
-  for (const n of ROSTER_HR) hrPool.push(await ensureUser({ name: n, roleId: roleMap.HR, roleName: 'HR', department: 'HR' }))
+  for (const n of ROSTER_HR) hrPool.push(await ensureUser({ name: n, roleId: roleMap.HR, roleName: 'HR', department: 'HR', orgId: defaultOrgId }))
   const vps = []
-  for (const n of ROSTER_VP) vps.push(await ensureUser({ name: n, roleId: roleMap.VP, roleName: 'VP', department: pick(USER_DEPTS) }))
+  for (const n of ROSTER_VP) vps.push(await ensureUser({ name: n, roleId: roleMap.VP, roleName: 'VP', department: pick(USER_DEPTS), orgId: defaultOrgId }))
 
   // CEO — reuse a real one if present, else create a seeded one.
   let ceo = await User.findOne({ role: roleMap.CEO })
   ceo = ceo
     ? { _id: ceo._id, name: ceo.name, email: ceo.email, department: ceo.department, roleName: 'CEO' }
-    : await ensureUser({ name: 'Rajesh Khanna', roleId: roleMap.CEO, roleName: 'CEO', department: 'Operations' })
+    : await ensureUser({ name: 'Rajesh Khanna', roleId: roleMap.CEO, roleName: 'CEO', department: 'Operations', orgId: defaultOrgId })
 
   // Specialist approvers (custom roles). Departments must be from the User enum.
-  const financeApprover  = await ensureUser({ name: 'Aarti Joshi',   roleId: roleMap['Finance Approver'],  roleName: 'Finance Approver',  department: 'Finance' })
-  const warehouseManager = await ensureUser({ name: 'Manish Verma',  roleId: roleMap['Warehouse Manager'], roleName: 'Warehouse Manager', department: 'Operations' })
-  const accountsOfficer  = await ensureUser({ name: 'Sneha Reddy',   roleId: roleMap['Accounts Officer'],  roleName: 'Accounts Officer',  department: 'Finance' })
-  const brandRep         = await ensureUser({ name: 'Nikhil Bansal', roleId: roleMap['Brand Rep'],         roleName: 'Brand Rep',         department: 'Sales' })
+  const financeApprover  = await ensureUser({ name: 'Aarti Joshi',   roleId: roleMap['Finance Approver'],  roleName: 'Finance Approver',  department: 'Finance', orgId: defaultOrgId })
+  const warehouseManager = await ensureUser({ name: 'Manish Verma',  roleId: roleMap['Warehouse Manager'], roleName: 'Warehouse Manager', department: 'Operations', orgId: defaultOrgId })
+  const accountsOfficer  = await ensureUser({ name: 'Sneha Reddy',   roleId: roleMap['Accounts Officer'],  roleName: 'Accounts Officer',  department: 'Finance', orgId: defaultOrgId })
+  const brandRep         = await ensureUser({ name: 'Nikhil Bansal', roleId: roleMap['Brand Rep'],         roleName: 'Brand Rep',         department: 'Sales', orgId: defaultOrgId })
 
   // Employees (submitters), each linked to their dept manager + an HR partner.
   const employees = []
   for (const dept of USER_DEPTS) {
     for (const n of ROSTER_EMPLOYEES[dept]) {
       const hr = pick(hrPool)
-      const emp = await ensureUser({ name: n, roleId: roleMap.Employee, roleName: 'Employee', department: dept, managerId: managers[dept]._id, hrId: hr._id })
+      const emp = await ensureUser({ name: n, roleId: roleMap.Employee, roleName: 'Employee', department: dept, managerId: managers[dept]._id, hrId: hr._id, orgId: defaultOrgId })
       emp.managerRef = managers[dept]
       emp.hrRef = hr
       employees.push(emp)
@@ -410,11 +414,20 @@ const run = async () => {
   await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 20000, family: 4 })
   console.log(`Connected: ${mongoose.connection.host}/${mongoose.connection.name}\n`)
 
+  const Organization = require('../models/Organization')
+  const defaultOrg = await Organization.findOne({ isDefault: true })
+  const defaultOrgId = defaultOrg?._id
+
   const roleMap = await getRoleMap()
 
   // Dedicated owner for all seeded forms/workflows (idempotency anchor).
   let seeder = await User.findOne({ email: SEEDER_EMAIL })
-  if (!seeder) seeder = await User.create({ name: 'Seed Bot', email: SEEDER_EMAIL, password: DEFAULT_PASSWORD, role: roleMap.Admin, department: 'IT', isActive: true })
+  if (!seeder) {
+    seeder = await User.create({ name: 'Seed Bot', email: SEEDER_EMAIL, password: DEFAULT_PASSWORD, role: roleMap.Admin, department: 'IT', isActive: true, orgId: defaultOrgId })
+  } else if (!seeder.orgId && defaultOrgId) {
+    seeder.orgId = defaultOrgId
+    await seeder.save()
+  }
   const seederId = seeder._id
 
   // ── 1. Clean previous seed output (precise, never touches real data) ──
@@ -522,7 +535,7 @@ const run = async () => {
         type: dept, status, dueDate: due, currentNode: nodeId,
         approvalType: 'sequential', approvalHistory: history,
         isEscalated: status === 'escalated', escalationLevel: status === 'escalated' ? 1 : 0,
-        createdAt: tCreated, updatedAt,
+        createdAt: tCreated, updatedAt, orgId: defaultOrgId,
       })
       if (status === 'approved') counts.approvedTasks++
       else if (status === 'rejected') counts.rejectedTasks++
@@ -595,7 +608,7 @@ const run = async () => {
         submittedBy: submitter._id, formResponseId: respId, title: `${workflow.title} — Approval Required`,
         type: dept, status: 'pending', dueDate: due, currentNode: approvalIds[cur], approvalType: 'sequential',
         approvalHistory: [{ action: 'submitted', performedBy: submitter._id, performedAt: tCreated, comment: '' }],
-        createdAt: tCreated, updatedAt: tCreated,
+        createdAt: tCreated, updatedAt: tCreated, orgId: defaultOrgId,
       })
       counts.pendingTasks++
       execLog.push({ nodeId: approvalIds[cur], nodeType: 'approval', enteredAt: tCreated, status: 'in_progress' })
@@ -607,11 +620,11 @@ const run = async () => {
     }
 
     const execUpdatedAt = completedAt || failedAt || new Date(clampPast(stepTime))
-    responses.push({ _id: respId, formId: form._id, submittedBy: submitter._id, formData, status: respStatus, createdAt: created, updatedAt: execUpdatedAt })
+    responses.push({ _id: respId, formId: form._id, submittedBy: submitter._id, formData, status: respStatus, createdAt: created, updatedAt: execUpdatedAt, orgId: defaultOrgId })
     executions.push({
       _id: execId, workflowId: workflow._id, formResponseId: respId, triggeredBy: submitter._id,
       status: execStatus, currentNodeId, executionLog: execLog, variables,
-      startedAt: created, createdAt: created, updatedAt: execUpdatedAt,
+      startedAt: created, createdAt: created, updatedAt: execUpdatedAt, orgId: defaultOrgId,
       ...(completedAt ? { completedAt } : {}), ...(failedAt ? { failedAt, failureReason } : {}),
     })
   }

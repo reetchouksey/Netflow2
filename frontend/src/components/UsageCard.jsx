@@ -62,14 +62,14 @@ export default function UsageCard({ className = '' }) {
 
   if (loading && !usage) {
     return (
-      <div className={`rounded-xl border border-line bg-surface shadow-sm overflow-hidden ${className}`}>
-        <div className="px-5 py-3.5 border-b border-line flex items-center gap-3">
+      <div className={`rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden ${className}`}>
+        <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3">
           <Skeleton className="h-4 w-28" />
           <Skeleton className="h-5 w-16 rounded-full ml-auto" />
         </div>
-        <div className="p-4 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+        <div className="p-5 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="rounded-xl border border-line p-3 space-y-2">
+            <div key={i} className="rounded-xl border border-slate-100 dark:border-slate-800 p-3 space-y-2">
               <Skeleton className="h-3 w-16" />
               <Skeleton className="h-1.5 w-full" />
             </div>
@@ -88,11 +88,11 @@ export default function UsageCard({ className = '' }) {
   })
 
   return (
-    <div className={`rounded-xl border border-line bg-surface shadow-sm overflow-hidden ${className}`}>
-      <div className="px-5 py-3.5 border-b border-line bg-surface-2/40 flex flex-wrap items-center gap-x-3 gap-y-2">
+    <div className={`rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden ${className}`}>
+      <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-fg">Plan &amp; usage</h2>
-          <p className="text-xs text-fg-muted mt-0.5">
+          <h2 className="text-sm font-bold text-slate-900 dark:text-white">Plan &amp; usage</h2>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
             {PLAN_LABELS[usage.plan] || usage.planLabel} plan
             {usage.licence?.expiresAt
               ? ` · ${usage.licence.readOnly ? 'ended' : 'renews'} ${formatDate(usage.licence.expiresAt)}`
@@ -101,20 +101,20 @@ export default function UsageCard({ className = '' }) {
           </p>
         </div>
         {chip && (
-          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${CHIP_CLASS[chip.tone]}`}>
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${CHIP_CLASS[chip.tone]}`}>
             {chip.label}
           </span>
         )}
         <button
           type="button"
           onClick={() => usageStore.refresh({ withUsage: true })}
-          className="ml-auto text-xs px-2.5 py-1.5 rounded-lg text-fg-muted hover:text-fg hover:bg-surface-2 transition"
+          className="ml-auto text-xs px-2.5 py-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer"
         >
           Refresh
         </button>
       </div>
 
-      <div className="p-4 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+      <div className="p-5 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
         {METER_ORDER.map(({ key, label }) => {
           const meter = usage.resources?.[key]
           if (!meter) return null
@@ -122,15 +122,15 @@ export default function UsageCard({ className = '' }) {
           return (
             <div
               key={key}
-              className={`rounded-xl border p-3 ${
-                warn ? 'border-warning-line bg-warning-subtle/40' : 'border-line bg-surface'
+              className={`rounded-xl border p-3.5 transition ${
+                warn ? 'border-amber-200 bg-amber-50/50 dark:border-amber-850 dark:bg-amber-950/20' : 'border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900'
               }`}
             >
               <div className="flex items-start gap-2.5">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ring-1 ${
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                   warn
-                    ? 'bg-warning-subtle text-warning-fg ring-warning-line'
-                    : 'bg-surface-2 text-fg-muted ring-line'
+                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
+                    : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
                 }`}>
                   <MeterIcon resource={key} />
                 </div>
@@ -144,10 +144,10 @@ export default function UsageCard({ className = '' }) {
       </div>
 
       {(exceeded.length > 0 || error) && (
-        <div className="px-5 py-3 border-t border-line bg-surface-2/60 text-xs text-fg-muted">
+        <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 text-xs text-slate-500 dark:text-slate-400">
           {exceeded.length > 0 && (
             <p>
-              <span className="font-medium text-danger-fg">
+              <span className="font-medium text-rose-600 dark:text-rose-400">
                 {exceeded.map((e) => e.label).join(', ')} {exceeded.length > 1 ? 'are' : 'is'} at the limit.
               </span>{' '}
               Free something up, or ask your platform administrator to raise the plan.

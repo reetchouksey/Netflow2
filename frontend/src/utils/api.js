@@ -12,12 +12,12 @@ const BASE = String(import.meta.env.VITE_API_URL || 'http://localhost:5000').tri
 export const API_BASE = BASE
 export const toAbsoluteUrl = (url) => {
   if (!url) return ''
-  if (/^https?:\/\//i.test(url) || url.startsWith('blob:')) return url
+  if (/^https?:\/\//i.test(url)) return url
   return `${BASE}${url.startsWith('/') ? '' : '/'}${url}`
 }
 
 /** BaseLayer DMS web UI (optional). Used for "Open in DMS" links. */
-export const DMS_WEB_URL = String(import.meta.env.VITE_DMS_WEB_URL || '').replace(/\/$/, '')
+export const DMS_WEB_URL = String(import.meta.env.VITE_DMS_WEB_URL || 'https://base-layer.systems').replace(/\/$/, '')
 
 export const dmsWebUrl = (dmsDocId) =>
   (DMS_WEB_URL && dmsDocId) ? `${DMS_WEB_URL}/documents/${encodeURIComponent(dmsDocId)}` : ''
@@ -79,7 +79,11 @@ export class ApiError extends Error {
 const request = async (method, endpoint, body, opts = {}) => {
   const token = getToken()
   const headers = { ...(opts.headers || {}) }
-  if (body !== undefined && !(body instanceof FormData)) {
+  if (body instanceof FormData) {
+    // When sending FormData, delete any manual Content-Type so the browser can automatically set 'multipart/form-data; boundary=...'
+    delete headers['Content-Type']
+    delete headers['content-type']
+  } else if (body !== undefined) {
     headers['Content-Type'] = 'application/json'
   }
   if (token) headers.Authorization = `Bearer ${token}`
@@ -176,33 +180,6 @@ export const api = {
       return uploadWithProgress(`/api/uploads${q}`, fd, opts)
     }
     return request('POST', `/api/uploads${q}`, fd, opts)
-  },
-  
-  // Scans a payload (object/array) for any pending files (objects with { pending: true, file: File })
-  // and uploads them. Returns a deep clone of the payload with pending files replaced by uploaded metadata.
-  uploadPendingFiles: async (payload) => {
-    if (!payload || typeof payload !== 'object') return payload
-    
-    if (Array.isArray(payload)) {
-      return Promise.all(payload.map(item => api.uploadPendingFiles(item)))
-    }
-    
-    // If it's a pending file marker
-    if (payload.pending && payload.file) {
-      const { file: saved } = await api.upload(payload.file)
-      // For signature pads, preserve the kind
-      if (payload.kind) {
-        return { ...saved, kind: payload.kind }
-      }
-      return saved
-    }
-    
-    // Otherwise recurse through object properties
-    const result = {}
-    for (const [k, v] of Object.entries(payload)) {
-      result[k] = await api.uploadPendingFiles(v)
-    }
-    return result
   }
 }
 

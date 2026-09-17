@@ -28,6 +28,7 @@ function CellValue({ field, value }) {
   }
   switch (field.type) {
     case 'file':
+    case 'camera':
       return typeof value === 'object' && value.url ? (
         <a href={toAbsoluteUrl(value.url)} target="_blank" rel="noreferrer" className="text-indigo-600 hover:text-indigo-700 underline">
           {value.name || 'Attachment'}

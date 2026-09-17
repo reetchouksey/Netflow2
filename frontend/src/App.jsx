@@ -12,9 +12,8 @@ import Login from './pages/Login'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import Dashboard from './pages/Dashboard'
-import Business from './pages/Bussiness/index'
 import DocumentsDashboard from './pages/DocumentsDashboard'
-import S3Dashboard from './pages/S3Dashboard'
+import S3Storage from './pages/S3Storage'
 import AdminPanel from './pages/AdminPanel'
 import Team from './pages/Team'
 import Departments from './pages/Departments'
@@ -43,6 +42,8 @@ import PlatformPlans from './pages/PlatformPlans'
 import PlatformAdmins from './pages/PlatformAdmins'
 import ChangePassword from './pages/ChangePassword'
 import DmsProvider from './pages/DmsProvider'
+import SignaLandingPage from './pages/SignaLandingPage'
+import PrototypePage from './prototype/PrototypePage'
 import Toaster from './components/Toaster'
 import ConfirmDialog from './components/ConfirmDialog'
 import UserGuideHost from './components/UserGuideHost'
@@ -102,7 +103,23 @@ function RequireDms({ children }) {
   if (needsPasswordChange(user, location)) {
     return <Navigate to="/change-password" replace />
   }
-  if (user.dmsEnabled === false) {
+  if (user.dmsEnabled !== true && user.org?.integrations?.dmsEnabled !== true) {
+    return <Navigate to="/dashboard" replace />
+  }
+  return children
+}
+
+function RequireS3({ children }) {
+  const user = useUser()
+  const location = useLocation()
+  const token = getToken()
+  if (!token || !user) {
+    return <Navigate to="/login" replace state={{ from: location }} />
+  }
+  if (needsPasswordChange(user, location)) {
+    return <Navigate to="/change-password" replace />
+  }
+  if (user.s3Enabled !== true && user.s3Storage !== true && user.org?.integrations?.s3Storage !== true) {
     return <Navigate to="/dashboard" replace />
   }
   return children
@@ -166,22 +183,23 @@ function App() {
       {/* Tour lives at app root so it survives Form/Workflow builders (no AppShell). */}
       <AuthenticatedTourHost />
       <Routes>
-        <Route path="/" element={<Business />} />
+        <Route path="/" element={<SignaLandingPage />} />
+        <Route path="/signa" element={<SignaLandingPage />} />
+        <Route path="/landing" element={<SignaLandingPage />} />
         {/* Self-registration disabled — only admins create users via the Admin Panel.
             /register now falls through to the catch-all below and redirects to /login. */}
         {/* <Route path="/register" element={<PublicOnly><Register /></PublicOnly>} /> */}
         <Route path="/login"    element={<PublicOnly><Login /></PublicOnly>} />
         <Route path="/forgot-password" element={<PublicOnly><ForgotPassword /></PublicOnly>} />
         <Route path="/reset-password"  element={<ResetPassword />} />
-        <Route path="/business"        element={<Business />} />
-        
-        {/* Public (unauthenticated) form links — collect data from non-users */}
+
+        {/* Public, unauthenticated form link (share with non-users). */}
         <Route path="/f/:token" element={<PublicForm />} />
         <Route path="/oauth/callback" element={<OAuthCallback />} />
 
         <Route path="/dashboard"     element={<RequireAuth><Dashboard /></RequireAuth>} />
         <Route path="/documents"     element={<RequireDms><DocumentsDashboard /></RequireDms>} />
-        <Route path="/s3-storage"    element={<RequireTenant><S3Dashboard /></RequireTenant>} />
+        <Route path="/s3-storage"    element={<RequireS3><S3Storage /></RequireS3>} />
         <Route path="/forms"          element={<RequireTenant><Forms /></RequireTenant>} />
         <Route path="/forms/new"      element={<RequireRole can={canCreateForm}><NewForm /></RequireRole>} />
         <Route path="/forms/:id/fill" element={<RequireTenant><FillForm /></RequireTenant>} />
@@ -212,6 +230,10 @@ function App() {
         <Route path="/plans"         element={<RequireRole can={isSuperAdmin}><PlatformPlans /></RequireRole>} />
         <Route path="/admins"        element={<RequireRole can={isSuperAdmin}><PlatformAdmins /></RequireRole>} />
         <Route path="/dms"           element={<RequireRole can={isSuperAdmin}><DmsProvider /></RequireRole>} />
+
+        {/* Isolated UX Prototype Routes (Mock Data Only — Design Review) */}
+        <Route path="/prototype" element={<PrototypePage />} />
+        <Route path="/prototype/preview" element={<PrototypePage />} />
 
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import AppShell from '../components/AppShell'
-import { api } from '../utils/api'
+import { api, DMS_WEB_URL, toAbsoluteUrl } from '../utils/api'
 import { confirm } from '../lib/confirmStore'
 import { toast } from '../lib/toastStore'
 
@@ -38,9 +38,10 @@ const FileIcon = ({ type, className = "w-6 h-6" }) => {
     PDF: 'text-red-500',
     DOCX: 'text-blue-600',
     XLSX: 'text-emerald-600',
-    JPG: 'text-amber-500'
+    JPG: 'text-blue-500',
+    PNG: 'text-blue-500'
   }
-  const color = colors[type] || 'text-gray-500'
+  const color = colors[type] || 'text-blue-500'
 
   if (type === 'PDF') {
     return <svg className={`${className} ${color}`} viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5zM9 9.5h1v-1H9v1zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm10 5.5h1v-3h-1v3z" /></svg>
@@ -86,11 +87,11 @@ function DmsHeaderActions({ loading, error, needsLogin, onSync }) {
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-4">
-      <div className="hidden sm:flex items-center gap-2 border border-line rounded-lg px-3 py-1.5 bg-surface shadow-sm">
-        <span className="text-[10px] font-medium text-fg-subtle">DMS Connection</span>
-        <div className={`w-2 h-2 rounded-full ${loading ? 'bg-amber-400 animate-pulse' : isError ? 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]' : 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]'}`}></div>
-        <span className={`text-xs font-bold ml-1 ${loading ? 'text-amber-500' : isError ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'}`}>
+    <div className="flex flex-wrap items-center gap-3">
+      <div className="hidden sm:flex items-center gap-2 border border-slate-200/80 dark:border-slate-800 rounded-xl px-3.5 py-2 bg-white dark:bg-slate-900 shadow-xs">
+        <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">DMS Connection</span>
+        <div className={`w-2 h-2 rounded-full ${loading ? 'bg-amber-400 animate-pulse' : isError ? 'bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.6)]' : 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]'}`}></div>
+        <span className={`text-xs font-bold ${loading ? 'text-amber-500' : isError ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
           {loading ? 'Checking...' : isError ? (needsLogin ? 'Auth Required' : 'Disconnected') : 'Connected'}
         </span>
       </div>
@@ -98,19 +99,19 @@ function DmsHeaderActions({ loading, error, needsLogin, onSync }) {
       <button
         onClick={onSync}
         disabled={loading}
-        className="flex items-center gap-2 border border-line hover:border-indigo-200 dark:hover:border-indigo-500/30 hover:bg-indigo-50/50 dark:hover:bg-indigo-500/10 rounded-lg px-3 py-1.5 bg-surface shadow-sm text-xs font-semibold text-fg transition disabled:opacity-50"
+        className="flex items-center gap-2 border border-slate-200/90 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/60 rounded-xl px-3.5 py-2 shadow-xs text-xs font-bold text-slate-700 dark:text-slate-200 transition cursor-pointer disabled:opacity-50"
       >
-        <IconSync className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-indigo-500' : 'text-fg-muted'}`} />
+        <IconSync className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-indigo-500' : 'text-slate-400'}`} />
         {loading ? 'Syncing...' : 'Sync Now'}
       </button>
 
       <a
-        href="https://base-layer.systems/"
+        href={DMS_WEB_URL || 'https://base-layer.systems'}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex items-center gap-2 border border-line hover:border-amber-200 dark:hover:border-amber-500/30 hover:bg-amber-50/50 dark:hover:bg-amber-500/10 rounded-lg px-3 py-1.5 bg-surface shadow-sm text-xs font-semibold text-fg transition"
+        className="flex items-center gap-2 border border-slate-200/90 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/60 rounded-xl px-3.5 py-2 shadow-xs text-xs font-bold text-slate-700 dark:text-slate-200 transition cursor-pointer"
       >
-        <IconSettings className="w-3.5 h-3.5 text-fg-muted" />
+        <IconSettings className="w-3.5 h-3.5 text-slate-400" />
         DMS Login
       </a>
       <input
@@ -123,7 +124,7 @@ function DmsHeaderActions({ loading, error, needsLogin, onSync }) {
       <button
         disabled={uploading}
         onClick={() => fileInputRef.current?.click()}
-        className="flex items-center gap-2 bg-[#4F6BFF] hover:bg-[#435be0] text-white rounded-lg px-4 py-1.5 shadow-sm text-xs font-semibold transition disabled:opacity-50"
+        className="flex items-center gap-2 bg-[#6366F1] hover:bg-[#4F46E5] text-white rounded-xl px-4 py-2 shadow-xs hover:shadow-sm text-xs font-bold transition cursor-pointer disabled:opacity-50"
       >
         {uploading ? <IconSync className="w-3.5 h-3.5 animate-spin" /> : <IconCloudUpload className="w-3.5 h-3.5" />}
         {uploading ? 'Uploading...' : 'Upload Document'}
@@ -150,31 +151,68 @@ const FolderNode = ({ node, activeFolderId, setActiveFolderId, depth = 0 }) => {
     setIsOpen(!isOpen)
   }
 
+  const isSelected = activeFolderId === node._id
+
   return (
     <div>
       <div
-        className={`flex items-center gap-2 px-2 py-1.5 text-xs font-medium cursor-pointer rounded-md transition ${activeFolderId === node._id ? 'bg-[#4F6BFF]/10 text-[#4F6BFF]' : 'text-fg hover:bg-surface-2'}`}
+        className={`flex items-center gap-2 px-2.5 py-2 text-xs font-semibold cursor-pointer rounded-xl transition ${
+          isSelected
+            ? 'bg-[#EEF2FF] text-[#6366F1] dark:bg-indigo-950/60 dark:text-indigo-400'
+            : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'
+        }`}
         onClick={handleClick}
-        style={{ paddingLeft: `${0.5 + depth * 1.25}rem` }}
+        style={{ paddingLeft: `${0.625 + depth * 1.25}rem` }}
       >
         {hasChildren ? (
-          <div onClick={handleChevronClick} className="hover:bg-black/5 dark:hover:bg-white/10 rounded p-0.5 -ml-1 flex items-center justify-center">
-            {isOpen ? <IconChevronDown className="w-3 h-3 text-fg-muted" /> : <IconChevronRight className="w-3 h-3 text-fg-muted" />}
+          <div onClick={handleChevronClick} className="hover:bg-black/5 dark:hover:bg-white/10 rounded-lg p-0.5 -ml-1 flex items-center justify-center">
+            {isOpen ? <IconChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <IconChevronRight className="w-3.5 h-3.5 text-slate-400" />}
           </div>
         ) : (
           <div className="w-4 h-4 shrink-0" />
         )}
-        <IconFolder className={`w-3.5 h-3.5 shrink-0 ${activeFolderId === node._id ? 'text-[#4F6BFF]' : 'text-amber-400'}`} />
+        <IconFolder className={`w-4 h-4 shrink-0 ${isSelected ? 'text-[#6366F1] dark:text-indigo-400' : 'text-blue-500 dark:text-blue-400'}`} />
         <span className="truncate">{node.name}</span>
       </div>
 
       {isOpen && hasChildren && (
-        <div className="flex flex-col gap-0.5 mt-0.5">
+        <div className="flex flex-col gap-1 mt-1">
           {node.children.map(child => (
             <FolderNode key={child._id} node={child} activeFolderId={activeFolderId} setActiveFolderId={setActiveFolderId} depth={depth + 1} />
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+/* ─── Reference-matched stat card (Matching Forms page KPI card UI) ───── */
+function KpiCard({ label, value, hint, icon, tone = 'neutral' }) {
+  const tones = {
+    neutral: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
+    indigo: "bg-[#EEF2FF] text-[#6366F1] dark:bg-indigo-950/60 dark:text-indigo-400",
+    emerald: "bg-[#E6F9F0] text-[#059669] dark:bg-emerald-950/60 dark:text-emerald-400",
+    amber: "bg-[#FEF9E7] text-[#D97706] dark:bg-amber-950/60 dark:text-amber-400",
+    violet: "bg-[#F5F3FF] text-[#8B5CF6] dark:bg-purple-950/60 dark:text-purple-400",
+    rose: "bg-[#FEE2E2] text-[#DC2626] dark:bg-rose-950/60 dark:text-rose-400"
+  }
+
+  return (
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-4 flex items-center gap-3.5 hover:border-slate-300 dark:hover:border-slate-700 transition min-w-0">
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${tones[tone] || tones.neutral}`}>
+        {React.isValidElement(icon) ? React.cloneElement(icon, { className: 'w-4.5 h-4.5' }) : icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-1.5 flex-wrap">
+          <span className="text-lg font-bold text-slate-900 dark:text-white leading-tight tabular-nums">
+            {value ?? '—'}
+          </span>
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400 leading-tight">
+            {label}
+          </span>
+        </div>
+        {hint && <div className="text-xs text-slate-400 dark:text-slate-500 font-medium truncate mt-0.5">{hint}</div>}
+      </div>
     </div>
   )
 }
@@ -194,8 +232,8 @@ export default function DocumentsDashboard() {
   const [loginEmail, setLoginEmail] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
   const [loginLoading, setLoginLoading] = useState(false)
-  const [loginError, setLoginError] = useState(null)
   const [isFullscreenPreview, setIsFullscreenPreview] = useState(false)
+  const [zoom, setZoom] = useState(100)
   const [isTableMaximized, setIsTableMaximized] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [showFilters, setShowFilters] = useState(false)
@@ -205,6 +243,12 @@ export default function DocumentsDashboard() {
   const [showSortMenu, setShowSortMenu] = useState(false)
   const [realStats, setRealStats] = useState(null)
   const [activeFolderId, setActiveFolderId] = useState(null)
+
+  useEffect(() => {
+    if (isFullscreenPreview) {
+      setZoom(100)
+    }
+  }, [isFullscreenPreview])
 
   const now = new Date();
   const uploadedThisMonth = documents.filter(d => {
@@ -295,17 +339,19 @@ export default function DocumentsDashboard() {
 
   useEffect(() => {
     if (activeDoc) {
-      setActiveDocUrl(null)
+      setActiveDocUrl(activeDoc.fileUrl ? toAbsoluteUrl(activeDoc.fileUrl) : null)
       setActiveDocUrlLoading(true)
       api.get(`/api/dms/documents/${activeDoc._id}/url?mode=view`)
         .then(data => {
           if (data && data.url) {
-            setActiveDocUrl(data.url)
-          } else {
-            console.error("DMS URL fetch failed:", data)
+            setActiveDocUrl(toAbsoluteUrl(data.url))
+          } else if (activeDoc.fileUrl) {
+            setActiveDocUrl(toAbsoluteUrl(activeDoc.fileUrl))
           }
         })
-        .catch(err => console.error("Network error fetching DMS URL:", err))
+        .catch(() => {
+          if (activeDoc.fileUrl) setActiveDocUrl(toAbsoluteUrl(activeDoc.fileUrl))
+        })
         .finally(() => setActiveDocUrlLoading(false))
     } else {
       setActiveDocUrl(null)
@@ -341,7 +387,7 @@ export default function DocumentsDashboard() {
     return typeStr;
   }
 
-   const handleDeleteDoc = async (doc, e) => {
+  const handleDeleteDoc = async (doc, e) => {
     e.stopPropagation()
     const ok = await confirm({
       title: 'Delete Document',
@@ -350,37 +396,32 @@ export default function DocumentsDashboard() {
       danger: true
     })
     if (!ok) return
-    
     try {
-      // 1. Optimistic Update: UI se document turant hata dein bina reload kiye
-      setDocuments(prevDocs => prevDocs.filter(d => d._id !== doc._id))
-      
-      if (activeDoc?._id === doc._id) {
-        setActiveDoc(null)
-        setActiveDocUrl(null)
+      setLoading(true)
+      const res = await api.delete(`/api/dms/documents/${doc._id}`)
+      if (res) {
+        if (activeDoc?._id === doc._id) {
+          setActiveDoc(null)
+          setActiveDocUrl(null)
+        }
+        await loadData()
       }
-
-      // 2. Background me API delete call karein bina Loading spinner dikhaye
-      await api.delete(`/api/dms/documents/${doc._id}`)
-
     } catch (err) {
       console.error("Delete failed", err)
-      // Agar delete fail ho jata hai, to original data wapas laane ke liye reload kar lein
-      loadData() 
-      
       if (err?.code === 'DMS_UNAUTHORIZED' || err.response?.data?.code === 'DMS_UNAUTHORIZED') {
         setNeedsLogin(true)
       } else {
         toast.error(err.response?.data?.error || err.message || "Failed to delete document")
       }
+    } finally {
+      setLoading(false)
     }
   }
 
-
   if (loading) {
     return (
-      <AppShell title="DMS" mainClass="flex-1 flex flex-col p-4 bg-[#FAFBFF] dark:bg-surface-1">
-        <div className="flex-1 flex items-center justify-center text-fg-muted font-medium">Loading documents...</div>
+      <AppShell title="Document Management System" mainClass="p-4 md:p-6 pb-24 md:pb-6 flex-1 flex flex-col min-h-0">
+        <div className="flex-1 flex items-center justify-center text-slate-400 text-xs font-semibold animate-pulse">Loading documents...</div>
       </AppShell>
     )
   }
@@ -390,92 +431,48 @@ export default function DocumentsDashboard() {
       title="Document Management System"
       subtitle="Manage, organize and access all your documents securely."
       actions={<DmsHeaderActions loading={loading} error={error} needsLogin={needsLogin} onSync={loadData} />}
-      // Provide a rigid flex container that fills the viewport minus the AppShell padding.
-      mainClass="flex-1 flex flex-col p-4 md:p-6 pb-24 md:pb-6 h-screen min-h-0 overflow-hidden bg-[#FAFBFF] dark:bg-surface-1"
+      mainClass="p-4 md:p-6 pb-24 md:pb-6 flex-1 flex flex-col min-h-0 overflow-hidden"
     >
       <div className="flex-1 flex flex-col min-h-0 gap-5">
 
         {/* Top Metrics Row */}
         {!isTableMaximized && (
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 shrink-0">
-            <div className="bg-white dark:bg-surface border border-line rounded-xl p-4 shadow-sm flex flex-col justify-between hover:shadow-md transition">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-blue-50 text-[#4F6BFF] flex items-center justify-center shrink-0">
-                  <IconFolder className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="text-[11px] font-semibold text-fg-subtle tracking-wide">Total Documents</p>
-                  <p className="text-2xl font-bold tabular-nums text-fg leading-none mt-1">{stats.totalDocs.toLocaleString()}</p>
-                </div>
-              </div>
-              <p className="text-[10px] font-medium text-emerald-600 flex items-center gap-1 mt-3">
-                <span className="text-emerald-500 font-bold">↑</span> {stats.docsTrend}
-              </p>
-            </div>
-
-            <div className="bg-white dark:bg-surface border border-line rounded-xl p-4 shadow-sm flex flex-col justify-between hover:shadow-md transition">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-blue-50 text-[#4F6BFF] flex items-center justify-center shrink-0">
-                  <IconFolderOpen className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="text-[11px] font-semibold text-fg-subtle tracking-wide">Total Folders</p>
-                  <p className="text-2xl font-bold tabular-nums text-fg leading-none mt-1">{stats.totalFolders}</p>
-                </div>
-              </div>
-              <p className="text-[10px] font-medium text-emerald-600 flex items-center gap-1 mt-3">
-                <span className="text-emerald-500 font-bold">↑</span> {stats.foldersTrend}
-              </p>
-            </div>
-
-            <div className="bg-white dark:bg-surface border border-[#4F6BFF]/30 dark:border-blue-500/50 rounded-xl p-4 shadow-[0_4px_12px_rgba(79,107,255,0.08)] flex flex-col justify-between relative overflow-hidden group">
-              <div className="absolute inset-x-0 bottom-0 h-1 bg-[#4F6BFF]"></div>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-[#4F6BFF]/10 flex items-center justify-center shrink-0">
-                  <IconClock className="w-5 h-5 text-[#4F6BFF]" />
-                </div>
-                <div>
-                  <p className="text-xs text-fg-muted font-bold uppercase tracking-wider mb-0.5">Storage Used ({stats.plan})</p>
-                  <p className="text-2xl font-black text-fg leading-none tracking-tight">
-                    {stats.displayStorageUsed}
-                  </p>
-                </div>
-              </div>
-              <div className="mt-3">
-                <p className="text-[10px] font-medium text-fg-muted">
-                  of {stats.limitMb >= 1024 ? `${Math.round(stats.limitMb / 1024)} GB` : `${stats.limitMb} MB`} ({stats.storagePct}%)
-                </p>
-                <div className="w-full bg-surface-2 rounded-full h-1.5 mt-1 overflow-hidden">
-                  <div className="bg-[#4F6BFF] h-1.5 rounded-full" style={{ width: `${Math.min(100, stats.storagePct)}%` }}></div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-surface border border-line rounded-xl p-4 shadow-sm flex flex-col justify-between hover:shadow-md transition">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-orange-50 text-orange-500 flex items-center justify-center shrink-0">
-                  <IconCloudUpload className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="text-[11px] font-semibold text-fg-subtle tracking-wide">Documents Uploaded</p>
-                  <p className="text-2xl font-bold tabular-nums text-fg leading-none mt-1">{stats.uploadedMonth.toLocaleString()}</p>
-                </div>
-              </div>
-              <p className="text-[10px] font-medium text-fg-muted mt-3">This Month</p>
-            </div>
-
-            <div className="bg-white dark:bg-surface border border-line rounded-xl p-4 shadow-sm flex flex-col justify-between hover:shadow-md transition hidden lg:flex">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-500 flex items-center justify-center shrink-0">
-                  <IconCloudDownload className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="text-[11px] font-semibold text-fg-subtle tracking-wide">Documents Downloaded</p>
-                  <p className="text-2xl font-bold tabular-nums text-fg leading-none mt-1">{stats.downloadedMonth}</p>
-                </div>
-              </div>
-              <p className="text-[10px] font-medium text-fg-muted mt-3">This Month</p>
-            </div>
+            <KpiCard
+              label="Total Documents"
+              value={stats.totalDocs.toLocaleString()}
+              hint={stats.docsTrend || "Synced"}
+              tone="indigo"
+              icon={<IconFolder className="w-4.5 h-4.5" />}
+            />
+            <KpiCard
+              label="Total Folders"
+              value={stats.totalFolders}
+              hint={stats.foldersTrend || "Synced"}
+              tone="emerald"
+              icon={<IconFolderOpen className="w-4.5 h-4.5" />}
+            />
+            <KpiCard
+              label={`Storage Used (${stats.plan})`}
+              value={stats.displayStorageUsed}
+              hint={`of ${stats.limitMb >= 1024 ? `${Math.round(stats.limitMb / 1024)} GB` : `${stats.limitMb} MB`} (${stats.storagePct}%)`}
+              tone="violet"
+              icon={<IconClock className="w-4.5 h-4.5" />}
+            />
+            <KpiCard
+              label="Uploaded"
+              value={stats.uploadedMonth.toLocaleString()}
+              hint="This Month"
+              tone="amber"
+              icon={<IconCloudUpload className="w-4.5 h-4.5" />}
+            />
+            <KpiCard
+              label="Downloaded"
+              value={stats.downloadedMonth}
+              hint="This Month"
+              tone="neutral"
+              icon={<IconCloudDownload className="w-4.5 h-4.5" />}
+            />
           </div>
         )}
 
@@ -484,43 +481,43 @@ export default function DocumentsDashboard() {
 
           {/* Left Panel: Folder Tree */}
           {!isTableMaximized && (
-            <div className="w-64 bg-white dark:bg-surface border border-line rounded-xl shadow-sm flex flex-col min-h-0 shrink-0">
-              <div className="p-4 border-b border-line flex items-center justify-between shrink-0">
-                <h3 className="text-xs font-bold text-fg">Folder Structure</h3>
+            <div className="w-64 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col min-h-0 shrink-0 overflow-hidden">
+              <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
+                <h3 className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Folder Structure</h3>
                 <div className="flex items-center gap-2">
-                  <button className="text-fg-muted hover:text-fg transition"><IconSync className="w-3.5 h-3.5" /></button>
+                  <button onClick={loadData} title="Refresh Folders" className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition p-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">
+                    <IconSync className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto p-2">
+              <div className="flex-1 overflow-y-auto p-3">
                 <div className="flex flex-col gap-1">
-                  <div className="flex flex-col gap-0.5 mt-2">
-                    {folderTree.map(f => (
-                      <FolderNode
-                        key={f._id}
-                        node={f}
-                        activeFolderId={activeFolderId}
-                        setActiveFolderId={setActiveFolderId}
-                        depth={0}
-                      />
-                    ))}
-                  </div>
+                  {folderTree.map(f => (
+                    <FolderNode
+                      key={f._id}
+                      node={f}
+                      activeFolderId={activeFolderId}
+                      setActiveFolderId={setActiveFolderId}
+                      depth={0}
+                    />
+                  ))}
                 </div>
               </div>
             </div>
           )}
 
           {/* Center Panel: Document List */}
-          <div className="flex-1 bg-white dark:bg-surface border border-line rounded-xl shadow-sm flex flex-col min-h-0 min-w-0">
+          <div className="flex-1 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col min-h-0 min-w-0 overflow-hidden">
             {/* Breadcrumb & Toolbar */}
-            <div className="p-4 border-b border-line shrink-0">
-              <div className="text-[11px] font-semibold text-fg-muted mb-3 flex items-center gap-1.5">
+            <div className="px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 shrink-0">
+              <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-3 flex items-center gap-1.5">
                 <span
-                  className="hover:text-fg cursor-pointer transition"
+                  className="hover:text-slate-900 dark:hover:text-white cursor-pointer transition"
                   onClick={() => setActiveFolderId(null)}
                 >
                   {stats.orgName || 'Organization'}
                 </span>
-                <span>›</span>
+                <span className="text-slate-400">›</span>
                 {activeFolderId ? (
                   <>
                     {/* Render intermediate breadcrumbs if it's a child folder */}
@@ -533,31 +530,31 @@ export default function DocumentsDashboard() {
                           return (
                             <>
                               <span
-                                className="hover:text-fg cursor-pointer transition"
+                                className="hover:text-slate-900 dark:hover:text-white cursor-pointer transition"
                                 onClick={() => setActiveFolderId(parent._id)}
                               >
                                 {parent.name}
                               </span>
-                              <span>›</span>
+                              <span className="text-slate-400">›</span>
                             </>
                           )
                         }
                       }
                       return null
                     })()}
-                    <span className="text-fg">{folders.find(f => f._id === activeFolderId)?.name || 'Folder'}</span>
+                    <span className="text-slate-900 dark:text-white font-bold">{folders.find(f => f._id === activeFolderId)?.name || 'Folder'}</span>
                   </>
                 ) : (
-                  <span className="text-fg">All Documents</span>
+                  <span className="text-slate-900 dark:text-white font-bold">All Documents</span>
                 )}
               </div>
               <div className="flex items-center gap-3">
                 <div className="flex-1 relative">
-                  <IconSearch className="w-4 h-4 text-fg-subtle absolute left-3 top-1/2 -translate-y-1/2" />
+                  <IconSearch className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     placeholder="Search documents by name, type or tags..."
-                    className="w-full pl-9 pr-4 py-1.5 text-xs bg-surface border border-line rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4F6BFF] focus:border-transparent transition"
+                    className="w-full pl-9 pr-4 py-2 text-xs font-medium text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-100 dark:bg-slate-800/80 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:bg-white dark:focus:bg-slate-800 transition"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
@@ -568,21 +565,21 @@ export default function DocumentsDashboard() {
                       if (!showFilters) setTempFilters(filters)
                       setShowFilters(!showFilters)
                     }}
-                    className={`flex items-center gap-2 border border-line hover:bg-surface-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition shrink-0 ${showFilters ? 'bg-surface-2 text-fg' : 'text-fg-muted'}`}
+                    className={`flex items-center gap-2 border border-slate-200/90 dark:border-slate-700 rounded-xl px-3.5 py-2 text-xs font-semibold transition shrink-0 cursor-pointer shadow-2xs ${showFilters ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 bg-white dark:bg-slate-900'}`}
                   >
-                    <IconFilter className="w-3.5 h-3.5" /> Filters
+                    <IconFilter className="w-3.5 h-3.5 text-slate-400" /> Filters
                   </button>
 
                   {/* Filters Dropdown */}
                   {showFilters && (
-                    <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-surface border border-line rounded-xl shadow-lg z-50 p-4 animate-in fade-in slide-in-from-top-2">
-                      <h4 className="text-xs font-bold text-fg mb-3">Filter Documents</h4>
+                    <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl z-50 p-4 animate-in fade-in slide-in-from-top-2">
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-3">Filter Documents</h4>
 
                       <div className="space-y-4">
                         <div>
-                          <label className="text-[10px] font-bold text-fg-muted uppercase tracking-wider mb-1.5 block">Document Type</label>
+                          <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 block">Document Type</label>
                           <select
-                            className="w-full text-xs bg-surface border border-line rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#4F6BFF]"
+                            className="w-full text-xs font-medium bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-300"
                             value={tempFilters.type}
                             onChange={(e) => setTempFilters({ ...tempFilters, type: e.target.value })}
                           >
@@ -594,9 +591,9 @@ export default function DocumentsDashboard() {
                         </div>
 
                         <div>
-                          <label className="text-[10px] font-bold text-fg-muted uppercase tracking-wider mb-1.5 block">Date Added</label>
+                          <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 block">Date Added</label>
                           <select
-                            className="w-full text-xs bg-surface border border-line rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#4F6BFF]"
+                            className="w-full text-xs font-medium bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-300"
                             value={tempFilters.dateRange}
                             onChange={(e) => setTempFilters({ ...tempFilters, dateRange: e.target.value })}
                           >
@@ -608,14 +605,14 @@ export default function DocumentsDashboard() {
                         </div>
                       </div>
 
-                      <div className="mt-4 pt-3 border-t border-line flex justify-end gap-2">
+                      <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">
                         <button
                           onClick={() => {
                             setFilters({ type: 'All', dateRange: 'Anytime' })
                             setTempFilters({ type: 'All', dateRange: 'Anytime' })
                             setShowFilters(false)
                           }}
-                          className="text-xs font-medium text-fg-muted hover:text-fg transition px-3 py-1.5"
+                          className="text-xs font-bold text-slate-500 hover:text-slate-900 dark:hover:text-white transition px-3 py-1.5 cursor-pointer"
                         >
                           Reset
                         </button>
@@ -624,7 +621,7 @@ export default function DocumentsDashboard() {
                             setFilters(tempFilters)
                             setShowFilters(false)
                           }}
-                          className="text-xs font-bold bg-[#4F6BFF] text-white hover:bg-[#435be0] transition px-3 py-1.5 rounded-lg shadow-sm"
+                          className="text-xs font-bold bg-[#6366F1] text-white hover:bg-[#4F46E5] transition px-3.5 py-1.5 rounded-xl shadow-xs cursor-pointer"
                         >
                           Apply
                         </button>
@@ -635,9 +632,9 @@ export default function DocumentsDashboard() {
                 <div className="relative">
                   <div
                     onClick={() => setShowSortMenu(!showSortMenu)}
-                    className="flex items-center gap-2 shrink-0 cursor-pointer hover:bg-surface-2 px-2 py-1.5 rounded-lg transition"
+                    className="flex items-center gap-2 shrink-0 cursor-pointer border border-slate-200/90 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 px-3.5 py-2 rounded-xl transition shadow-2xs"
                   >
-                    <span className="text-xs text-fg-muted font-medium hidden md:inline">Sort: <strong className="text-fg">{
+                    <span className="text-xs text-slate-500 dark:text-slate-400 font-medium hidden md:inline">Sort: <strong className="text-slate-900 dark:text-white">{
                       sortBy === 'newest' ? 'Newest First' :
                         sortBy === 'oldest' ? 'Oldest First' :
                           sortBy === 'nameAsc' ? 'Name (A-Z)' :
@@ -645,11 +642,11 @@ export default function DocumentsDashboard() {
                               sortBy === 'sizeDesc' ? 'Size (Largest)' :
                                 'Size (Smallest)'
                     }</strong></span>
-                    <IconChevronDown className="w-3 h-3 text-fg-muted hidden md:inline" />
+                    <IconChevronDown className="w-3.5 h-3.5 text-slate-400 hidden md:inline" />
                   </div>
 
                   {showSortMenu && (
-                    <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-surface border border-line rounded-xl shadow-lg z-50 p-2 animate-in fade-in slide-in-from-top-2">
+                    <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl z-50 p-2 animate-in fade-in slide-in-from-top-2">
                       {[
                         { id: 'newest', label: 'Newest First' },
                         { id: 'oldest', label: 'Oldest First' },
@@ -664,7 +661,7 @@ export default function DocumentsDashboard() {
                             setSortBy(option.id)
                             setShowSortMenu(false)
                           }}
-                          className={`w-full text-left px-3 py-2 text-xs rounded-lg transition ${sortBy === option.id ? 'bg-[#4F6BFF]/10 text-[#4F6BFF] font-bold' : 'text-fg-muted hover:bg-surface-2 hover:text-fg font-medium'}`}
+                          className={`w-full text-left px-3 py-2 text-xs rounded-xl transition cursor-pointer ${sortBy === option.id ? 'bg-[#EEF2FF] text-[#6366F1] dark:bg-indigo-950/60 dark:text-indigo-400 font-bold' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium'}`}
                         >
                           {option.label}
                         </button>
@@ -675,7 +672,7 @@ export default function DocumentsDashboard() {
 
                 <button
                   onClick={() => setIsTableMaximized(!isTableMaximized)}
-                  className="p-1.5 border border-line rounded-lg bg-surface hover:bg-surface-2 transition text-fg-muted shrink-0"
+                  className="p-2 border border-slate-200/90 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition text-slate-500 dark:text-slate-400 shrink-0 cursor-pointer shadow-2xs"
                   title={isTableMaximized ? "Restore Table View" : "Maximize Table View"}
                 >
                   {isTableMaximized ? <IconMinimize className="w-4 h-4" /> : <IconMaximize className="w-4 h-4" />}
@@ -686,27 +683,28 @@ export default function DocumentsDashboard() {
             {/* Document Table */}
             <div className="flex-1 overflow-auto">
               {needsLogin ? (
-                <div className="flex-1 flex flex-col items-center justify-center p-8 bg-surface-1 h-full">
-                  <div className="w-full max-w-sm bg-surface-1 rounded-2xl p-8 shadow-[0px_9px_16px_rgba(0,0,0,0.20),-8px_-8px_16px_rgba(255,255,255,0.8)] dark:shadow-[8px_8px_16px_rgba(0,0,0,0.3),-8px_-8px_16px_rgba(255,255,255,0.05)] border-none">
-                  <h3 className="text-xl font-bold text-fg mb-2">DMS Authentication Required</h3>
-                    <form onSubmit={handleDmsLogin} className="flex flex-col gap-6">
+                <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-50/50 dark:bg-slate-900/50 h-full">
+                  <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-2xl p-8 border border-slate-200/80 dark:border-slate-800 shadow-xs">
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">DMS Authentication Required</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">Enter your credentials to connect to BaseLayer DMS.</p>
+                    <form onSubmit={handleDmsLogin} className="flex flex-col gap-4">
                       <div>
-                        <label className="block text-xs font-semibold text-fg-subtle mb-2 px-1">Email Address</label>
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">Email Address</label>
                         <input
                           type="email"
                           placeholder="you@organization.com"
-                          className="w-full bg-surface-1 rounded-xl px-4 py-3 text-sm text-fg placeholder-fg-muted focus:outline-none focus:ring-1 focus:ring-[#4F6BFF]/50 transition-all shadow-[inset_4px_4px_8px_rgba(0,0,0,0.1),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] dark:shadow-[inset_4px_4px_8px_rgba(0,0,0,0.3),inset_-4px_-4px_8px_rgba(255,255,255,0.05)] border-none"
+                          className="w-full bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition"
                           value={loginEmail}
                           onChange={(e) => setLoginEmail(e.target.value)}
                           required
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-fg-subtle mb-2 px-1">Password</label>
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">Password</label>
                         <input
                           type="password"
                           placeholder="••••••••"
-                          className="w-full bg-surface-1 rounded-xl px-4 py-3 text-sm text-fg placeholder-fg-muted focus:outline-none focus:ring-1 focus:ring-[#4F6BFF]/50 transition-all shadow-[inset_4px_4px_8px_rgba(0,0,0,0.1),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] dark:shadow-[inset_4px_4px_8px_rgba(0,0,0,0.3),inset_-4px_-4px_8px_rgba(255,255,255,0.05)] border-none"
+                          className="w-full bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition"
                           value={loginPassword}
                           onChange={(e) => setLoginPassword(e.target.value)}
                           required
@@ -714,7 +712,7 @@ export default function DocumentsDashboard() {
                       </div>
 
                       {loginError && (
-                        <div className="p-3 bg-red-50/50 text-red-600 rounded-xl text-xs font-medium shadow-[inset_2px_2px_4px_rgba(239,68,68,0.1),inset_-2px_-2px_4px_rgba(255,255,255,0.5)] border-none">
+                        <div className="p-3 bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 rounded-xl text-xs font-semibold border border-rose-200 dark:border-rose-900">
                           {loginError}
                         </div>
                       )}
@@ -722,7 +720,7 @@ export default function DocumentsDashboard() {
                       <button
                         type="submit"
                         disabled={loginLoading}
-                        className="mt-4 w-full bg-blue-500 text-white font-bold py-3.5 rounded-xl transition-all shadow-[0px_9px_30px_rgba(0,0,0,0.20),-6px_-6px_12px_rgba(255,255,255,0.8)] dark:shadow-[6px_6px_12px_rgba(0,0,0,0.3),-6px_-6px_12px_rgba(255,255,255,0.05)] hover:shadow-[4px_4px_8px_rgba(0,0,0,0.1),-4px_-4px_8px_rgba(255,255,255,0.8)] dark:hover:shadow-[4px_4px_8px_rgba(0,0,0,0.3),-4px_-4px_8px_rgba(255,255,255,0.05)] active:shadow-[inset_4px_4px_8px_rgba(0,0,0,0.1),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] dark:active:shadow-[inset_4px_4px_8px_rgba(0,0,0,0.3),inset_-4px_-4px_8px_rgba(255,255,255,0.05)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 border-none"
+                        className="mt-2 w-full bg-[#6366F1] hover:bg-[#4F46E5] text-white font-bold py-2.5 rounded-xl transition shadow-xs disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer text-xs"
                       >
                         {loginLoading ? 'Connecting...' : 'Connect to BaseLayer'}
                       </button>
@@ -730,12 +728,12 @@ export default function DocumentsDashboard() {
                   </div>
                 </div>
               ) : error ? (
-                <div className="flex-1 flex flex-col items-center justify-center p-8 bg-surface-1 h-full">
-                  <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mb-4 text-red-500">
-                    <IconInfo className="w-8 h-8" />
+                <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-50/50 dark:bg-slate-900/50 h-full">
+                  <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/60 text-rose-500 flex items-center justify-center mb-3">
+                    <IconInfo className="w-6 h-6" />
                   </div>
-                  <h3 className="text-lg font-bold text-fg mb-2">DMS Connection Error</h3>
-                  <p className="text-fg-muted text-center max-w-md">{error}</p>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-1">DMS Connection Error</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 text-center max-w-md">{error}</p>
                 </div>
               ) : (() => {
                 // Filter documents by activeFolderId and searchQuery
@@ -796,25 +794,25 @@ export default function DocumentsDashboard() {
 
                 if (displayedDocs.length === 0) {
                   return (
-                    <div className="flex-1 flex flex-col items-center justify-center p-8 bg-surface-1 h-full text-fg-muted">
+                    <div className="flex-1 flex flex-col items-center justify-center p-12 bg-slate-50/50 dark:bg-slate-900/50 h-full text-slate-400 text-xs font-semibold">
                       No documents found in this folder.
                     </div>
                   )
                 }
 
                 return (
-                  <table className="w-full text-left text-xs whitespace-nowrap min-w-[700px]">
-                    <thead className="sticky top-0 bg-white dark:bg-surface z-10 border-b border-line shadow-sm">
-                      <tr className="text-[10px] text-fg-muted uppercase tracking-wider">
-                        <th className="px-4 py-3 font-bold w-1/3">Name</th>
-                        <th className="px-4 py-3 font-bold">Type</th>
-                        <th className="px-4 py-3 font-bold">Uploaded By</th>
-                        <th className="px-4 py-3 font-bold">Size</th>
-                        <th className="px-4 py-3 font-bold">Uploaded On</th>
-                        <th className="px-4 py-3 font-bold text-center">Actions</th>
+                  <table className="w-full text-left text-xs whitespace-nowrap min-w-[700px] border-collapse">
+                    <thead className="sticky top-0 bg-slate-50/90 dark:bg-slate-900/60 text-slate-400 font-bold uppercase tracking-wider text-[10.5px] border-b border-slate-200 dark:border-slate-800 z-10">
+                      <tr>
+                        <th className="px-5 py-3 font-bold w-1/3">NAME</th>
+                        <th className="px-4 py-3 font-bold">TYPE</th>
+                        <th className="px-4 py-3 font-bold">UPLOADED BY</th>
+                        <th className="px-4 py-3 font-bold">SIZE</th>
+                        <th className="px-4 py-3 font-bold">MODIFIED</th>
+                        <th className="px-5 py-3 font-bold text-right">ACTIONS</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-line">
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                       {displayedDocs.map(doc => {
                         const isSelected = activeDoc?._id === doc._id
                         let uploadedByObj = doc.uploadedBy || {}
@@ -836,44 +834,44 @@ export default function DocumentsDashboard() {
                         return (
                           <tr
                             key={doc._id}
-                            className={`group hover:bg-[#4F6BFF]/5 transition cursor-pointer ${isSelected ? 'bg-[#4F6BFF]/5' : ''}`}
+                            className={`group hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition cursor-pointer ${isSelected ? 'bg-indigo-50/70 dark:bg-indigo-950/30' : ''}`}
                             onClick={() => setActiveDoc(doc)}
                           >
-                            <td className="px-4 py-3 flex items-center gap-3">
-                              <FileIcon type={getDisplayType(doc)} className="w-6 h-6 shrink-0" />
+                            <td className="px-5 py-3.5 flex items-center gap-3">
+                              <FileIcon type={getDisplayType(doc)} className="w-5 h-5 shrink-0" />
                               <div className="min-w-0">
-                                <p className={`font-semibold truncate max-w-[200px] xl:max-w-[250px] ${isSelected ? 'text-[#4F6BFF]' : 'text-fg'}`}>{doc.name}</p>
+                                <p className={`font-semibold truncate max-w-[200px] xl:max-w-[250px] ${isSelected ? 'text-[#6366F1] dark:text-indigo-400' : 'text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400'}`}>{doc.name}</p>
                                 <div className="flex gap-1.5 mt-1">
                                   {doc.tags?.slice(0, 1).map((t, idx) => {
                                     const tagText = typeof t === 'string' ? t : (t.v || t.k || JSON.stringify(t))
                                     return (
-                                      <span key={idx} className={`text-[9px] px-1.5 rounded font-bold uppercase bg-blue-50 text-blue-600 border border-blue-100`}>{tagText}</span>
+                                      <span key={idx} className="text-[9.5px] px-2 py-0.5 rounded-md font-bold uppercase bg-indigo-50 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900/50">{tagText}</span>
                                     )
                                   })}
                                 </div>
                               </div>
                             </td>
-                            <td className="px-4 py-3 font-medium text-fg">{doc.type}</td>
-                            <td className="px-4 py-3">
+                            <td className="px-4 py-3.5 font-medium text-slate-600 dark:text-slate-300">{doc.type}</td>
+                            <td className="px-4 py-3.5">
                               <div className="flex items-center gap-2">
-                                <div className="w-6 h-6 rounded-full bg-surface-3 flex items-center justify-center text-[9px] font-bold text-fg-subtle">
+                                <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[9px] font-bold text-slate-500 dark:text-slate-400">
                                   {avatarStr}
                                 </div>
                                 <div className="min-w-0">
-                                  <p className="font-semibold text-fg truncate text-[11px]">{uploadedByObj.name || 'Unknown'}</p>
-                                  <p className="text-[10px] text-fg-muted truncate">{uploadedByObj.role || 'Member'}</p>
+                                  <p className="font-semibold text-slate-800 dark:text-slate-200 truncate text-[11px]">{uploadedByObj.name || 'Unknown'}</p>
+                                  <p className="text-[10px] text-slate-400 truncate">{uploadedByObj.role || 'Member'}</p>
                                 </div>
                               </div>
                             </td>
-                            <td className="px-4 py-3 font-medium text-fg tabular-nums">{displaySize}</td>
-                            <td className="px-4 py-3">
-                              <p className="font-medium text-fg text-[11px]">{displayDate}</p>
+                            <td className="px-4 py-3.5 font-medium text-slate-500 dark:text-slate-400 tabular-nums">{displaySize}</td>
+                            <td className="px-4 py-3.5">
+                              <p className="font-medium text-slate-500 dark:text-slate-400 text-[11px]">{displayDate}</p>
                             </td>
-                            <td className="px-4 py-3 text-center">
+                            <td className="px-5 py-3.5 text-right">
                               <button
                                 onClick={(e) => handleDeleteDoc(doc, e)}
                                 title="Delete Document"
-                                className="p-1.5 text-fg-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded transition "
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition opacity-0 group-hover:opacity-100 cursor-pointer"
                               >
                                 <IconTrash className="w-4 h-4" />
                               </button>
@@ -888,17 +886,17 @@ export default function DocumentsDashboard() {
             </div>
 
             {/* Table Footer */}
-            <div className="p-4 border-t border-line flex items-center justify-between shrink-0 bg-surface-1">
-              <p className="text-xs text-fg-muted font-medium">
+            <div className="px-5 py-3.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-slate-900/40">
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                 {documents.length > 0
                   ? `Showing 1 to ${documents.length} of ${stats.totalDocs} documents`
                   : `Showing 0 documents`}
               </p>
               <div className="flex items-center gap-1 text-xs">
-                <button className="w-6 h-6 flex items-center justify-center rounded hover:bg-surface-2 text-fg-muted">&lt;</button>
-                <button className="w-6 h-6 flex items-center justify-center rounded bg-[#4F6BFF] text-white font-bold shadow-sm">1</button>
-                {documents.length > 0 && <button className="w-6 h-6 flex items-center justify-center rounded hover:bg-surface-2 font-medium text-fg">2</button>}
-                {documents.length > 0 && <button className="w-6 h-6 flex items-center justify-center rounded hover:bg-surface-2 text-fg-muted">&gt;</button>}
+                <button className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 font-semibold cursor-pointer">&lt;</button>
+                <button className="w-7 h-7 flex items-center justify-center rounded-lg bg-[#6366F1] text-white font-bold shadow-xs cursor-pointer">1</button>
+                {documents.length > 0 && <button className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">2</button>}
+                {documents.length > 0 && <button className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 font-semibold cursor-pointer">&gt;</button>}
               </div>
             </div>
           </div>
@@ -921,14 +919,14 @@ export default function DocumentsDashboard() {
             const displayDate = new Date(activeDoc.createdAt).toLocaleDateString('en-GB')
 
             return (
-              <div className="w-72 xl:w-80 bg-white dark:bg-surface border border-line rounded-xl shadow-sm flex flex-col min-h-0 shrink-0 relative overflow-hidden">
-                <div className="p-3 flex items-center justify-between border-b border-line shrink-0">
-                  <p className="font-bold text-xs text-fg truncate flex-1 pr-2" title={activeDoc.name}>{activeDoc.name}</p>
+              <div className="w-72 xl:w-80 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col min-h-0 shrink-0 relative overflow-hidden">
+                <div className="px-4 py-3.5 flex items-center justify-between border-b border-slate-100 dark:border-slate-800 shrink-0">
+                  <p className="font-bold text-xs text-slate-900 dark:text-white truncate flex-1 pr-2" title={activeDoc.name}>{activeDoc.name}</p>
                   <div className="flex items-center gap-1 shrink-0">
-                    <button onClick={() => setIsFullscreenPreview(true)} className="text-fg-muted hover:text-fg hover:bg-surface-2 rounded transition p-1" title="Maximize">
+                    <button onClick={() => setIsFullscreenPreview(true)} className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition p-1.5 cursor-pointer" title="Maximize">
                       <IconMaximize className="w-3.5 h-3.5" />
                     </button>
-                    <button onClick={() => setActiveDoc(null)} className="text-fg-muted hover:text-fg hover:bg-red-50 hover:text-red-500 rounded transition p-1" title="Close">
+                    <button onClick={() => setActiveDoc(null)} className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition p-1.5 cursor-pointer" title="Close">
                       <IconClose className="w-4 h-4" />
                     </button>
                   </div>
@@ -936,68 +934,74 @@ export default function DocumentsDashboard() {
 
                 <div className="flex-1 overflow-y-auto pb-4">
                   {/* Preview Thumbnail */}
-                  <div className="p-4 bg-surface-2/50 flex flex-col items-center justify-center min-h-[140px] border-b border-line">
-                    <FileIcon type={getDisplayType(activeDoc)} className="w-16 h-16 drop-shadow-sm mb-3" />
+                  <div className="p-4 bg-slate-50/80 dark:bg-slate-800/40 flex flex-col items-center justify-center min-h-[140px] border-b border-slate-100 dark:border-slate-800">
+                    {activeDocUrl && !activeDocUrlLoading && getDisplayType(activeDoc) === 'JPG' ? (
+                      <img src={activeDocUrl} alt={activeDoc.name} className="max-w-full max-h-[120px] rounded-xl shadow-xs mb-3 object-contain border border-slate-200/60 dark:border-slate-700" />
+                    ) : activeDocUrl && !activeDocUrlLoading && getDisplayType(activeDoc) === 'PDF' ? (
+                      <iframe src={activeDocUrl} className="w-full h-[120px] rounded-xl border border-slate-200/60 dark:border-slate-700 mb-3 bg-white" title="PDF Preview" />
+                    ) : (
+                      <FileIcon type={getDisplayType(activeDoc)} className="w-14 h-14 drop-shadow-xs mb-3" />
+                    )}
                     <div className="flex gap-2">
-                      <button onClick={() => setIsFullscreenPreview(true)} className="px-3 py-1 bg-white dark:bg-surface border border-line rounded-md text-[10px] font-bold text-fg hover:bg-surface-2 shadow-sm transition flex items-center gap-1.5"><IconEye className="w-3.5 h-3.5" /> Preview</button>
+                      <button onClick={() => setIsFullscreenPreview(true)} className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200/90 dark:border-slate-700 rounded-xl text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-xs transition flex items-center gap-1.5 cursor-pointer"><IconEye className="w-3.5 h-3.5 text-slate-400" /> Preview</button>
                       <button
                         onClick={() => window.open(activeDocUrl || '#', '_blank')}
                         disabled={activeDocUrlLoading || !activeDocUrl}
-                        className="px-3 py-1 bg-white dark:bg-surface border border-line rounded-md text-[10px] font-bold text-fg hover:bg-surface-2 shadow-sm transition flex items-center gap-1.5 disabled:opacity-50"
+                        className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200/90 dark:border-slate-700 rounded-xl text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-xs transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                       >
-                        <IconCloudDownload className="w-3.5 h-3.5" /> {activeDocUrlLoading ? '...' : 'Download'}
+                        <IconCloudDownload className="w-3.5 h-3.5 text-slate-400" /> {activeDocUrlLoading ? '...' : 'Download'}
                       </button>
                     </div>
                   </div>
 
                   {/* Tabs */}
-                  <div className="flex border-b border-line text-[11px] font-bold uppercase tracking-wide px-4">
-                    <div className="py-2.5 text-[#4F6BFF] border-b-2 border-[#4F6BFF]">Details</div>
+                  <div className="flex border-b border-slate-100 dark:border-slate-800 text-[11px] font-bold uppercase tracking-wider px-4">
+                    <div className="py-2.5 text-[#6366F1] dark:text-indigo-400 border-b-2 border-[#6366F1] dark:border-indigo-400">Details</div>
                   </div>
 
                   {/* Details List */}
-                  <div className="p-4 space-y-4 text-xs">
+                  <div className="p-4 space-y-3.5 text-xs">
                     <div className="grid grid-cols-3 gap-2">
-                      <span className="text-fg-muted font-medium">File Name</span>
-                      <span className="col-span-2 font-semibold text-fg break-words">{activeDoc.name}</span>
+                      <span className="text-slate-400 dark:text-slate-500 font-semibold text-[11px] uppercase tracking-wider">File Name</span>
+                      <span className="col-span-2 font-semibold text-slate-800 dark:text-slate-200 break-words">{activeDoc.name}</span>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
-                      <span className="text-fg-muted font-medium">File Type</span>
-                      <span className="col-span-2 font-semibold text-fg">{activeDoc.type}</span>
+                      <span className="text-slate-400 dark:text-slate-500 font-semibold text-[11px] uppercase tracking-wider">File Type</span>
+                      <span className="col-span-2 font-semibold text-slate-800 dark:text-slate-200">{activeDoc.type}</span>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
-                      <span className="text-fg-muted font-medium">Size</span>
-                      <span className="col-span-2 font-semibold text-fg tabular-nums">{displaySize}</span>
+                      <span className="text-slate-400 dark:text-slate-500 font-semibold text-[11px] uppercase tracking-wider">Size</span>
+                      <span className="col-span-2 font-semibold text-slate-800 dark:text-slate-200 tabular-nums">{displaySize}</span>
                     </div>
 
-                    <div className="pt-2 border-t border-line grid grid-cols-3 gap-2 items-center">
-                      <span className="text-fg-muted font-medium">Uploaded By</span>
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 grid grid-cols-3 gap-2 items-center">
+                      <span className="text-slate-400 dark:text-slate-500 font-semibold text-[11px] uppercase tracking-wider">Uploaded By</span>
                       <div className="col-span-2 flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-surface-3 flex items-center justify-center text-[9px] font-bold text-fg-subtle">
+                        <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[9px] font-bold text-slate-500 dark:text-slate-400">
                           {avatarStr}
                         </div>
                         <div className="min-w-0">
-                          <p className="font-bold text-fg truncate text-[11px]">{uploadedByObj.name || 'Unknown'}</p>
-                          <p className="text-[10px] text-fg-muted truncate leading-none mt-0.5">{uploadedByObj.role || 'Member'}</p>
+                          <p className="font-bold text-slate-800 dark:text-slate-200 truncate text-[11px]">{uploadedByObj.name || 'Unknown'}</p>
+                          <p className="text-[10px] text-slate-400 truncate leading-none mt-0.5">{uploadedByObj.role || 'Member'}</p>
                         </div>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-3 gap-2">
-                      <span className="text-fg-muted font-medium">Uploaded On</span>
-                      <span className="col-span-2 font-semibold text-fg tabular-nums">{displayDate}</span>
+                      <span className="text-slate-400 dark:text-slate-500 font-semibold text-[11px] uppercase tracking-wider">Uploaded On</span>
+                      <span className="col-span-2 font-semibold text-slate-800 dark:text-slate-200 tabular-nums">{displayDate}</span>
                     </div>
 
                     <div className="grid grid-cols-3 gap-2 items-start">
-                      <span className="text-fg-muted font-medium mt-1">Tags</span>
+                      <span className="text-slate-400 dark:text-slate-500 font-semibold text-[11px] uppercase tracking-wider mt-1">Tags</span>
                       <div className="col-span-2 flex flex-wrap gap-1.5">
                         {activeDoc.tags?.map((t, idx) => {
                           const tagText = typeof t === 'string' ? t : (t.v || t.k || JSON.stringify(t))
                           return (
-                            <span key={idx} className="text-[9px] px-2 py-0.5 rounded font-bold uppercase bg-blue-50 text-blue-600 border border-blue-100">{tagText}</span>
+                            <span key={idx} className="text-[9.5px] px-2 py-0.5 rounded-md font-bold uppercase bg-indigo-50 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900/50">{tagText}</span>
                           )
                         })}
-                        <button className="text-[9px] px-2 py-0.5 rounded font-bold uppercase border border-dashed border-line text-fg-muted hover:text-fg hover:border-fg-subtle transition flex items-center gap-0.5">
+                        <button className="text-[9.5px] px-2 py-0.5 rounded-md font-bold uppercase border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-400 transition flex items-center gap-0.5 cursor-pointer">
                           + Add Tag
                         </button>
                       </div>
@@ -1005,13 +1009,10 @@ export default function DocumentsDashboard() {
 
                     {activeDoc.description && (
                       <div className="grid grid-cols-3 gap-2">
-                        <span className="text-fg-muted font-medium">Description</span>
-                        <span className="col-span-2 text-fg text-[11px] leading-relaxed">{activeDoc.description}</span>
+                        <span className="text-slate-400 dark:text-slate-500 font-semibold text-[11px] uppercase tracking-wider">Description</span>
+                        <span className="col-span-2 text-slate-700 dark:text-slate-300 text-xs leading-relaxed">{activeDoc.description}</span>
                       </div>
                     )}
-
-
-
                   </div>
                 </div>
               </div>
@@ -1023,46 +1024,101 @@ export default function DocumentsDashboard() {
 
       {/* Fullscreen Preview Modal */}
       {isFullscreenPreview && activeDoc && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 md:p-12 animate-in fade-in duration-200">
-          <div className="bg-surface w-full h-full rounded-2xl shadow-2xl flex flex-col overflow-hidden relative">
-            <div className="p-4 border-b border-line flex items-center justify-between bg-surface-1">
-              <div className="flex items-center gap-3">
-                <FileIcon type={getDisplayType(activeDoc)} className="w-6 h-6" />
-                <h3 className="font-bold text-fg truncate max-w-lg">{activeDoc.name}</h3>
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-6 md:p-10 animate-in fade-in duration-150"
+          onClick={() => setIsFullscreenPreview(false)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 w-full max-w-5xl h-[85vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden relative border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-900/80">
+              <div className="flex items-center gap-3 min-w-0 pr-4">
+                <FileIcon type={getDisplayType(activeDoc)} className="w-6 h-6 shrink-0" />
+                <h3 className="font-extrabold text-sm text-slate-900 dark:text-white truncate max-w-lg">{activeDoc.name}</h3>
               </div>
-              <button
-                onClick={() => setIsFullscreenPreview(false)}
-                className="p-2 bg-surface hover:bg-surface-2 rounded-lg text-fg-muted hover:text-fg transition shadow-sm border border-line"
-              >
-                <IconClose className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="flex-1 bg-surface-2/50 flex flex-col items-center justify-center p-8 overflow-auto">
-              {activeDocUrl && !activeDocUrlLoading && (getDisplayType(activeDoc) === 'PDF' || getDisplayType(activeDoc) === 'JPG') ? (
-                <iframe src={activeDocUrl} className="w-full h-full rounded-xl border border-line shadow-sm bg-white" title="Document Preview" />
-              ) : (
-                <>
-                  <FileIcon type={getDisplayType(activeDoc)} className="w-40 h-40 drop-shadow-md mb-6" />
-                  <p className="text-fg-muted font-bold text-lg mb-2">Previewing {getDisplayType(activeDoc)} Document</p>
-                  <p className="text-fg-subtle text-sm mb-6">{activeDoc.sizeBytes ? `${(activeDoc.sizeBytes / (1024 * 1024)).toFixed(2)} MB` : '0 MB'} • Uploaded by {activeDoc.uploadedBy?.name || 'Unknown'}</p>
+              <div className="flex items-center gap-3 shrink-0">
+                {/* Zoom Controls */}
+                <div className="flex items-center bg-slate-200/80 dark:bg-slate-700/80 rounded-xl p-0.5 shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => setZoom((z) => Math.max(50, z - 25))}
+                    disabled={zoom <= 50}
+                    title="Zoom Out (-)"
+                    className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-600 disabled:opacity-40 transition cursor-pointer"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setZoom(100)}
+                    title="Reset Zoom"
+                    className="px-2 h-7 flex items-center justify-center text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-600 rounded-lg transition tabular-nums cursor-pointer"
+                  >
+                    {zoom}%
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setZoom((z) => Math.min(300, z + 25))}
+                    disabled={zoom >= 300}
+                    title="Zoom In (+)"
+                    className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-600 disabled:opacity-40 transition cursor-pointer"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                  </button>
+                </div>
 
-                  <div className="flex gap-4">
+                <button
+                  onClick={() => setIsFullscreenPreview(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition cursor-pointer"
+                  title="Close (Esc)"
+                >
+                  <IconClose className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 bg-slate-100/60 dark:bg-slate-950/60 flex flex-col items-start justify-center p-4 sm:p-6 md:p-8 overflow-auto min-h-0">
+              {activeDocUrl && !activeDocUrlLoading && getDisplayType(activeDoc) === 'JPG' ? (
+                <div
+                  className="m-auto flex items-center justify-center transition-transform duration-150 ease-out origin-top"
+                  style={{ transform: `scale(${zoom / 100})` }}
+                >
+                  <img src={activeDocUrl} alt={activeDoc.name} className="max-h-[70vh] max-w-full rounded-xl border border-slate-200/60 dark:border-slate-800 shadow-md bg-white object-contain" />
+                </div>
+              ) : activeDocUrl && !activeDocUrlLoading && getDisplayType(activeDoc) === 'PDF' ? (
+                <div
+                  className="w-full h-full min-h-[65vh] transition-transform duration-150 ease-out origin-top flex items-center justify-center"
+                  style={{ transform: `scale(${zoom / 100})` }}
+                >
+                  <iframe src={activeDocUrl} className="w-full h-full min-h-[65vh] rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm bg-white" title="Document Preview" />
+                </div>
+              ) : (
+                <div className="m-auto flex flex-col items-center justify-center text-center max-w-md">
+                  <FileIcon type={getDisplayType(activeDoc)} className="w-24 h-24 drop-shadow-sm mb-4" />
+                  <p className="text-slate-900 dark:text-white font-extrabold text-base mb-1">Previewing {getDisplayType(activeDoc)} Document</p>
+                  <p className="text-slate-500 dark:text-slate-400 text-xs mb-6">{activeDoc.sizeBytes ? `${(activeDoc.sizeBytes / (1024 * 1024)).toFixed(2)} MB` : '0 MB'} • Uploaded by {activeDoc.uploadedBy?.name || 'Unknown'}</p>
+
+                  <div className="flex gap-3">
                     <button
                       onClick={() => window.open(activeDocUrl || '#', '_blank')}
                       disabled={activeDocUrlLoading || !activeDocUrl}
-                      className="px-6 py-3 bg-[#4F6BFF] text-white rounded-xl font-bold shadow-md shadow-[#4F6BFF]/20 transition hover:bg-[#435be0] hover:shadow-lg flex items-center gap-2 disabled:opacity-50"
+                      className="px-5 py-2.5 bg-[#6366F1] hover:bg-[#4F46E5] text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-500/20 transition flex items-center gap-2 disabled:opacity-50 cursor-pointer"
                     >
-                      <IconCloudDownload className="w-5 h-5" /> {activeDocUrlLoading ? 'Loading...' : 'Download Document'}
+                      <IconCloudDownload className="w-4 h-4" /> {activeDocUrlLoading ? 'Loading...' : 'Download Document'}
                     </button>
                     <button
                       onClick={() => window.open(activeDocUrl || '#', '_blank')}
                       disabled={activeDocUrlLoading || !activeDocUrl}
-                      className="px-6 py-3 bg-white dark:bg-surface border border-line text-fg rounded-xl font-bold shadow-sm transition hover:bg-surface-2 flex items-center gap-2 disabled:opacity-50"
+                      className="px-5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold shadow-xs transition hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2 disabled:opacity-50 cursor-pointer"
                     >
-                      <IconEye className="w-5 h-5" /> {activeDocUrlLoading ? 'Loading...' : 'Open in Browser'}
+                      <IconEye className="w-4 h-4" /> {activeDocUrlLoading ? 'Loading...' : 'Open in Browser'}
                     </button>
                   </div>
-                </>
+                </div>
               )}
             </div>
           </div>

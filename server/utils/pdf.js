@@ -140,38 +140,6 @@ const generateApprovalPdf = async (execution, workflow) => {
   const filename = `approval-${execution._id}-${Date.now()}.pdf`
   const outPath = path.join(dirForOrg(orgId), filename)
 
-  const Organization = require('../models/Organization')
-  const s3Client = require('../services/s3Client')
-  const org = await Organization.findById(orgId).lean()
-  const s3Buffers = {}
-
-  if (org && s3Client.isEnabled(org)) {
-    const fetchS3 = async (s3Key) => {
-      if (!s3Key || s3Buffers[s3Key]) return
-      try {
-        const url = await s3Client.getPresignedDownloadUrl(org, s3Key)
-        const resp = await fetch(url)
-        const arr = await resp.arrayBuffer()
-        s3Buffers[s3Key] = Buffer.from(arr)
-      } catch (err) {
-        console.warn('[pdf] S3 fetch failed for', s3Key, err.message)
-      }
-    }
-
-    for (const f of fields) {
-      if (f.type === 'camera' || f.type === 'signature') {
-        const value = formData[f.id]
-        if (value && value.s3Key) await fetchS3(value.s3Key)
-      }
-    }
-
-    for (const t of tasks) {
-      for (const h of t.approvalHistory || []) {
-        if (h.signature && h.signature.s3Key) await fetchS3(h.signature.s3Key)
-      }
-    }
-  }
-
   await buildPdf(outPath, (doc) => {
     const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right
 
@@ -246,24 +214,6 @@ const generateApprovalPdf = async (execution, workflow) => {
           doc.moveDown(0.4)
         } else if (f.type === 'file') {
           labelValue(f.label, formatScalar(value))
-        } else if (f.type === 'camera' && value && (value.url || value.s3Key)) {
-          doc.font('Helvetica-Bold').fontSize(10).fillColor('#374151').text(f.label)
-          doc.fillColor('#000')
-          const buf = value.s3Key ? s3Buffers[value.s3Key] : signatureBuffer(value.url)
-          if (buf) {
-            try {
-              doc.moveDown(0.2)
-              doc.image(buf, { fit: [250, 250] })
-              doc.moveDown(0.5)
-            } catch {
-              doc.font('Helvetica-Oblique').fontSize(10).fillColor('#9ca3af')
-                .text('[photo attached]', { indent: 4 }).fillColor('#000')
-            }
-          } else {
-            doc.font('Helvetica-Oblique').fontSize(10).fillColor('#9ca3af')
-              .text('[photo attached]', { indent: 4 }).fillColor('#000')
-          }
-          doc.moveDown(0.4)
         } else if (f.type === 'signature' && value && (value.text || value.url || typeof value === 'string')) {
           doc.font('Helvetica-Bold').fontSize(10).fillColor('#374151').text(f.label)
           doc.fillColor('#000')
@@ -279,8 +229,8 @@ const generateApprovalPdf = async (execution, workflow) => {
             doc.font('Helvetica').fontSize(8).fillColor('#9ca3af')
               .text(`e-signature · ${signatureFontLabel(sig.font)}`, { indent: 4 })
             doc.fillColor('#000')
-          } else if (sig.url || sig.s3Key) {
-            const buf = sig.s3Key ? s3Buffers[sig.s3Key] : signatureBuffer(sig.url)
+          } else if (sig.url) {
+            const buf = signatureBuffer(sig.url)
             if (buf) {
               try {
                 doc.image(buf, doc.x + 4, doc.y + 2, { fit: [160, 50] })
@@ -341,8 +291,8 @@ const generateApprovalPdf = async (execution, workflow) => {
             doc.font('Helvetica').fontSize(8).fillColor('#9ca3af')
               .text(`e-signature · ${signatureFontLabel(sig.font)}`, { indent: 12 })
             doc.fillColor('#000')
-          } else if (sig.url || sig.s3Key) {
-            const buf = sig.s3Key ? s3Buffers[sig.s3Key] : signatureBuffer(sig.url)
+          } else if (sig.url) {
+            const buf = signatureBuffer(sig.url)
             if (buf) {
               try {
                 doc.image(buf, doc.x + 12, doc.y + 2, { fit: [160, 50] })

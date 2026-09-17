@@ -9,7 +9,6 @@ const qrcode = require('qrcode')
 const User = require('../models/User')
 const Role = require('../models/Role')
 const Organization = require('../models/Organization')
-const AuditLog = require('../models/AuditLog')
 const { protect } = require('../middleware/auth')
 const { authLimiter } = require('../middleware/rateLimit')
 const { sendSuccess, sendError } = require('../utils/apiResponse')
@@ -65,22 +64,12 @@ const router = express.Router()
 // server-side by bumping User.tokenVersion, and the user's organization
 // ("org") so every request can be tenant-scoped without an extra lookup.
 // Legacy users without an orgId get one lazily in the protect middleware.
-const signToken = (user, sessionId) => {
+const signToken = (user) => {
   const payload = { id: user._id, tv: user.tokenVersion || 0 }
-  if (sessionId) payload.sid = sessionId
   if (user.orgId) payload.org = String(user.orgId)
   return jwt.sign(payload, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d'
   })
-}
-
-const createSessionAndSignToken = async (user) => {
-  const sessionId = require('crypto').randomBytes(16).toString('hex')
-  await require('../models/User').updateOne(
-    { _id: user._id },
-    { $push: { activeSessions: sessionId } }
-  )
-  return signToken(user, sessionId)
 }
 
 // Resolves the workspace subdomain a request is targeting. An explicit
@@ -181,12 +170,32 @@ router.post('/register', async (req, res, next) => {
     await user.save()
     await user.populate('role')
 
-    const token = await createSessionAndSignToken(user)
+    const token = signToken(user)
     return sendSuccess(res, { token, user: user.toJSON() }, 201)
   } catch (err) {
     next(err)
   }
 })
+
+const enrichUserPayload = (userDoc, orgDoc) => {
+  const userPayload = typeof userDoc.toJSON === 'function' ? userDoc.toJSON() : { ...userDoc }
+  if (orgDoc) {
+    userPayload.tenantName = orgDoc.name
+    userPayload.dmsEnabled = Boolean(orgDoc.integrations?.dmsEnabled)
+    userPayload.s3Enabled = Boolean(orgDoc.integrations?.s3Storage)
+    userPayload.s3Storage = Boolean(orgDoc.integrations?.s3Storage)
+    userPayload.org = {
+      _id: orgDoc._id,
+      name: orgDoc.name,
+      subdomain: orgDoc.subdomain,
+      integrations: {
+        dmsEnabled: Boolean(orgDoc.integrations?.dmsEnabled),
+        s3Storage: Boolean(orgDoc.integrations?.s3Storage)
+      }
+    }
+  }
+  return userPayload
+}
 
 // POST /api/auth/login
 router.post('/login', authLimiter, async (req, res, next) => {
@@ -271,30 +280,12 @@ router.post('/login', authLimiter, async (req, res, next) => {
     user.lastLogin = new Date()
     await user.save({ validateBeforeSave: false })
 
-    const token = await createSessionAndSignToken(user)
-    const userPayload = user.toJSON()
-
-    // Audit the login
-    await AuditLog.create({
-      orgId: user.orgId,
-      action: 'user_logged_in',
-      performedBy: user._id,
-      targetEntity: 'System Login',
-      department: user.department,
-      ipAddress: req.ip,
-      detail: `User ${user.email} logged in successfully.`
-    }).catch(() => {})
-
+    const token = signToken(user)
+    let orgDoc = null
     if (user.orgId) {
-      const orgDoc = await Organization.findById(user.orgId).select('name integrations').lean()
-      if (orgDoc) {
-        userPayload.tenantName = orgDoc.name
-        userPayload.dmsEnabled = Boolean(orgDoc.integrations?.dmsEnabled)
-        userPayload.s3Enabled = Boolean(orgDoc.integrations?.s3?.enabled)
-        userPayload.s3Bucket = orgDoc.integrations?.s3?.bucket || null
-        userPayload.s3Region = orgDoc.integrations?.s3?.region || null
-      }
+      orgDoc = await Organization.findById(user.orgId).select('name subdomain integrations').lean()
     }
+    const userPayload = enrichUserPayload(user, orgDoc)
     return sendSuccess(res, { token, user: userPayload })
   } catch (err) {
     next(err)
@@ -359,8 +350,12 @@ router.post('/mfa/enable', async (req, res, next) => {
     if (actor.viaChallenge) {
       user.lastLogin = new Date()
       await user.save({ validateBeforeSave: false })
-      payload.token = await createSessionAndSignToken(user)
-      payload.user = user.toJSON()
+      payload.token = signToken(user)
+      let orgDoc = null
+      if (user.orgId) {
+        orgDoc = await Organization.findById(user.orgId).select('name subdomain integrations').lean()
+      }
+      payload.user = enrichUserPayload(user, orgDoc)
     }
     return sendSuccess(res, payload)
   } catch (err) {
@@ -394,20 +389,13 @@ router.post('/mfa/verify', authLimiter, async (req, res, next) => {
     user.lastLogin = new Date()
     await user.save({ validateBeforeSave: false })
 
-    const token = await createSessionAndSignToken(user)
-
-    // Audit the login
-    await AuditLog.create({
-      orgId: user.orgId,
-      action: 'user_logged_in',
-      performedBy: user._id,
-      targetEntity: 'System Login',
-      department: user.department,
-      ipAddress: req.ip,
-      detail: `User ${user.email} logged in successfully.`
-    }).catch(() => {})
-
-    return sendSuccess(res, { token, user: user.toJSON() })
+    const token = signToken(user)
+    let orgDoc = null
+    if (user.orgId) {
+      orgDoc = await Organization.findById(user.orgId).select('name subdomain integrations').lean()
+    }
+    const userPayload = enrichUserPayload(user, orgDoc)
+    return sendSuccess(res, { token, user: userPayload })
   } catch (err) {
     next(err)
   }
@@ -554,14 +542,7 @@ router.get('/reset-password/validate', async (req, res, next) => {
 
 // GET /api/auth/me
 router.get('/me', protect, async (req, res) => {
-  const userPayload = { ...req.user }
-  if (req.organization) {
-    userPayload.tenantName = req.organization.name
-    userPayload.dmsEnabled = Boolean(req.organization.integrations?.dmsEnabled)
-    userPayload.s3Enabled = Boolean(req.organization.integrations?.s3?.enabled)
-    userPayload.s3Bucket = req.organization.integrations?.s3?.bucket || null
-    userPayload.s3Region = req.organization.integrations?.s3?.region || null
-  }
+  const userPayload = enrichUserPayload(req.user, req.organization)
   return sendSuccess(res, { user: userPayload })
 })
 
@@ -575,7 +556,7 @@ router.post('/product-tour/complete', protect, async (req, res, next) => {
       user.needsProductTour = false
       await user.save({ validateBeforeSave: false })
     }
-    return sendSuccess(res, { user: user.toJSON() })
+    return sendSuccess(res, { user: enrichUserPayload(user, req.organization) })
   } catch (err) {
     next(err)
   }
@@ -615,12 +596,8 @@ router.post('/change-password', protect, async (req, res, next) => {
     user.tokenVersion = (user.tokenVersion || 0) + 1
     await user.save()
 
-    const token = await createSessionAndSignToken(user)
-    const userPayload = user.toJSON()
-    if (req.organization) {
-      userPayload.tenantName = req.organization.name
-      userPayload.dmsEnabled = Boolean(req.organization.integrations?.dmsEnabled)
-    }
+    const token = signToken(user)
+    const userPayload = enrichUserPayload(user, req.organization)
     return sendSuccess(res, { token, user: userPayload })
   } catch (err) {
     next(err)
@@ -628,15 +605,11 @@ router.post('/change-password', protect, async (req, res, next) => {
 })
 
 // POST /api/auth/logout
-// Handles single device logout (removes current session) or all devices logout (bumps tokenVersion).
+// Real logout: bump tokenVersion so the current token (and any other sessions
+// for this user) is rejected by the auth middleware from now on.
 router.post('/logout', protect, async (req, res, next) => {
   try {
-    const { allDevices } = req.body
-    if (allDevices) {
-      await User.updateOne({ _id: req.user._id }, { $inc: { tokenVersion: 1 }, $set: { activeSessions: [] } })
-    } else if (req.user.currentSessionId) {
-      await User.updateOne({ _id: req.user._id }, { $pull: { activeSessions: req.user.currentSessionId } })
-    }
+    await User.updateOne({ _id: req.user._id }, { $inc: { tokenVersion: 1 } })
     return sendSuccess(res, { message: 'Logged out successfully' })
   } catch (err) {
     next(err)
@@ -694,7 +667,7 @@ router.get('/oauth/microsoft/callback', async (req, res) => {
     user.lastLogin = new Date()
     await user.save({ validateBeforeSave: false })
 
-    const token = await createSessionAndSignToken(user)
+    const token = signToken(user)
     return res.redirect(`${client}/oauth/callback#token=${token}`)
   } catch (err) {
     console.error('Microsoft SSO callback error:', err.message)

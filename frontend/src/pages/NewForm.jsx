@@ -12,7 +12,7 @@ import { AlertBanner } from '../components/Alert'
 import { Skeleton } from '../components/Skeleton'
 import { createDraftStore, useBeforeUnloadWarning } from '../utils/localDraft'
 import { useFocusTrap, useScrollLock } from '../utils/a11y'
-import { X } from 'lucide-react'
+import NetFlowLogo from '../components/NetFlowLogo'
 
 const draftStore = createDraftStore('netflow.form.draft.v1')
 
@@ -28,7 +28,7 @@ const FIELD_TYPES = [
     label: 'Text',
     tile: 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300',
     chip: 'bg-sky-50 text-sky-800 border-sky-200 hover:bg-sky-100 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30',
-    defaults: { label: 'Untitled field', placeholder: '', required: false, multiline: false, referenceUser: false, maxLength: null },
+    defaults: { label: 'Untitled field', placeholder: '', required: false, multiline: false, maxLength: null },
   },
   {
     type: 'dropdown',
@@ -42,7 +42,7 @@ const FIELD_TYPES = [
     label: 'Date',
     tile: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300',
     chip: 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30',
-    defaults: { label: 'Pick a date', required: false, includeTime: false },
+    defaults: { label: 'Pick a date', required: false },
   },
   {
     type: 'file',
@@ -56,7 +56,7 @@ const FIELD_TYPES = [
     label: 'Checkbox',
     tile: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300',
     chip: 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30',
-    defaults: { label: 'Check this box', required: false, options: ['Option 1', 'Option 2'], layout: 'vertical' },
+    defaults: { label: 'Check this box', required: false },
   },
   {
     type: 'signature',
@@ -77,7 +77,7 @@ const FIELD_TYPES = [
     label: 'Radio',
     tile: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300',
     chip: 'bg-indigo-50 text-indigo-800 border-indigo-200 hover:bg-indigo-100 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-500/30',
-    defaults: { label: 'Choose one', required: false, options: ['Option 1', 'Option 2'], layout: 'vertical' },
+    defaults: { label: 'Choose one', required: false, options: ['Option 1', 'Option 2'] },
   },
   {
     type: 'grid',
@@ -95,14 +95,14 @@ const FIELD_TYPES = [
     label: 'Camera',
     tile: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-300',
     chip: 'bg-cyan-50 text-cyan-800 border-cyan-200 hover:bg-cyan-100 dark:bg-cyan-500/15 dark:text-cyan-300 dark:border-cyan-500/30',
-    defaults: { label: 'Take a photo', required: false },
+    defaults: { label: 'Camera', required: false, capture: 'environment' },
   },
   {
     type: 'heading',
     label: 'Heading',
     tile: 'bg-slate-100 text-slate-700 dark:bg-slate-500/20 dark:text-slate-300',
     chip: 'bg-slate-50 text-slate-800 border-slate-200 hover:bg-slate-100 dark:bg-slate-500/15 dark:text-slate-300 dark:border-slate-500/30',
-    defaults: { label: 'Section Heading', placeholder: 'Optional description or instructions' },
+    defaults: { label: 'Heading', required: false, description: '' },
   },
 ]
 
@@ -174,14 +174,14 @@ function FieldTypeIcon({ type, className = 'w-4 h-4' }) {
     case 'camera':
       return (
         <svg {...props}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
-          <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
       )
     case 'heading':
       return (
         <svg {...props}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 5h12M9 5v14M14 11h7M17 11v8" />
         </svg>
       )
     default:
@@ -242,7 +242,9 @@ const subtitleFor = (f) => {
       return `Table · ${n} column${n === 1 ? '' : 's'}`
     }
     case 'camera':
-      return `Camera · ${f.required ? 'Required' : 'Optional'}`
+      return `Camera capture · ${req}`
+    case 'heading':
+      return `Heading · Section header`
     default:
       return f.type
   }
@@ -301,7 +303,6 @@ function FieldCard({
   onDuplicate,
   onDelete,
   onDragStart,
-  onDragEnter,
   onDragOver,
   onDragLeave,
   onDrop,
@@ -312,7 +313,6 @@ function FieldCard({
   return (
     <div
       onClick={() => onSelect(field.id)}
-      onDragEnter={(e) => onDragEnter(e, field.id)}
       onDragOver={(e) => onDragOver(e, field.id)}
       onDragLeave={() => onDragLeave(field.id)}
       onDrop={(e) => onDrop(e, field.id)}
@@ -332,8 +332,8 @@ function FieldCard({
       )}
 
       {/* drag handle — initiates the reorder drag */}
-      <div
-        role="button"
+      <button
+        type="button"
         draggable
         onDragStart={(e) => onDragStart(e, field.id)}
         onClick={(e) => e.stopPropagation()}
@@ -346,7 +346,7 @@ function FieldCard({
           <circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" />
           <circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" />
         </svg>
-      </div>
+      </button>
 
       <span
         className={`mt-0.5 w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
@@ -572,12 +572,7 @@ function FieldSettings({ field, fields = [], onChange, onDelete }) {
         <input id="fs-label" type="text" value={field.label} onChange={(e) => update({ label: e.target.value })} className={inputCls} />
       </div>
 
-      <div className="mb-3">
-        <label htmlFor="fs-page" className="block text-xs font-medium text-fg mb-1">Page number</label>
-        <input id="fs-page" type="number" min={1} value={field.page || 1} onChange={(e) => update({ page: Math.max(1, Number(e.target.value)) })} className={inputCls} />
-      </div>
-
-      {(field.type === 'text' || field.type === 'dropdown' || field.type === 'number' || field.type === 'heading') && (
+      {(field.type === 'text' || field.type === 'dropdown' || field.type === 'number') && (
         <div className="mb-3">
           <label htmlFor="fs-placeholder" className="block text-xs font-medium text-fg mb-1">Placeholder</label>
           <input id="fs-placeholder" type="text" value={field.placeholder || ''} onChange={(e) => update({ placeholder: e.target.value })} className={inputCls} />
@@ -595,48 +590,11 @@ function FieldSettings({ field, fields = [], onChange, onDelete }) {
             />
             Multiline (text area)
           </label>
-          <label className="flex items-center gap-2 mb-3 text-sm text-fg">
-            <input
-              type="checkbox"
-              checked={!!field.referenceUser}
-              onChange={(e) => update({ referenceUser: e.target.checked })}
-              className="w-4 h-4 rounded border-line text-indigo-600 focus:ring-indigo-400"
-            />
-            Reference User
-          </label>
         </>
       )}
 
-      {field.type === 'date' && (
-        <label className="flex items-center gap-2 mb-3 text-sm text-fg">
-          <input
-            type="checkbox"
-            checked={!!field.includeTime}
-            onChange={(e) => update({ includeTime: e.target.checked })}
-            className="w-4 h-4 rounded border-line text-indigo-600 focus:ring-indigo-400"
-          />
-          Include time
-        </label>
-      )}
-
-      {(field.type === 'dropdown' || field.type === 'radio' || field.type === 'checkbox') && (
-        <>
-          <OptionsEditor key={field.id} field={field} update={update} />
-          {(field.type === 'radio' || field.type === 'checkbox') && (
-            <div className="mb-3">
-              <label htmlFor="fs-layout" className="block text-xs font-medium text-fg mb-1">Layout</label>
-              <select
-                id="fs-layout"
-                value={field.layout || 'vertical'}
-                onChange={(e) => update({ layout: e.target.value })}
-                className={inputCls}
-              >
-                <option value="vertical">Vertical</option>
-                <option value="horizontal">Horizontal</option>
-              </select>
-            </div>
-          )}
-        </>
+      {(field.type === 'dropdown' || field.type === 'radio') && (
+        <OptionsEditor key={field.id} field={field} update={update} />
       )}
 
       {field.type === 'grid' && (
@@ -743,22 +701,18 @@ function FieldSettings({ field, fields = [], onChange, onDelete }) {
         </>
       )}
 
-      {field.type !== 'heading' && (
-        <>
-          <ValidationEditor field={field} update={update} />
+      <ValidationEditor field={field} update={update} />
 
-          <label className="flex items-center gap-2 mb-2 text-sm text-fg">
-            <input
-              type="checkbox"
-              checked={!!field.required}
-              onChange={(e) => update({ required: e.target.checked })}
-              className="w-4 h-4 rounded border-line text-indigo-600 focus:ring-indigo-400"
-            />
-            Required field
-          </label>
-          <ConditionalLogicEditor field={field} fields={fields} update={update} />
-        </>
-      )}
+      <label className="flex items-center gap-2 mb-2 text-sm text-fg">
+        <input
+          type="checkbox"
+          checked={!!field.required}
+          onChange={(e) => update({ required: e.target.checked })}
+          className="w-4 h-4 rounded border-line text-indigo-600 focus:ring-indigo-400"
+        />
+        Required field
+      </label>
+      <ConditionalLogicEditor field={field} fields={fields} update={update} />
 
       <button
         type="button"
@@ -1077,9 +1031,7 @@ function PreviewField({ field }) {
       return (
         <div>
           {label}
-          {field.referenceUser ? (
-            <input type="text" placeholder="Search users (e.g. Aman, Amit)..." className={inputCls} readOnly disabled />
-          ) : field.multiline ? (
+          {field.multiline ? (
             <textarea
               rows={3}
               maxLength={field.validation?.maxLength ?? field.maxLength ?? undefined}
@@ -1114,19 +1066,7 @@ function PreviewField({ field }) {
       return (
         <div>
           {label}
-          <div className="flex items-center gap-3">
-            <input type="file" className="block w-full text-sm text-fg-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
-            <button
-              type="button"
-              className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-surface-2 text-fg border border-line"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
-              </svg>
-              Camera
-            </button>
-          </div>
+          <input type="file" className="block w-full text-sm text-fg-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
           <p className="mt-1 text-xs text-fg-subtle">{field.fileTypes || 'Any file'} up to {fieldMaxMb(field)} MB</p>
         </div>
       )
@@ -1159,20 +1099,6 @@ function PreviewField({ field }) {
           <p className="mt-1.5 text-[11px] text-fg-subtle">
             Submitters can type a name in a signature font or upload an image.
           </p>
-        </div>
-      )
-    case 'camera':
-      return (
-        <div>
-          {label}
-          <div className="w-full py-6 border-2 border-dashed border-line rounded-xl text-fg-muted bg-surface-2 flex flex-col items-center justify-center gap-2">
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
-            </svg>
-            <span className="text-xs font-medium">Camera field</span>
-          </div>
-          <p className="mt-1 text-[11px] text-fg-subtle">Respondents will see a live camera feed or file upload option.</p>
         </div>
       )
     case 'radio':
@@ -1304,8 +1230,6 @@ function NewForm() {
     // Prefer first AI-seeded field so the inspector is useful immediately.
     return null
   })
-  const [activePage, setActivePage] = useState(1)
-  const totalPages = Math.max(1, activePage, ...fields.map(f => f.page || 1))
   const [previewOpen, setPreviewOpen] = useState(false)
   const [dragOver, setDragOver] = useState(false)
 
@@ -1326,9 +1250,9 @@ function NewForm() {
 
   const aiFirstEmpty = aiMode && fields.length === 0 && !aiDraft
   const showCompactAi =
-    aiAvailable && !aiFirstEmpty && (aiMode || showAiPanel || !!aiDraft)
+    !aiFirstEmpty && (aiMode || showAiPanel || !!aiDraft)
   const showOptionalAiToggle =
-    aiAvailable && !aiMode && !aiDraft && !showAiPanel && !isEditMode
+    !aiMode && !aiDraft && !showAiPanel && !isEditMode
 
   // In edit mode, fetch the existing form and populate state.
   useEffect(() => {
@@ -1408,47 +1332,14 @@ function NewForm() {
     const def = FIELD_TYPES.find((t) => t.type === type)
     if (!def) return
     const id = newFieldId()
-    const newField = { id, type, ...def.defaults, label: def.defaults.label, page: activePage }
+    const newField = { id, type, ...def.defaults, label: def.defaults.label }
     if (Array.isArray(def.defaults.options)) newField.options = [...def.defaults.options]
     if (type === 'grid') newField.columns = freshColumns(def.defaults.columns)
     setFields((prev) => (atEnd ? [...prev, newField] : [newField, ...prev]))
     setSelectedId(id)
   }
 
-  const deletePage = async (pageNum) => {
-    if (totalPages <= 1) return // Cannot delete the only page
-    
-    // Check if page has fields
-    const hasFields = fields.some(f => (f.page || 1) === pageNum)
-    if (hasFields) {
-      const ok = await confirm({
-        title: 'Delete page?',
-        message: 'This page contains fields. Are you sure you want to permanently delete this page and all its fields?',
-        confirmLabel: 'Delete page',
-        danger: true
-      })
-      if (!ok) return
-    }
-
-    // Remove fields on the deleted page, and shift fields on subsequent pages down
-    setFields(prev => prev
-      .filter(f => (f.page || 1) !== pageNum)
-      .map(f => {
-        const p = f.page || 1
-        if (p > pageNum) {
-          return { ...f, page: p - 1 }
-        }
-        return f
-      })
-    )
-
-    // Adjust active page if needed
-    if (activePage >= pageNum) {
-      setActivePage(Math.max(1, activePage - 1))
-    }
-  }
-
-  // Turn a plain-English description into fields via the server's Gemini client,
+  // Turn a plain-English description into fields,
   // then merge them into the builder (assigning fresh ids on the client).
   const generateWithAI = async () => {
     const prompt = aiPrompt.trim()
@@ -1457,10 +1348,10 @@ function NewForm() {
     setAiError('')
     try {
       const res = await api.post('/api/forms/ai-draft', { prompt })
-      const incoming = (res.fields || []).map((f) => ({
+      const incoming = (res?.fields || []).map((f) => ({
         ...f,
         id: newFieldId(),
-        page: activePage,
+        options: Array.isArray(f.options) ? [...f.options] : f.options,
         columns: f.type === 'grid' ? freshColumns(f.columns) : f.columns,
       }))
       if (!incoming.length) {
@@ -1478,10 +1369,11 @@ function NewForm() {
         })
       setFields((prev) => (replace ? incoming : [...prev, ...incoming]))
       setSelectedId(incoming[0].id)
-      if (res.title && (!name.trim() || name === 'Leave Request Form')) setName(res.title)
+      if (res.title) setName(res.title)
+      if (res.description && !description.trim()) setDescription(res.description)
       setAiPrompt('')
     } catch (err) {
-      setAiError(err.message || 'AI generation failed. Please try again.')
+      setAiError(err?.message || 'AI generation failed. Please try again.')
     } finally {
       setAiBusy(false)
     }
@@ -1593,19 +1485,12 @@ function NewForm() {
     setDraggingId(id)
   }
 
-  const handleReorderEnter = (e, overId) => {
-    if (!e.dataTransfer.types.includes(REORDER_MIME)) return
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-  }
-
   const handleReorderOver = (e, overId) => {
+    // Only react to OUR drag, not the "drop a new palette field" drag.
+    if (!draggingId || draggingId === overId) return
     if (!e.dataTransfer.types.includes(REORDER_MIME)) return
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
-    
-    // Don't draw the blue drop indicator line if hovering over itself
-    if (draggingId === overId) return 
     const rect = e.currentTarget.getBoundingClientRect()
     const isAbove = (e.clientY - rect.top) < rect.height / 2
     setDropTarget({ id: overId, position: isAbove ? 'before' : 'after' })
@@ -1616,8 +1501,7 @@ function NewForm() {
   }
 
   const handleReorderDrop = (e, overId) => {
-    const droppedId = e.dataTransfer.getData(REORDER_MIME) || draggingId;
-    if (!droppedId || droppedId === overId) {
+    if (!draggingId || draggingId === overId) {
       setDraggingId(null)
       setDropTarget(null)
       return
@@ -1625,18 +1509,14 @@ function NewForm() {
     e.preventDefault()
     e.stopPropagation()
 
-    const fromIdx = fields.findIndex((f) => f.id === droppedId)
+    const fromIdx = fields.findIndex((f) => f.id === draggingId)
     let toIdx = fields.findIndex((f) => f.id === overId)
     if (fromIdx === -1 || toIdx === -1) {
       setDraggingId(null)
       setDropTarget(null)
       return
     }
-    
-    const rect = e.currentTarget.getBoundingClientRect()
-    const isAbove = (e.clientY - rect.top) < rect.height / 2
-    const position = isAbove ? 'before' : 'after'
-    
+    const position = dropTarget?.id === overId ? dropTarget.position : 'after'
     if (position === 'after') toIdx += 1
     // Removing the source first shifts later indices down by one.
     if (fromIdx < toIdx) toIdx -= 1
@@ -1683,7 +1563,8 @@ function NewForm() {
   }
 
   const persist = async (status) => {
-    if (!name.trim()) {
+    const trimmedName = (name || '').trim()
+    if (!trimmedName) {
       toast.error('Give the form a name first.')
       return
     }
@@ -1694,10 +1575,9 @@ function NewForm() {
     setSaving(true)
     try {
       const payload = {
-        name: name.trim(),
-        // Only fall back to the generated blurb when there's nothing to keep —
-        // this used to clobber the real description on every save.
-        description: description.trim() || `${fields.length} field form`,
+        name: trimmedName,
+        title: trimmedName,
+        description: (description || '').trim() || `${fields.length} field form`,
         fields,
       }
       let saved
@@ -1744,12 +1624,10 @@ function NewForm() {
           <button
             type="button"
             onClick={() => navigate('/forms')}
-            className="flex items-center gap-2.5 shrink-0 rounded-lg hover:bg-surface-2 px-1.5 py-1 transition"
+            className="flex items-center gap-2.5 shrink-0 rounded-lg hover:bg-surface-2 px-1.5 py-1 transition cursor-pointer"
             title="Back to forms"
           >
-            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shadow-sm overflow-hidden">
-              <img src="/netflow-icon.png" alt="" className="w-full h-full object-contain" />
-            </div>
+            <NetFlowLogo size={32} className="w-8 h-8 shrink-0 rounded-lg" />
             <span className="font-semibold text-fg tracking-tight">NetFlow</span>
           </button>
           <div className="flex items-center gap-2">
@@ -1888,47 +1766,38 @@ function NewForm() {
           <button
             type="button"
             onClick={() => navigate('/forms')}
-            className="flex items-center gap-2.5 shrink-0 rounded-lg hover:bg-surface-2 px-1.5 py-1.5 transition"
+            className="flex items-center gap-2.5 shrink-0 rounded-lg hover:bg-surface-2 px-1.5 py-1.5 transition cursor-pointer"
             title="Back to forms"
           >
-            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shadow-sm overflow-hidden">
-              <img src="/netflow-icon.png" alt="" className="w-full h-full object-contain" />
-            </div>
+            <NetFlowLogo size={32} className="w-8 h-8 shrink-0 rounded-lg" />
             <span className="font-semibold text-fg tracking-tight hidden sm:inline leading-none">NetFlow</span>
           </button>
           <div className="w-px h-8 bg-line shrink-0 hidden sm:block self-center" />
-          <div className="min-w-0 flex-1 max-w-xl flex flex-col justify-center gap-0.5">
-            <div className="flex items-center gap-2 min-w-0">
-              {entryMode && (
-                <span
-                  className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold tracking-wide uppercase leading-none ${
-                    entryMode === 'ai'
-                      ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300'
-                      : entryMode === 'template'
-                        ? 'bg-teal-50 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300'
-                        : 'bg-surface-2 text-fg-muted border border-line'
-                  }`}
-                >
-                  {entryMode === 'ai' ? 'Build with AI' : entryMode === 'template' ? 'From template' : 'Blank form'}
-                </span>
-              )}
+          <div className="min-w-0 flex-1 max-w-md lg:max-w-lg flex items-center gap-2.5">
+            {entryMode && (
+              <span
+                className={`shrink-0 hidden md:inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wide uppercase leading-none ${
+                  entryMode === 'ai'
+                    ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300'
+                    : entryMode === 'template'
+                      ? 'bg-teal-50 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300'
+                      : 'bg-surface-2 text-fg-muted border border-line'
+                }`}
+              >
+                {entryMode === 'ai' ? 'AI' : entryMode === 'template' ? 'Template' : 'Blank'}
+              </span>
+            )}
+            <div className="relative flex-1 min-w-0">
               <input
+                id="form-title-header-input"
                 type="text"
-                value={name}
+                value={name ?? ''}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Form name"
+                placeholder="Enter form name…"
                 aria-label="Form name"
-                className="min-w-0 flex-1 text-sm font-semibold text-fg bg-transparent border-0 px-0 py-0 leading-5 focus:outline-none focus:ring-0 placeholder:text-fg-subtle"
+                className="w-full px-3.5 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-surface-2/90 dark:bg-slate-800/90 text-xs sm:text-sm font-bold text-fg placeholder:text-slate-400 focus:bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition shadow-2xs relative z-10"
               />
             </div>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Short description"
-              aria-label="Form description"
-              className="w-full text-xs text-fg-muted bg-transparent border-0 px-0 py-0 leading-4 focus:outline-none focus:ring-0 placeholder:text-fg-subtle hidden sm:block"
-            />
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0 self-center">
@@ -2075,74 +1944,44 @@ function NewForm() {
             </div>
           )}
 
+          {/* Form Title & Description Card */}
+          <div className="mb-4 rounded-2xl border border-line bg-surface p-5 sm:p-6 shadow-sm focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-400 transition">
+            <input
+              type="text"
+              value={name ?? ''}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Untitled Form (e.g. Leave Application)"
+              className="w-full text-lg sm:text-xl font-bold text-fg bg-transparent placeholder:text-fg-subtle/50 focus:outline-none tracking-tight"
+            />
+            <input
+              type="text"
+              value={description ?? ''}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Add form description or instructions for respondents (optional)…"
+              className="w-full mt-2 text-xs sm:text-sm text-fg-muted bg-transparent placeholder:text-fg-subtle/40 focus:outline-none"
+            />
+          </div>
+
           <div
             onDragOver={(e) => {
-              if (!e.dataTransfer.types.includes('application/x-field-type')) return
               e.preventDefault()
               e.dataTransfer.dropEffect = 'copy'
               setDragOver(true)
             }}
             onDragLeave={() => setDragOver(false)}
             onDrop={(e) => {
-              if (!e.dataTransfer.types.includes('application/x-field-type')) return
               e.preventDefault()
               setDragOver(false)
               const type = e.dataTransfer.getData('application/x-field-type')
               if (type) addField(type, false)
             }}
-            className={`rounded-xl border transition flex-1 flex flex-col ${
+            className={`rounded-xl border transition ${
               dragOver
                 ? 'border-indigo-400 bg-indigo-50/50 dark:bg-indigo-500/10 ring-2 ring-indigo-500/20'
                 : 'border-line bg-surface shadow-sm'
             }`}
           >
-            {/* Page Tabs */}
-            <div className="flex items-center gap-6 px-4 pt-3 border-b border-line overflow-x-auto bg-surface rounded-t-xl">
-              {Array.from({ length: totalPages }).map((_, i) => {
-                const pageNum = i + 1
-                return (
-                  <div 
-                    key={pageNum} 
-                    className={`flex items-center gap-1.5 pb-2.5 border-b-2 transition ${
-                      activePage === pageNum
-                        ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
-                        : 'border-transparent text-fg-muted hover:text-fg hover:border-line'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setActivePage(pageNum)}
-                      className="text-sm font-medium whitespace-nowrap focus:outline-none"
-                    >
-                      Page {pageNum}
-                    </button>
-                    {totalPages > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => deletePage(pageNum)}
-                        className={`p-0.5 rounded-full transition focus:outline-none ${
-                          activePage === pageNum 
-                            ? 'text-indigo-400 hover:text-red-500 hover:bg-red-500/10' 
-                            : 'text-fg-muted/50 hover:text-red-500 hover:bg-red-500/10'
-                        }`}
-                        title="Delete this page"
-                      >
-                        <X className="w-3.5 h-3.5" strokeWidth={2.5} />
-                      </button>
-                    )}
-                  </div>
-                )
-              })}
-              <button
-                type="button"
-                onClick={() => setActivePage(totalPages + 1)}
-                className="pb-2.5 text-sm font-medium whitespace-nowrap transition text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
-              >
-                + Add Page
-              </button>
-            </div>
-
-            {fields.filter(f => (f.page || 1) === activePage).length === 0 ? (
+            {fields.length === 0 ? (
               <div className="px-6 py-16 text-center">
                 <div className="mx-auto w-12 h-12 rounded-xl bg-surface-2 border border-line flex items-center justify-center text-fg-muted mb-3">
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
@@ -2152,8 +1991,8 @@ function NewForm() {
                 <p className="text-sm font-semibold text-fg">Add fields</p>
               </div>
             ) : (
-              <div className="p-3 sm:p-4 space-y-2 flex-1">
-                {fields.filter(f => (f.page || 1) === activePage).map((f, idx) => (
+              <div className="p-3 sm:p-4 space-y-2">
+                {fields.map((f, idx) => (
                   <FieldCard
                     key={f.id}
                     field={f}
@@ -2165,7 +2004,6 @@ function NewForm() {
                     onDuplicate={duplicateField}
                     onDelete={deleteField}
                     onDragStart={handleReorderStart}
-                    onDragEnter={handleReorderEnter}
                     onDragOver={handleReorderOver}
                     onDragLeave={handleReorderLeave}
                     onDrop={handleReorderDrop}

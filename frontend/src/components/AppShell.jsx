@@ -13,11 +13,12 @@ import { useWorkflows } from '../lib/workflowsStore'
 import { canCreateWorkflow, canEditWorkflow, isSuperAdmin, isPlatformShell, getShell, SHELL } from '../utils/permissions'
 import { api } from '../utils/api'
 import { useFocusTrap, useOutsideDismiss, useScrollLock, modifierKeyLabel } from '../utils/a11y'
+import { toast } from '../lib/toastStore'
 import AssistantWidget from './AssistantWidget'
 import LicenceBanner from './LicenceBanner'
 import NotificationsBell from './NotificationsBell'
 import DmsProviderWidget from './DmsProviderWidget'
-import BroadcastBanner from './BroadcastBanner'
+import NetFlowLogo from './NetFlowLogo'
 
 // ---------- left rail ----------------------------------------------------
 // Four shells. Items without `visible` are always shown inside that shell.
@@ -25,22 +26,12 @@ import BroadcastBanner from './BroadcastBanner'
 
 const PLATFORM_NAV = [
   {
-    label: 'MAIN',
+    label: null,
     items: [
       { key: 'dashboard', label: 'Dashboard', to: '/dashboard', icon: IconDashboard },
       { key: 'platform', label: 'Organizations', to: '/platform', icon: IconPlatform },
-      { key: 'usage', label: 'Usage', to: '/usage', icon: IconAnalytics }
-    ]
-  },
-  {
-    label: 'REPORTS',
-    items: [
-      { key: 'activity', label: 'Activity Logs', to: '/activity', icon: IconAudit }
-    ]
-  },
-  {
-    label: 'SETTINGS',
-    items: [
+      { key: 'usage', label: 'Usage', to: '/usage', icon: IconAnalytics },
+      { key: 'activity', label: 'Activity Logs', to: '/activity', icon: IconAudit },
       { key: 'health', label: 'System Health', to: '/health', icon: IconHealth },
       { key: 'plans', label: 'Plans', to: '/plans', icon: IconPlans },
       { key: 'admins', label: 'Admins', to: '/admins', icon: IconAdmin }
@@ -52,64 +43,46 @@ const ORG_ADMIN_NAV = [
   {
     label: null,
     items: [
-      { key: 'dashboard', label: 'Dashboard', to: '/dashboard', icon: IconDashboard },
+      { key: 'dashboard', label: 'Dashboard', to: '/dashboard', icon: IconDashboard }
     ]
   },
   {
     label: 'MANAGEMENT',
     items: [
-      { key: 'departments', label: 'Departments', to: '/departments', icon: IconBuilding, chevron: true },
-      { key: 'users', label: 'Users', to: '/admin', icon: IconTeam, chevron: true },
-      { key: 'roles', label: 'Roles & Permissions', to: '/roles', icon: IconRoles, chevron: true },
-      { key: 'forms', label: 'Forms', to: '/forms', icon: IconForms, chevron: true },
-      { key: 'workflows', label: 'Workflows', to: '/workflows', icon: IconWorkflows, chevron: true }
-    ]
-  },
-  {
-    label: 'Documents Management System',
-    items: [
-      { key: 'documents', label: 'DMS', to: '/documents', icon: IconFolder, chevron: true },
-      { key: 's3-storage', label: 'S3 Storage', to: '/s3-storage', icon: IconFolder, chevron: true }
+      { key: 'departments',  label: 'Departments',           to: '/departments', icon: IconBuilding },
+      { key: 'users',        label: 'Users',                 to: '/admin',       icon: IconTeam },
+      { key: 'roles',        label: 'Roles & Permissions',   to: '/roles',       icon: IconRoles },
+      { key: 'org-settings', label: 'Organization Settings', to: '/settings',    icon: IconSettings },
+      { key: 'billing',      label: 'Plan & Usage',          to: '/billing',     icon: IconBilling }
     ]
   },
   {
     label: 'MONITORING',
     items: [
-      { key: 'reports', label: 'Reports', to: '/analytics', icon: IconAnalytics, chevron: true },
-      { key: 'audit', label: 'Audit Logs', to: '/audit-log', icon: IconAudit, chevron: true }
-    ]
-  },
-  {
-    label: 'SETTINGS',
-    items: [
-      { key: 'org-settings', label: 'Organization Settings', to: '/settings', icon: IconSettings, chevron: true },
-      { key: 'billing', label: 'Plan & Usage', to: '/billing', icon: IconBilling, chevron: true }
+      { key: 'forms',     label: 'Forms',      to: '/forms',     icon: IconForms },
+      { key: 'workflows', label: 'Workflows',  to: '/workflows', icon: IconWorkflows },
+      { key: 'reports',   label: 'Reports',    to: '/analytics', icon: IconAnalytics },
+      { key: 'audit',     label: 'Audit Logs', to: '/audit-log', icon: IconAudit }
     ]
   }
 ]
 
+
 const OPS_NAV = [
   {
-    label: 'MAIN',
+    label: null,
     items: [
       { key: 'dashboard', label: 'Dashboard', to: '/dashboard', icon: IconDashboard },
       { key: 'tasks', label: 'Approvals', to: '/tasks', icon: IconTasks },
       { key: 'forms', label: 'Forms', to: '/forms', icon: IconForms },
-      { key: 'team', label: 'My Team', to: '/team', icon: IconTeam }
-    ]
-  },
-  {
-    label: 'REPORTS',
-    items: [
-      { key: 'analytics', label: 'Analytics', to: '/analytics', icon: IconAnalytics },
-      { key: 'audit', label: 'Audit Logs', to: '/audit-log', icon: IconAudit }
+      { key: 'analytics', label: 'Analytics', to: '/analytics', icon: IconAnalytics }
     ]
   }
 ]
 
 const WORKSPACE_NAV = [
   {
-    label: 'MAIN',
+    label: null,
     items: [
       { key: 'dashboard', label: 'Dashboard', to: '/dashboard', icon: IconDashboard },
       { key: 'tasks', label: 'My Requests', to: '/tasks', icon: IconTasks },
@@ -122,32 +95,38 @@ const WORKSPACE_NAV = [
 function visibleSections(user) {
   const shell = getShell(user)
   let sections = []
-  if (shell === SHELL.PLATFORM) sections = PLATFORM_NAV
-  else if (shell === SHELL.ORG_ADMIN) sections = ORG_ADMIN_NAV
-  else if (shell === SHELL.OPS) sections = OPS_NAV
-  else sections = WORKSPACE_NAV
+  if (shell === SHELL.PLATFORM) sections = [...PLATFORM_NAV]
+  else if (shell === SHELL.ORG_ADMIN) sections = [...ORG_ADMIN_NAV]
+  else if (shell === SHELL.OPS) sections = [...OPS_NAV]
+  else sections = [...WORKSPACE_NAV]
 
-  if (user && user.dmsEnabled === false) {
-    sections = sections.map(section => ({
-      ...section,
-      items: section.items.filter(item => item.key !== 'documents')
-    })).filter(section => section.items.length > 0)
-  }
+  if (shell !== SHELL.PLATFORM && shell === SHELL.ORG_ADMIN) {
+    const platformItems = []
+    
+    if (user && (user.dmsEnabled === true || user.org?.integrations?.dmsEnabled === true)) {
+      platformItems.push({
+        key: 'documents',
+        label: 'DMS',
+        to: '/documents',
+        icon: IconDms
+      })
+    }
+    
+    if (user && (user.s3Enabled === true || user.s3Storage === true || user.org?.integrations?.s3Storage === true)) {
+      platformItems.push({
+        key: 's3storage',
+        label: 'S3 Storage',
+        to: '/s3-storage',
+        icon: IconFolder
+      })
+    }
 
-  if (user && user.s3Enabled === false) {
-    sections = sections.map(section => ({
-      ...section,
-      items: section.items.filter(item => item.key !== 's3-storage')
-    })).filter(section => section.items.length > 0)
-  }
-
-  // Remove Audit Logs for non-Admins/CEOs if in OPS shell
-  const role = user?.role?.name
-  if (shell === SHELL.OPS && role !== 'CEO' && role !== 'Admin') {
-     sections = sections.map(section => ({
-        ...section,
-        items: section.items.filter(item => item.key !== 'audit')
-     }))
+    if (platformItems.length > 0) {
+      sections.push({
+        label: 'DOCUMENTS MANAGEMENT SYSTEM',
+        items: platformItems
+      })
+    }
   }
 
   return sections
@@ -166,71 +145,113 @@ const SHELL_FOOTER = {
 function NavSections({ user, pendingCount, onNavigate }) {
   const { pathname } = useLocation()
   const sections = visibleSections(user)
+  const isPlatform = isPlatformShell(user)
+
+  const [expanded, setExpanded] = useState(() => {
+    const map = {}
+    sections.forEach((s, i) => { map[s.label || i] = true })
+    return map
+  })
+
+  const toggle = (key) => setExpanded((prev) => ({ ...prev, [key]: !prev[key] }))
 
   return (
     <>
-      {sections.map((section, si) => (
-        <div key={section.label || `sec-${si}`} className={si === 0 ? '' : 'mt-5 pt-5 border-t border-line/70'}>
-          {section.label && (
-            <p className="px-3 mb-2 text-[10px] font-semibold tracking-[0.14em] text-fg-subtle uppercase">
-              {section.label}
-            </p>
-          )}
-          <ul className="space-y-1">
-            {section.items.map((item) => {
-              if (item.component) {
-                const ItemComponent = item.component
-                return (
-                  <li key={item.key}>
-                    <ItemComponent user={user} />
-                  </li>
-                )
-              }
-              const Icon = item.icon
-              const label = item.labelFor ? item.labelFor(user) : item.label
-              const isActive = pathname === item.to || pathname.startsWith(item.to + '/')
-              const showBadge = item.key === 'tasks' && pendingCount > 0
-              return (
-                <li key={item.key}>
-                  <Link
-                    to={item.to}
-                    onClick={onNavigate}
-                    data-tour={`nav-${item.key}`}
-                    aria-current={isActive ? 'page' : undefined}
-                    className={`group relative flex items-center gap-3 pl-3 pr-2.5 py-2.5 rounded-xl text-[13px] font-medium transition-colors ${
-                      isActive
-                        ? 'bg-indigo-50 text-indigo-700 shadow-sm shadow-indigo-500/5 dark:bg-indigo-500/15 dark:text-indigo-300 dark:shadow-none'
-                        : 'text-fg-muted hover:bg-surface-3/80 hover:text-fg'
-                    }`}
-                  >
-                    {isActive && (
-                      <span
-                        aria-hidden="true"
-                        className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-indigo-600 dark:bg-indigo-400"
-                      />
-                    )}
-                    <span
-                      className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
-                        isActive
-                          ? 'bg-indigo-100/80 text-indigo-600 dark:bg-indigo-500/25 dark:text-indigo-300'
-                          : 'bg-surface-2 text-fg-muted group-hover:bg-surface group-hover:text-fg ring-1 ring-line/60'
-                      }`}
-                    >
-                      <Icon className="w-4 h-4" />
-                    </span>
-                    <span className="flex-1 whitespace-nowrap tracking-tight">{label}</span>
-                    {showBadge && (
-                      <span className="text-[10px] font-semibold rounded-full bg-indigo-600 text-white px-1.5 py-0.5 min-w-[18px] text-center shadow-sm">
-                        {pendingCount > 99 ? '99+' : pendingCount}
-                      </span>
-                    )}
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
-        </div>
-      ))}
+      {sections.map((section, si) => {
+        const key = section.label || si
+        const isOpen = expanded[key] !== false
+
+        return (
+          <div key={key} className={si === 0 ? '' : 'mt-4 pt-3.5 border-t border-slate-100 dark:border-slate-800/60'}>
+            {section.label ? (
+              <button
+                type="button"
+                onClick={() => toggle(key)}
+                className="w-full px-2.5 py-1.5 mb-1.5 flex items-center justify-between text-[12px] font-black tracking-[0.09em] text-slate-800 dark:text-slate-200 uppercase rounded-xl hover:bg-slate-100/90 dark:hover:bg-slate-800/70 transition group cursor-pointer"
+              >
+                <span className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#6366F1] shrink-0 shadow-xs" />
+                  <span className="tracking-wider">{section.label}</span>
+                </span>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className={`w-3.5 h-3.5 text-slate-400 dark:text-slate-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : 'rotate-0'}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            ) : null}
+
+            {isOpen && (
+              <ul className={isPlatform ? "space-y-1.5" : "space-y-1"}>
+                {section.items.map((item) => {
+                  if (item.component) {
+                    const ItemComponent = item.component
+                    return (
+                      <li key={item.key}>
+                        <ItemComponent user={user} />
+                      </li>
+                    )
+                  }
+                  const Icon = item.icon
+                  const label = item.labelFor ? item.labelFor(user) : item.label
+                  const isActive = pathname === item.to || pathname.startsWith(item.to + '/')
+                  const showBadge = item.key === 'tasks' && pendingCount > 0
+                  return (
+                    <li key={item.key} className="relative mb-1">
+                      <Link
+                        to={item.to}
+                        onClick={onNavigate}
+                        data-tour={`nav-${item.key}`}
+                        aria-current={isActive ? 'page' : undefined}
+                        className={`group flex items-center transition-all duration-200 ${
+                          isPlatform
+                            ? `gap-3.5 px-3.5 py-3 rounded-2xl text-[15px] font-bold tracking-tight ${
+                                isActive
+                                  ? 'bg-[#6366F1] text-white shadow-md shadow-indigo-500/25 ring-1 ring-indigo-400/30'
+                                  : 'text-slate-800 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/90'
+                              }`
+                            : `gap-3 px-3 py-2.5 rounded-xl text-[13.5px] ${
+                                item.key === 'dashboard' ? 'font-bold' : 'font-medium'
+                              } ${
+                                isActive
+                                  ? 'bg-[#6366F1] text-white shadow-sm shadow-indigo-500/20'
+                                  : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/80 dark:hover:bg-slate-800'
+                              }`
+                        }`}
+                      >
+                        <Icon className={`shrink-0 transition-colors duration-200 ${
+                          isPlatform
+                            ? `w-[22px] h-[22px] stroke-[2.3] ${
+                                isActive
+                                  ? 'text-white'
+                                  : 'text-slate-700 dark:text-slate-300 group-hover:text-slate-950 dark:group-hover:text-white'
+                              }`
+                            : `w-5 h-5 stroke-[2] ${
+                                isActive
+                                  ? 'text-white'
+                                  : 'text-slate-600 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white'
+                              }`
+                        }`} />
+                        <span className={`flex-1 truncate ${isPlatform || item.key === 'dashboard' ? 'font-bold' : ''}`}>{label}</span>
+                        {(showBadge || item.badgeCount) && (
+                          <span className="shrink-0 flex items-center justify-center min-w-[20px] h-[20px] px-1 rounded-full bg-[#f43f5e] text-white text-[11px] font-bold leading-none shadow-xs">
+                            {showBadge ? (pendingCount > 99 ? '99+' : pendingCount) : item.badgeCount}
+                          </span>
+                        )}
+                      </Link>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        )
+      })}
     </>
   )
 }
@@ -241,70 +262,148 @@ function NavSections({ user, pendingCount, onNavigate }) {
 // drawer take over. The open/close toggle lives in the top bar.
 function Sidebar({ user, pendingCount, open, onToggle }) {
   const shellLabel = SHELL_FOOTER[getShell(user)] || 'Workspace'
+  const isPlatform = isPlatformShell(user)
+  const { pathname } = useLocation()
+  const sections = visibleSections(user)
+  const allItems = useMemo(() => sections.flatMap((s) => s.items), [sections])
 
   return (
     <aside
       id="app-sidebar"
-      // Collapsed, the rail is only 0px wide — but its links stayed in the tab
-      // order, so keyboard users tabbed through invisible nav items. `inert`
-      // removes them without unmounting (which would kill the width animation).
-      inert={!open ? '' : undefined}
-      aria-hidden={!open}
-      className={`hidden md:flex flex-col shrink-0 overflow-hidden bg-surface-2/50 border-line text-fg sticky top-0 h-screen transition-[width] duration-200 ease-in-out ${open ? 'w-64 border-r' : 'w-0'}`}
+      className={`hidden md:flex flex-col shrink-0 ${
+        open ? (isPlatform ? 'w-[260px]' : 'w-[250px]') : 'w-16'
+      } overflow-hidden bg-white dark:bg-slate-900 border-r border-slate-200/80 dark:border-slate-800 text-fg sticky top-0 h-screen transition-[width] duration-300 ease-in-out z-40`}
     >
-      {/* Fixed inner width keeps nav from reflowing while the rail animates */}
-      <div className="w-64 h-full flex flex-col min-h-0">
-        <div className="shrink-0 h-16 px-3 flex items-center gap-2 border-b border-line bg-surface/80 backdrop-blur-sm">
-          <Link to="/dashboard" className="flex items-center gap-2.5 min-w-0 flex-1 rounded-lg hover:opacity-90 transition px-1 py-1">
-            {getShell(user) === SHELL.ORG_ADMIN ? (
-              <>
-                <div className="w-8 h-8 rounded-lg bg-pink-50 text-pink-600 dark:bg-pink-500/15 dark:text-pink-300 flex items-center justify-center shrink-0 shadow-[0_1px_3px_rgb(0_0_0/0.05)] ring-1 ring-pink-100 dark:ring-pink-500/20">
-                  <IconBuilding className="w-4 h-4" />
-                </div>
-                <div className="min-w-0 leading-tight">
-                  <p className="font-bold text-fg text-[13px] tracking-tight truncate">{user?.tenantName }</p>
-                  <div className="inline-flex items-center px-1.5 py-[1px] rounded text-[9px] font-bold tracking-wide bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-500/20 mt-0.5">
-                    Active
+      {open ? (
+        <div className={`${isPlatform ? 'w-[260px]' : 'w-[250px]'} h-full flex flex-col min-h-0`}>
+          <div className="shrink-0 py-5 px-5 flex items-center gap-3 border-b border-slate-100 dark:border-slate-800/60 bg-white dark:bg-slate-900">
+            <Link to="/dashboard" className="flex items-center min-w-0 flex-1 rounded-xl hover:opacity-90 transition gap-3.5">
+              <NetFlowLogo size={42} className="w-[42px] h-[42px] shrink-0" />
+              <div className="flex flex-col justify-center">
+                <span className="text-[17px] font-bold text-slate-900 dark:text-white tracking-tight leading-none">
+                  NetFlow
+                </span>
+                <span className="text-[12px] font-medium text-slate-400 mt-1 truncate leading-none">
+                  Workflow Automation
+                </span>
+              </div>
+            </Link>
+            <button
+              type="button"
+              onClick={onToggle}
+              aria-label="Collapse sidebar"
+              aria-expanded={open}
+              aria-controls="app-sidebar"
+              title="Collapse sidebar"
+              className="relative z-10 w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          </div>
+
+          <nav aria-label="Main" className="flex-1 min-h-0 px-3 py-6 overflow-y-auto sidebar-scroll">
+            <NavSections user={user} pendingCount={pendingCount} />
+          </nav>
+
+          <div className="shrink-0 px-5 py-5 border-t border-slate-100 dark:border-slate-800/60">
+            <p className="text-[12px] text-slate-500 dark:text-slate-400 leading-snug">
+              <span className="block font-semibold text-slate-700 dark:text-slate-300">{shellLabel}</span>
+              <span className="block mt-0.5 text-slate-400 dark:text-slate-500">Navigation matches your role's access.</span>
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="w-16 h-full flex flex-col items-center justify-between py-3">
+          {/* Top Logo Button - Shows Expand Arrow on Hover */}
+          <div className="flex flex-col items-center gap-4 w-full">
+            <div className="relative group/logotip flex items-center justify-center">
+              <button
+                type="button"
+                onClick={onToggle}
+                aria-label="Expand sidebar"
+                className="relative w-10 h-10 rounded-2xl flex items-center justify-center shadow-md shadow-indigo-500/30 hover:scale-105 transition-all duration-200 cursor-pointer overflow-hidden group"
+              >
+                <NetFlowLogo size={40} className="w-10 h-10 shrink-0 transition-all duration-200 group-hover:scale-0 group-hover:opacity-0" />
+                {/* Right Expand Arrow on Hover */}
+                <svg
+                  className="w-5 h-5 text-indigo-600 dark:text-indigo-400 absolute transition-all duration-200 scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-100"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+
+              {/* Instant Light Gray Flyout Tooltip with Arrow Indicator */}
+              <div className="absolute left-full ml-3.5 px-3 py-1.5 bg-[#F1F5F9] dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs font-bold rounded-xl shadow-md border border-slate-300/80 dark:border-slate-700 whitespace-nowrap opacity-0 pointer-events-none group-hover/logotip:opacity-100 transition-opacity duration-75 z-50 flex items-center gap-1.5">
+                <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-[#F1F5F9] dark:bg-slate-800 border-l border-b border-slate-300/80 dark:border-slate-700 rotate-45" />
+                <span>Open sidebar</span>
+                <span className="text-indigo-600 dark:text-indigo-400 font-extrabold text-sm">→</span>
+              </div>
+            </div>
+
+            <div className="w-8 h-px bg-slate-100 dark:bg-slate-800 my-1" />
+
+            {/* Collapsed Nav Icons with Instant Light Gray Hover Tooltip */}
+            <div className="flex flex-col items-center gap-3 w-full px-2">
+              {allItems.map((item) => {
+                const Icon = item.icon
+                const isActive = pathname === item.to || pathname.startsWith(item.to + '/')
+                const label = item.labelFor ? item.labelFor(user) : item.label
+                const showBadge = item.key === 'tasks' && pendingCount > 0
+
+                return (
+                  <div key={item.key} className="relative group/navtip flex items-center justify-center">
+                    <Link
+                      to={item.to}
+                      className={`relative w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${
+                        isActive
+                          ? 'bg-[#6366F1] text-white shadow-md shadow-indigo-500/30'
+                          : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <Icon className="w-5 h-5 stroke-[2]" />
+                      {showBadge && (
+                        <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-rose-500 border-2 border-white dark:border-slate-900" />
+                      )}
+                    </Link>
+
+                    {/* Instant Hover Light Gray Flyout Label Tooltip */}
+                    <div className="absolute left-full ml-3.5 px-3 py-1.5 bg-[#F1F5F9] dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs font-bold rounded-xl shadow-md border border-slate-300/80 dark:border-slate-700 whitespace-nowrap opacity-0 pointer-events-none group-hover/navtip:opacity-100 transition-opacity duration-75 z-50 flex items-center gap-1.5">
+                      <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-[#F1F5F9] dark:bg-slate-800 border-l border-b border-slate-300/80 dark:border-slate-700 rotate-45" />
+                      <span className="relative z-10">{label}</span>
+                    </div>
                   </div>
-                </div>
-              </>
-            ) : (
-              <>
-                <img src="/netflow-icon.png" alt="" className="w-8 h-8 rounded-xl shadow-sm ring-1 ring-black/5 dark:ring-white/10" />
-                <div className="min-w-0 leading-tight">
-                  <p className="font-bold text-fg text-[15px] tracking-tight truncate">NetFlow</p>
-                  <p className="text-[10px] font-medium text-fg-subtle truncate">{shellLabel}</p>
-                </div>
-              </>
-            )}
-          </Link>
-          <button
-            type="button"
-            onClick={onToggle}
-            aria-label="Collapse sidebar"
-            aria-expanded={open}
-            aria-controls="app-sidebar"
-            title="Collapse sidebar"
-            className="w-9 h-9 shrink-0 rounded-lg flex items-center justify-center text-fg-muted hover:text-fg hover:bg-surface-3 border border-transparent hover:border-line transition"
-          >
-            {/* Panel-left / collapse control — clearer than a second hamburger */}
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 3.75H5.25A1.5 1.5 0 003.75 5.25v13.5a1.5 1.5 0 001.5 1.5H9m0-16.5v16.5m0-16.5h9.75a1.5 1.5 0 011.5 1.5v13.5a1.5 1.5 0 01-1.5 1.5H9M8.25 9.75L5.25 12l3 2.25" />
-            </svg>
-          </button>
-        </div>
+                )
+              })}
+            </div>
+          </div>
 
-        <nav aria-label="Main" className="flex-1 min-h-0 px-3 py-4 overflow-y-auto">
-          <NavSections user={user} pendingCount={pendingCount} />
-        </nav>
-
-        <div className="shrink-0 px-4 py-3 border-t border-line bg-surface/60">
-          <p className="text-[11px] text-fg-subtle leading-snug">
-            <span className="font-medium text-fg-muted">{shellLabel}</span>
-            <span className="block mt-0.5">Navigation matches your role’s access.</span>
-          </p>
+          {/* Bottom Weather / Notification Widget */}
+          <div className="flex flex-col items-center gap-2 pb-2">
+            <div className="relative group/weathertip flex items-center justify-center">
+              <button
+                type="button"
+                onClick={onToggle}
+                className="relative w-10 h-10 rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 flex items-center justify-center hover:scale-105 transition border border-indigo-100/60 dark:border-indigo-900 shrink-0 cursor-pointer"
+              >
+                <span className="text-lg">☁️</span>
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] font-extrabold flex items-center justify-center shadow-xs">
+                  1
+                </span>
+              </button>
+              <div className="absolute left-full ml-3.5 px-3 py-1.5 bg-[#F1F5F9] dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs font-bold rounded-xl shadow-md border border-slate-300/80 dark:border-slate-700 whitespace-nowrap opacity-0 pointer-events-none group-hover/weathertip:opacity-100 transition-opacity duration-75 z-50 flex items-center gap-1.5">
+                <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-[#F1F5F9] dark:bg-slate-800 border-l border-b border-slate-300/80 dark:border-slate-700 rotate-45" />
+                <span className="relative z-10">Notifications • Expand</span>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </aside>
   )
 }
@@ -415,7 +514,7 @@ function MobileNavDrawer({ user, pendingCount, open, onClose }) {
         className={`fixed inset-y-0 left-0 z-50 w-72 max-w-[80%] bg-surface-2/95 border-r border-line text-fg shadow-xl transition-transform duration-200 ease-in-out backdrop-blur-sm ${shown ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <div className="h-16 flex items-center gap-2.5 px-4 border-b border-line bg-surface/80">
-          <img src="/netflow-icon.png" alt="NetFlow" className="w-8 h-8 rounded-xl shadow-sm ring-1 ring-black/5 dark:ring-white/10" />
+          <NetFlowLogo size={32} className="w-8 h-8 shrink-0 rounded-xl" />
           <div className="min-w-0 leading-tight">
             <p className="font-bold text-fg text-[15px] tracking-tight">NetFlow</p>
             <p className="text-[10px] font-medium text-fg-subtle truncate">
@@ -607,10 +706,10 @@ function GlobalSearch({ user }) {
   const showDropdown = open && query.trim().length > 0
 
   return (
-    <div ref={boxRef} data-tour="search" className="flex-1 max-w-2xl relative">
+    <div ref={boxRef} data-tour="search" className="flex-1 max-w-xl relative">
       <div className="relative">
-        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-fg-subtle pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-          <circle cx="11" cy="11" r="7" /><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35" />
+        <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
         <input
           ref={inputRef}
@@ -619,15 +718,15 @@ function GlobalSearch({ user }) {
           onChange={(e) => { setQuery(e.target.value); setOpen(true) }}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
-          placeholder={platform ? 'Search organizations, pages…' : 'Search requests, forms, workflows…'}
+          placeholder={platform ? 'Search organizations, pages…' : 'Search or ask AI...'}
           aria-label={platform ? 'Search organizations and pages' : 'Search requests, forms and workflows'}
           role="combobox"
           aria-expanded={showDropdown}
           aria-controls="global-search-results"
           aria-autocomplete="list"
-          className="w-full pl-9 pr-4 sm:pr-16 py-2 text-sm text-fg border border-line rounded-lg bg-surface-2 placeholder-fg-subtle focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:bg-surface transition"
+          className="w-full pl-10 pr-20 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-100 dark:bg-slate-800/80 placeholder-slate-400 hover:border-slate-300 dark:hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:bg-white dark:focus:bg-slate-800 transition-all"
         />
-        <kbd className="hidden sm:block absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-fg-subtle border border-line rounded px-1.5 py-0.5 bg-surface font-sans pointer-events-none">
+        <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-600 rounded px-1.5 py-0.5 bg-white dark:bg-slate-700 font-mono shadow-sm pointer-events-none">
           {modKey} K
         </kbd>
       </div>
@@ -665,72 +764,87 @@ function GlobalSearch({ user }) {
 
 // ---------- top bar ------------------------------------------------------
 
-function TopBar({ user, onToggleSidebar, sidebarOpen }) {
+function TopBar({ user, pageTitle, onToggleSidebar, sidebarOpen }) {
+  const { pathname } = useLocation()
   const theme = useTheme()
   const displayName = user?.name || 'Guest'
   const roleLabel = user?.role?.name
     ? (ROLE_LABELS[user.role.name] || user.role.name)
     : 'Member'
-  // Platform Super Admin chrome matches the design deck: role as the chip label.
   const chipPrimary = isSuperAdmin(user) ? roleLabel : displayName
   const chipSecondary = isSuperAdmin(user) ? '' : roleLabel
 
+  const getDynamicTitle = () => {
+    if (pageTitle && typeof pageTitle === 'string' && pageTitle.trim()) return pageTitle
+    if (pathname === '/dashboard') return 'Dashboard'
+    if (pathname.startsWith('/platform')) return 'Organizations'
+    if (pathname.startsWith('/plans')) return 'Plans'
+    if (pathname.startsWith('/billing')) return 'Plan & Usage'
+    if (pathname.startsWith('/usage')) return 'Usage'
+    if (pathname.startsWith('/activity')) return 'Activity Logs'
+    if (pathname.startsWith('/health')) return 'System Health'
+    if (pathname.startsWith('/admins')) return 'Admins'
+    if (pathname.startsWith('/departments')) return 'Departments'
+    if (pathname.startsWith('/admin')) return 'Users'
+    if (pathname.startsWith('/roles')) return 'Roles & Permissions'
+    if (pathname.startsWith('/forms')) return 'Forms'
+    if (pathname.startsWith('/workflows')) return 'Workflows'
+    if (pathname.startsWith('/analytics')) return 'Analytics'
+    if (pathname.startsWith('/audit-log')) return 'Audit Logs'
+    if (pathname.startsWith('/settings')) return 'Organization Settings'
+    if (pathname.startsWith('/tasks')) return 'Approvals'
+    if (pathname.startsWith('/team')) return 'My Team'
+    if (pathname.startsWith('/profile')) return 'Profile'
+    
+    // Capitalize fallback route
+    const part = pathname.split('/').filter(Boolean)[0]
+    return part ? part.charAt(0).toUpperCase() + part.slice(1) : 'Dashboard'
+  }
+
+  const activeTitle = getDynamicTitle()
+
   return (
-    <header className="h-16 bg-surface border-b border-line px-4 md:px-6 flex items-center gap-3 md:gap-4 sticky top-0 z-20">
-      {/* Expand control — only when the rail is collapsed on desktop. Collapse
-          lives in the sidebar header so we never stack hamburger + logo twice. */}
-      <button
-        type="button"
-        onClick={onToggleSidebar}
-        aria-label="Expand sidebar"
-        aria-expanded={sidebarOpen}
-        aria-controls="app-sidebar"
-        title="Expand sidebar"
-        className={`w-9 h-9 rounded-lg items-center justify-center text-fg-muted hover:text-fg hover:bg-surface-3 border border-line transition shrink-0 ${
-          sidebarOpen ? 'hidden' : 'hidden md:inline-flex'
-        }`}
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-        </svg>
-      </button>
+    <header className="h-16 px-6 md:px-8 bg-white/80 dark:bg-[#111a2e]/80 backdrop-blur-md border-b border-slate-200/60 dark:border-white/10 flex items-center justify-between sticky top-0 z-20 gap-4">
 
-      {/* Logo in the top bar when the sidebar is closed (desktop) or on phones */}
-      <Link
-        to="/dashboard"
-        className={`flex items-center gap-2 shrink-0 ${sidebarOpen ? 'md:hidden' : ''}`}
-      >
-        <img src="/netflow-icon.png" alt="NetFlow" className="w-8 h-8 rounded-xl shadow-sm ring-1 ring-black/5 dark:ring-white/10" />
-        <span className="hidden sm:inline font-bold text-fg text-[15px] tracking-tight">NetFlow</span>
-      </Link>
+      {/* Left: Page Title + Search */}
+      <div className="flex items-center gap-3.5 flex-1 min-w-0">
+        {/* Page title */}
+        <h2 className="text-base font-extrabold text-slate-900 dark:text-white shrink-0 tracking-tight">
+          {activeTitle}
+        </h2>
 
-      {/* Global search — works for every role */}
-      <GlobalSearch user={user} />
+        {/* Pill-style search trigger */}
+        <GlobalSearch user={user} />
+      </div>
 
-      <div className="flex items-center gap-2 ml-auto">
+      {/* Right: Raise Ticket + Theme + Bell + User */}
+      <div className="flex items-center gap-2.5 shrink-0">
+
+
+        {/* Theme toggle */}
         <button
           type="button"
           data-tour="theme"
           onClick={() => themeStore.toggle()}
           aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-          title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
-          className="w-9 h-9 rounded-md flex items-center justify-center text-fg-muted hover:bg-surface-3 transition"
+          className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 transition-colors"
         >
           {theme === 'dark' ? (
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="4" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41" />
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="5" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
             </svg>
           ) : (
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
             </svg>
           )}
         </button>
+
+        {/* Notifications bell */}
         <NotificationsBell />
 
-        <div className="hidden sm:block w-px h-8 bg-line mx-1" />
-
+        {/* User avatar + name */}
         <UserMenu
           user={user}
           displayName={displayName}
@@ -746,28 +860,35 @@ function TopBar({ user, onToggleSidebar, sidebarOpen }) {
 function UserMenu({ user, displayName, chipPrimary, chipSecondary, avatarSeed }) {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
+  const [showSignOutPrompt, setShowSignOutPrompt] = useState(false)
   const wrapRef = useRef(null)
   const buttonRef = useRef(null)
   const primary = chipPrimary || displayName
   const secondary = chipSecondary
   const avatarLabel = avatarSeed || displayName
 
-  // Previously this menu only closed on Escape or by moving the mouse out of
-  // it — neither of which happens on a touch device, so it got stuck open.
-  useOutsideDismiss(open, wrapRef, () => setOpen(false))
+  useOutsideDismiss(open, wrapRef, () => {
+    setOpen(false)
+    setShowSignOutPrompt(false)
+  })
 
   useEffect(() => {
     if (!open) return undefined
     const onKey = (e) => {
       if (e.key !== 'Escape') return
       setOpen(false)
+      setShowSignOutPrompt(false)
       buttonRef.current?.focus()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [open])
 
-
+  const handleLogout = async () => {
+    setOpen(false)
+    await authStore.logout()
+    navigate('/login')
+  }
 
   return (
     <div ref={wrapRef} data-tour="user-menu" className="relative">
@@ -778,45 +899,46 @@ function UserMenu({ user, displayName, chipPrimary, chipSecondary, avatarSeed })
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`Account menu for ${displayName}`}
-        className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-md hover:bg-surface-3 transition"
+        className="flex items-center gap-2.5 pl-1 pr-2 py-1 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
       >
-        <div className={`w-8 h-8 rounded-full text-white flex items-center justify-center text-xs font-semibold ${
-          isSuperAdmin(user)
-            ? 'bg-gradient-to-br from-indigo-500 to-indigo-700'
-            : 'bg-gradient-to-br from-slate-700 to-slate-900'
-        }`}>
+        <div className="w-8 h-8 rounded-full bg-brand-500 text-white text-xs font-extrabold flex items-center justify-center shadow-sm">
           {initials(avatarLabel)}
         </div>
         <div className="hidden sm:block text-left leading-tight">
-          <p className="text-sm font-medium text-fg max-w-[12rem] truncate">{primary}</p>
+          <p className="text-xs font-bold text-slate-800 dark:text-slate-100 max-w-[12rem] truncate leading-tight">{primary}</p>
           {secondary && secondary !== primary && (
-            <p className="text-[11px] text-fg-muted truncate max-w-[12rem]">{secondary}</p>
+            <p className="text-[10px] text-slate-400 font-medium truncate max-w-[12rem]">{secondary}</p>
           )}
         </div>
-        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-fg-subtle ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
         </svg>
       </button>
+
       {open && user && (
         <div
           role="menu"
           aria-label="Account"
-          className="absolute right-0 mt-2 w-44 bg-surface border border-line rounded-md shadow-lg z-30 py-1"
+          className="absolute right-0 mt-2 w-56 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xl z-50 py-1.5 overflow-hidden animate-in fade-in zoom-in-95 duration-100"
         >
           <button
             role="menuitem"
             onClick={() => { setOpen(false); navigate('/profile') }}
-            className="w-full text-left px-3 py-2 text-sm text-fg hover:bg-surface-2 focus:bg-surface-2 focus:outline-none"
+            className="w-full text-left px-3.5 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition flex items-center justify-between cursor-pointer"
           >
-            Your profile
+            <span>Your profile</span>
+            <span className="text-slate-400 text-xs">👤</span>
           </button>
-          <div className="my-1 h-px bg-surface-3" />
+
+          <div className="my-1.5 h-px bg-slate-100 dark:bg-slate-800" />
+
           <button
             role="menuitem"
-            onClick={() => { setOpen(false); authStore.logout(false).then(() => navigate('/login')) }}
-            className="w-full text-left px-3 py-2 text-sm text-fg hover:bg-danger-subtle hover:text-danger-fg focus:bg-danger-subtle focus:text-danger-fg focus:outline-none"
+            onClick={handleLogout}
+            className="w-full text-left px-3.5 py-2 text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition flex items-center justify-between cursor-pointer"
           >
-            Sign out
+            <span>Sign out</span>
+            <span className="text-rose-400 text-xs">🚪</span>
           </button>
         </div>
       )}
@@ -832,6 +954,7 @@ export default function AppShell({
   actions,
   back,
   children,
+  fullscreen = false,
   mainClass = 'flex-1 p-4 md:p-6 pb-24 md:pb-6 overflow-y-auto'
 }) {
   const user = useUser()
@@ -873,10 +996,22 @@ export default function AppShell({
     [tasks, user]
   )
 
-  const hasTitleRow = title || subtitle || actions || back
+  // Title is now shown in the TopBar — only keep the in-page row when there
+  // are supplementary elements (back link, subtitle, or action buttons).
+  const hasTitleRow = subtitle || actions || back
+
+  if (fullscreen) {
+    return (
+      <div className="fixed inset-0 z-[100] h-screen w-screen flex flex-col bg-[#eaedf4] dark:bg-[#111a2e] text-fg overflow-hidden">
+        <main id="main-content" tabIndex={-1} className={`${mainClass} focus:outline-none h-full w-full`}>
+          {children}
+        </main>
+      </div>
+    )
+  }
 
   return (
-    <div className="min-h-screen flex bg-surface-2/80 text-fg">
+    <div className="h-screen max-h-screen flex bg-[#eaedf4] dark:bg-[#111a2e] text-fg overflow-hidden">
       {/* Keyboard users had to tab past the whole nav and search on every page */}
       <a
         href="#main-content"
@@ -888,9 +1023,9 @@ export default function AppShell({
       {/* Push-drawer sidebar — occupies width when open, pushing content */}
       <Sidebar user={user} pendingCount={pendingCount} open={navOpen} onToggle={toggleNav} />
 
-      <div className="flex-1 flex flex-col min-w-0 min-h-0">
-        <TopBar user={user} onToggleSidebar={toggleNav} sidebarOpen={navOpen} />
-        <BroadcastBanner />
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+        <TopBar user={user} onToggleSidebar={toggleNav} sidebarOpen={navOpen} pageTitle={typeof title === 'string' ? title : undefined} />
+
 
         <main id="main-content" data-tour="main-content" tabIndex={-1} className={`${mainClass} focus:outline-none`}>
           {/* Above the page title: a read-only workspace is context for whatever
@@ -899,7 +1034,7 @@ export default function AppShell({
               console is not allowed to call. */}
           {!platform && <div className="shrink-0"><LicenceBanner /></div>}
           {hasTitleRow && (
-            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-5 shrink-0">
+            <div className="flex flex-col md:flex-row md:items-start md:justify-between flex-wrap gap-4 mb-5 shrink-0">
               <div className="min-w-0" data-tour="page-title">
                 {back && (
                   <Link
@@ -1021,3 +1156,13 @@ function IconIntegration(p) { return (
 function IconBilling(p) { return (
   <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
 )}
+function IconNotifications(p) { return (
+  <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+)}
+function IconNetwork(p) { return (
+  <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="5" r="2" /><circle cx="5" cy="19" r="2" /><circle cx="19" cy="19" r="2" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 7v4M12 11l-5.5 6M12 11l5.5 6" /></svg>
+)}
+function IconTicket(p) { return (
+  <svg {...p} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" /></svg>
+)}
+

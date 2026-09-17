@@ -8,6 +8,7 @@ import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { authStore, useUser } from '../utils/auth'
 import { toast } from '../lib/toastStore'
+import NetFlowLogo from '../components/NetFlowLogo'
 
 export default function ChangePassword() {
   const navigate = useNavigate()
@@ -17,29 +18,35 @@ export default function ChangePassword() {
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirm, setConfirm] = useState('')
-  const [show, setShow] = useState(false)
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
   const [touchedConfirm, setTouchedConfirm] = useState(false)
+  const [show, setShow] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
 
-  const mismatch = confirm.length > 0 && newPassword !== confirm
-  const showMismatch = touchedConfirm && mismatch
+  const showMismatch = Boolean(touchedConfirm && confirm && newPassword !== confirm)
 
-  const submit = async (e) => {
+  const handleSave = async (e) => {
     e.preventDefault()
-    setError('')
-    setTouchedConfirm(true)
-    if (!forced && !currentPassword) return setError('Enter your current password')
-    if (newPassword.length < 6) return setError('New password must be at least 6 characters')
-    if (newPassword !== confirm) return setError('Passwords do not match')
-
+    if (newPassword.length < 8) {
+      setError('New password must be at least 8 characters long')
+      return
+    }
+    if (newPassword !== confirm) {
+      setError('Passwords do not match')
+      return
+    }
     setBusy(true)
+    setError('')
     try {
       await authStore.changePassword(forced ? undefined : currentPassword, newPassword)
-      toast.success('Password updated')
-      navigate('/dashboard', { replace: true })
+      toast.success('Password updated successfully')
+      if (forced) {
+        navigate('/dashboard', { replace: true })
+      } else {
+        navigate('/profile')
+      }
     } catch (err) {
-      setError(err.message || 'Could not change the password')
+      setError(err.message || 'Failed to update password')
     } finally {
       setBusy(false)
     }
@@ -52,9 +59,7 @@ export default function ChangePassword() {
     <div className="min-h-screen flex items-center justify-center bg-auth-bg px-6 py-12">
       <div className="w-full max-w-sm bg-surface border border-line rounded-2xl shadow-xl p-6">
         <div className="flex items-center gap-2.5 mb-5">
-          <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shadow">
-            <img src="/netflow-icon.png" alt="NetFlow" className="w-full h-full object-contain" />
-          </div>
+          <NetFlowLogo size={36} className="w-9 h-9 shrink-0 rounded-xl" />
           <span className="font-bold text-fg text-lg">NetFlow</span>
         </div>
 
@@ -73,7 +78,7 @@ export default function ChangePassword() {
           </div>
         )}
 
-        <form onSubmit={submit} className="space-y-4">
+        <form onSubmit={handleSave} className="space-y-4">
           {!forced && (
             <label className="block">
               <span className="text-xs font-medium text-fg-muted">Current password</span>

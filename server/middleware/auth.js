@@ -56,21 +56,6 @@ const protect = async (req, res, next) => {
       })
     }
 
-    // Session validation: reject if the token contains a sessionId (sid)
-    // but it's no longer in the user's activeSessions array (single device logout).
-    if (decoded.sid && (!user.activeSessions || !user.activeSessions.includes(decoded.sid))) {
-      return res.status(401).json({
-        success: false,
-        error: 'Device session ended. Please sign in again.',
-        code: 'SESSION_REVOKED'
-      })
-    }
-    
-    // Store current sessionId on the request so the logout route can remove it.
-    if (decoded.sid) {
-      user.currentSessionId = decoded.sid
-    }
-
     // Multi-tenancy: resolve the user's organization (middleware/tenant.js)
     // and attach it so downstream code can scope every query by req.orgId.
     const tenantResult = await resolveTenantForUser(user)

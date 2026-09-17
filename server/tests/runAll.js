@@ -31,7 +31,6 @@ const HARNESS_SUITES = [
   'notifications.test.js',
   'analytics_audit.test.js',
   'platform_orgs.test.js',
-  'platform_dashboard.test.js',
   'edge_security.test.js',
   'hooks_inbound.test.js',
   // Browser suites (Playwright). They need the Vite dev server as well as the

@@ -3,7 +3,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import AppShell from '../components/AppShell'
 import { api } from '../utils/api'
-import { useUser } from '../utils/auth'
 import { useDepartmentNames } from '../lib/departmentsStore'
 import { Skeleton } from '../components/Skeleton'
 import { AlertBanner } from '../components/Alert'
@@ -18,7 +17,8 @@ const RANGES = [
   { label: 'Last 7 days',  days: 7,   months: 1,  weeks: 1  },
   { label: 'Last 30 days', days: 30,  months: 1,  weeks: 4  },
   { label: 'Last 90 days', days: 90,  months: 3,  weeks: 13 },
-  { label: 'This year',    days: 365, months: 12, weeks: 52 }
+  { label: 'This year',    days: 365, months: 12, weeks: 52 },
+  { label: 'Custom date range', isCustom: true }
 ]
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -55,20 +55,36 @@ function Panel({ title, subtitle, children, className = '' }) {
   )
 }
 
-function KpiCard({ label, value, hint, valueClass, loading, icon }) {
+function KpiCard({ label, value, hint, loading, icon, tone = 'neutral' }) {
+  const tones = {
+    neutral: 'bg-[#EEF2FF] text-[#6366F1] dark:bg-indigo-950/60 dark:text-indigo-400',
+    success: 'bg-[#E6F9F0] text-[#059669] dark:bg-emerald-950/60 dark:text-emerald-400',
+    danger: 'bg-[#FEE2E2] text-[#DC2626] dark:bg-rose-950/60 dark:text-rose-400',
+  }
+  const t = tones[tone] || tones.neutral
   return (
-    <div className="rounded-xl border border-line bg-surface px-4 py-3.5 shadow-sm flex items-start gap-3">
-      <div className="w-10 h-10 rounded-xl bg-surface-2 text-fg-muted flex items-center justify-center shrink-0 ring-1 ring-line">
-        {icon}
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-4 flex items-center gap-3.5 hover:border-slate-300 dark:hover:border-slate-700 transition min-w-0">
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${t}`}>
+        {icon ? React.cloneElement(icon, { className: 'w-4.5 h-4.5' }) : null}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">{label}</p>
-        {loading ? (
-          <Skeleton className="h-7 w-20 mt-1.5" />
-        ) : (
-          <p className={`text-2xl font-semibold mt-1 tabular-nums tracking-tight ${valueClass}`}>{value}</p>
-        )}
-        {hint ? <p className="mt-0.5 text-[11px] text-fg-muted truncate">{hint}</p> : null}
+        <div className="flex items-baseline gap-1.5 flex-wrap">
+          {loading ? (
+            <Skeleton className="h-5 w-16" />
+          ) : (
+            <span className="text-lg font-bold text-slate-900 dark:text-white leading-tight tabular-nums">
+              {value}
+            </span>
+          )}
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400 leading-tight">
+            {label}
+          </span>
+        </div>
+        {hint ? (
+          <div className="text-xs text-slate-400 dark:text-slate-500 font-medium truncate mt-0.5">
+            {hint}
+          </div>
+        ) : null}
       </div>
     </div>
   )
@@ -101,14 +117,16 @@ function EmptyChart({ message }) {
   )
 }
 
-function HorizontalBar({ label, value, suffix = '', pct, color, valueWidth = 'w-12' }) {
+function HorizontalBar({ label, value, suffix = '', pct, color, valueWidth = 'w-10' }) {
   return (
     <div className="flex items-center gap-3">
-      <span className="w-28 shrink-0 text-xs text-fg-muted text-right truncate" title={label}>{label}</span>
-      <div className="flex-1 h-2.5 rounded-full bg-surface-3 overflow-hidden">
-        <div className={`h-full rounded-full ${color} transition-all`} style={{ width: `${Math.max(2, pct)}%` }} />
+      <span className="w-24 shrink-0 text-xs font-semibold text-slate-700 dark:text-slate-300 text-left truncate" title={label}>
+        {label}
+      </span>
+      <div className="flex-1 h-2 rounded-full bg-[#E2E8F0] dark:bg-slate-700/90 overflow-hidden border border-slate-300/80 dark:border-slate-600 shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)]">
+        <div className={`h-full rounded-full ${color} transition-all duration-300`} style={{ width: `${Math.max(2, pct)}%` }} />
       </div>
-      <span className={`${valueWidth} shrink-0 text-xs font-medium text-fg text-right tabular-nums`}>
+      <span className={`${valueWidth} shrink-0 text-xs font-bold text-slate-900 dark:text-white text-right tabular-nums`}>
         {value}{suffix}
       </span>
     </div>
@@ -273,28 +291,28 @@ function ExportMenu({ onCsv, onXlsx, onPdf, disabled }) {
   }, [open])
 
   const pick = (fn) => () => { fn(); setOpen(false) }
-  const item = 'w-full text-left px-3 py-2 text-sm text-fg hover:bg-surface-2 disabled:opacity-40'
+  const item = 'w-full text-left px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60 disabled:opacity-40 cursor-pointer transition'
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative shrink-0" ref={ref}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         disabled={disabled}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-line hover:bg-surface-2 text-sm font-medium text-fg transition disabled:opacity-50"
+        className="inline-flex items-center gap-2 h-10 px-4 rounded-2xl border border-slate-200/90 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-2xs transition disabled:opacity-50 cursor-pointer"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-fg-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M12 4v12m0 0l-4-4m4 4l4-4" />
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
         </svg>
-        Export
-        <svg xmlns="http://www.w3.org/2000/svg" className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        <span>Export</span>
+        <svg xmlns="http://www.w3.org/2000/svg" className={`w-3.5 h-3.5 text-slate-500 dark:text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
         </svg>
       </button>
       {open && (
-        <div role="menu" aria-label="Export format" className="absolute right-0 mt-1 w-44 bg-surface border border-line rounded-xl shadow-lg z-20 py-1 overflow-hidden">
+        <div role="menu" aria-label="Export format" className="absolute right-0 mt-1.5 w-44 bg-white dark:bg-slate-800 border border-slate-200/90 dark:border-slate-700 rounded-2xl shadow-lg z-20 py-1.5 overflow-hidden">
           <button type="button" role="menuitem" className={item} onClick={pick(onCsv)}>CSV (.csv)</button>
           <button type="button" role="menuitem" className={item} onClick={pick(onXlsx)}>Excel (.xlsx)</button>
           <button type="button" role="menuitem" className={item} onClick={pick(onPdf)}>PDF (.pdf)</button>
@@ -329,13 +347,18 @@ function IconAlert(props) {
 }
 
 function Analytics() {
-  const user = useUser()
   const [range, setRange] = useState(RANGES[1])
   const [department, setDepartment] = useState('')
   const orgDepartments = useDepartmentNames()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [summary, setSummary] = useState(null)
+
+  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), [])
+  const thirtyDaysAgoStr = useMemo(() => new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10), [])
+  const [startDate, setStartDate] = useState(thirtyDaysAgoStr)
+  const [endDate, setEndDate] = useState(todayStr)
+
   // What the API actually counted. A leader only ever sees their own people, so
   // saying "whole workspace" over their numbers would be a lie.
   const [scope, setScope] = useState(null)
@@ -351,16 +374,36 @@ function Analytics() {
     setError('')
 
     const iso = (d) => d.toISOString().slice(0, 10)
-    const fromDate = new Date(Date.now() - Math.max(0, range.days - 1) * 86400000)
+    let fromStr = ''
+    let toStr = ''
+    let monthsParam = 1
+    let weeksParam = 4
+
+    if (range.isCustom) {
+      fromStr = startDate || thirtyDaysAgoStr
+      toStr = endDate || todayStr
+      const startMs = new Date(fromStr).getTime()
+      const endMs = new Date(toStr).getTime()
+      const diffDays = Math.max(1, Math.round((endMs - startMs) / 86400000) + 1)
+      monthsParam = Math.min(24, Math.max(1, Math.ceil(diffDays / 30)))
+      weeksParam = Math.min(52, Math.max(1, Math.ceil(diffDays / 7)))
+    } else {
+      const fromDate = new Date(Date.now() - Math.max(0, range.days - 1) * 86400000)
+      fromStr = iso(fromDate)
+      toStr = iso(new Date())
+      monthsParam = range.months
+      weeksParam = range.weeks
+    }
+
     const dept = department ? `&department=${encodeURIComponent(department)}` : ''
-    const win = `from=${iso(fromDate)}&to=${iso(new Date())}${dept}`
+    const win = `from=${encodeURIComponent(fromStr)}&to=${encodeURIComponent(toStr)}${dept}`
 
     Promise.allSettled([
       api.get(`/api/analytics/summary?${win}`),
-      api.get(`/api/analytics/completion-time?months=${range.months}${dept}`),
+      api.get(`/api/analytics/completion-time?from=${encodeURIComponent(fromStr)}&to=${encodeURIComponent(toStr)}&months=${monthsParam}${dept}`),
       api.get(`/api/analytics/approval-rate?${win}`),
       api.get(`/api/analytics/department-kpis?${win}`),
-      api.get(`/api/analytics/sla-breaches?weeks=${range.weeks}${dept}`)
+      api.get(`/api/analytics/sla-breaches?from=${encodeURIComponent(fromStr)}&to=${encodeURIComponent(toStr)}&weeks=${weeksParam}${dept}`)
     ]).then((results) => {
       if (cancelled) return
       const [s, c, a, d, sla] = results
@@ -428,7 +471,7 @@ function Analytics() {
       setLoading(false)
     })
     return () => { cancelled = true }
-  }, [range, department, reloadKey])
+  }, [range, startDate, endDate, department, reloadKey])
 
   const kpis = useMemo(() => {
     const completionAvg = completion.length
@@ -443,6 +486,7 @@ function Analytics() {
         valueClass: 'text-fg',
         hint: 'Mean time to finish',
         icon: <IconClock className="w-5 h-5" />,
+        tone: 'neutral',
       },
       {
         label: 'Approval rate',
@@ -450,6 +494,7 @@ function Analytics() {
         valueClass: 'text-success-fg',
         hint: 'Approved vs decided',
         icon: <IconCheck className="w-5 h-5" />,
+        tone: 'success',
       },
       {
         label: 'SLA breaches',
@@ -457,9 +502,12 @@ function Analytics() {
         valueClass: 'text-danger-fg',
         hint: 'In selected range',
         icon: <IconAlert className="w-5 h-5" />,
+        tone: 'danger',
       },
     ]
   }, [completion, outcomes, slaTrend, summary])
+
+  const rangeDisplay = range.isCustom ? `${startDate} to ${endDate}` : range.label
 
   const exportCsv = () => {
     const rows = [
@@ -491,14 +539,14 @@ function Analytics() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `analytics-${range.label.toLowerCase().replaceAll(' ', '-')}.csv`
+    a.download = `analytics-${rangeDisplay.toLowerCase().replaceAll(' ', '-')}.csv`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
   }
 
-  const fileBase = `analytics-${range.label.toLowerCase().replaceAll(' ', '-')}`
+  const fileBase = `analytics-${rangeDisplay.toLowerCase().replaceAll(' ', '-')}`
 
   const exportXlsx = () => {
     const wb = XLSX.utils.book_new()
@@ -523,7 +571,7 @@ function Analytics() {
     doc.text('NetFlow — Analytics Report', 14, 18)
     doc.setFontSize(10)
     doc.setTextColor(120)
-    doc.text(`Range: ${range.label}     Generated: ${new Date().toLocaleString()}`, 14, 25)
+    doc.text(`Range: ${rangeDisplay}     Generated: ${new Date().toLocaleString()}`, 14, 25)
     doc.setTextColor(0)
 
     const section = (head, body, fillColor) => {
@@ -549,51 +597,94 @@ function Analytics() {
   }
 
   const actions = (
-    <>
-        {scope?.reach === 'team' ? (
-          <div className="px-3 py-1.5 rounded-md border border-line bg-surface-2/50 text-sm font-medium text-fg-muted min-w-[140px] text-center truncate">
-            {user?.department || 'My team'}
-          </div>
-        ) : (
+    <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+      {scope?.reach !== 'team' && (
+        <div className="relative shrink-0">
           <select
-            className="px-3 py-1.5 rounded-md border border-line bg-surface text-sm font-medium text-fg min-w-[140px] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
             value={department}
             onChange={(e) => setDepartment(e.target.value)}
             aria-label="Filter by department"
+            className="appearance-none h-10 pl-4 pr-8.5 text-xs font-bold rounded-2xl border border-slate-200/90 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-2xs transition cursor-pointer"
           >
             <option value="">All departments</option>
             {orgDepartments.map((d) => <option key={d} value={d}>{d}</option>)}
           </select>
-        )}
-      <select
-        value={range.label}
-        onChange={(e) => setRange(RANGES.find((r) => r.label === e.target.value) || RANGES[1])}
-        aria-label="Date range"
-        className={selectCls}
-      >
-        {RANGES.map((r) => <option key={r.label}>{r.label}</option>)}
-      </select>
+          <svg
+            className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 pointer-events-none absolute right-3 top-1/2 -translate-y-1/2"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth="2.5"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+          </svg>
+        </div>
+      )}
+
+      <div className="relative shrink-0">
+        <select
+          value={range.label}
+          onChange={(e) => setRange(RANGES.find((r) => r.label === e.target.value) || RANGES[1])}
+          aria-label="Date range"
+          className="appearance-none h-10 pl-4 pr-8.5 text-xs font-bold rounded-2xl border border-slate-200/90 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-2xs transition cursor-pointer"
+        >
+          {RANGES.map((r) => <option key={r.label}>{r.label}</option>)}
+        </select>
+        <svg
+          className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 pointer-events-none absolute right-3 top-1/2 -translate-y-1/2"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth="2.5"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+        </svg>
+      </div>
+
+      {range.isCustom && (
+        <div className="flex items-center gap-1.5 shrink-0 animate-in fade-in duration-200">
+          <input
+            type="date"
+            value={startDate}
+            max={endDate || todayStr}
+            onChange={(e) => setStartDate(e.target.value)}
+            aria-label="Start date"
+            className="h-10 px-3 text-xs font-bold rounded-2xl border border-slate-200/90 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-2xs transition cursor-pointer"
+          />
+          <span className="text-xs text-slate-400 font-bold px-0.5">to</span>
+          <input
+            type="date"
+            value={endDate}
+            min={startDate}
+            max={todayStr}
+            onChange={(e) => setEndDate(e.target.value)}
+            aria-label="End date"
+            className="h-10 px-3 text-xs font-bold rounded-2xl border border-slate-200/90 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-2xs transition cursor-pointer"
+          />
+        </div>
+      )}
+
       <ExportMenu
         onCsv={exportCsv}
         onXlsx={exportXlsx}
         onPdf={exportPdf}
         disabled={loading}
       />
-    </>
+    </div>
   )
 
   const scopeNote = department
-    ? `${department} · ${range.label}`
+    ? `${department} · ${rangeDisplay}`
     : scope?.reach === 'team'
-      ? `Your team · ${range.label}`
-      : `Whole workspace · ${range.label}`
+      ? `Your team · ${rangeDisplay}`
+      : `Whole workspace · ${rangeDisplay}`
 
   return (
     <AppShell
       title="Analytics & reports"
       subtitle={scopeNote}
       actions={actions}
-      mainClass="flex-1 min-h-0 flex flex-col p-4 md:p-6 pb-24 md:pb-6 overflow-hidden"
+      mainClass="flex-1 min-h-0 flex flex-col p-4 md:p-6 pb-24 md:pb-6 bg-[#e2e8f0] dark:bg-[#0b1120] overflow-hidden"
     >
       <div className="flex-1 min-h-0 flex flex-col gap-4 w-full overflow-hidden">
         {error && (
@@ -602,7 +693,8 @@ function Analytics() {
           </div>
         )}
 
-        <div className="shrink-0 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {/* Top Summary Cards */}
+        <div className="shrink-0 grid grid-cols-1 sm:grid-cols-3 gap-4">
           {kpis.map((k) => (
             <KpiCard key={k.label} {...k} loading={loading} />
           ))}

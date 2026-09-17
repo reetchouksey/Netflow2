@@ -8,7 +8,7 @@
 // fall back to the six names that used to be hard-coded on the User model, so
 // nothing has to be migrated before an admin opens the Departments page.
 
-const DEFAULT_DEPARTMENTS = ['HR', 'Finance', 'IT', 'Operations', 'Sales', 'Legal']
+const DEFAULT_DEPARTMENTS = ['HR', 'Finance', 'IT', 'Operations', 'Sales', 'Legal', 'Corporate']
 
 const MAX_DEPARTMENTS = 100
 const MAX_NAME_LENGTH = 40

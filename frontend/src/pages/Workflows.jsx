@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import EmptyState from '../components/EmptyState'
@@ -9,75 +9,159 @@ import { useUser } from '../utils/auth'
 import { canCreateWorkflow, canEditWorkflow } from '../utils/permissions'
 import { confirm } from '../lib/confirmStore'
 import { toast } from '../lib/toastStore'
-import { categoryBadge } from '../utils/badges'
-import { useReadOnly } from '../lib/usageStore'
+import { useReadOnly, useUsage } from '../lib/usageStore'
+import { useOutsideDismiss } from '../utils/a11y'
 
-const formatDate = (iso) => {
+function getWorkflowTag(w) {
   try {
-    return new Date(iso).toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    })
-  } catch {
-    return ''
+    const stored = JSON.parse(localStorage.getItem('netflow_wf_tags') || '{}')
+    if (w.id && stored[w.id]) {
+      const v = stored[w.id]
+      const first = Array.isArray(v) ? v[0] : String(v).trim().split(/[,\s]+/)[0]
+      if (first) return first.startsWith('#') ? first : `#${first}`
+    }
+    if (w._id && stored[w._id]) {
+      const v = stored[w._id]
+      const first = Array.isArray(v) ? v[0] : String(v).trim().split(/[,\s]+/)[0]
+      if (first) return first.startsWith('#') ? first : `#${first}`
+    }
+    if (w.name && stored[w.name]) {
+      const v = stored[w.name]
+      const first = Array.isArray(v) ? v[0] : String(v).trim().split(/[,\s]+/)[0]
+      if (first) return first.startsWith('#') ? first : `#${first}`
+    }
+  } catch (e) {}
+
+  const rawTags = w.tags || w.metadata?.tags
+  if (rawTags) {
+    const first = Array.isArray(rawTags) ? rawTags[0] : String(rawTags).trim().split(/[,\s]+/)[0]
+    if (first) return first.startsWith('#') ? first : `#${first}`
   }
+
+  if (w.name === 'Leave Approval Workflow' || w.title === 'Leave Approval Workflow' || w.name === 'Leave Workflow') {
+    return 'WT'
+  }
+  if (w.name === 'Payment Voucher Approval' || w.title === 'Payment Voucher Approval') {
+    return 'FIN'
+  }
+  if (w.category && w.category !== 'General') {
+    return w.category
+  }
+  return null
 }
 
-const fieldCls =
-  'w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-line bg-surface-2 text-fg placeholder:text-fg-subtle focus:bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition'
-const selectCls =
-  'px-3 py-2 text-sm rounded-lg border border-line bg-surface text-fg focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition'
+/* ─── Workflow Card Action Dropdown Menu ─────────────────────────────── */
+function WorkflowRowMenu({ workflow, canEdit, canCreate, onEdit, onToggleStatus, onDelete }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  useOutsideDismiss(open, ref, () => setOpen(false))
 
-function SearchIcon() {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-fg-subtle absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
-    </svg>
+    <div className="relative shrink-0" ref={ref}>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          setOpen((o) => !o)
+        }}
+        className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center transition cursor-pointer"
+        title="More options"
+      >
+        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-1.5 w-44 bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 rounded-xl shadow-xl z-30 py-1.5 text-xs animate-in fade-in zoom-in-95 duration-100">
+          {canEdit && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                setOpen(false)
+                onEdit()
+              }}
+              className="w-full text-left px-3.5 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60 font-medium flex items-center gap-2.5 transition"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+              Edit workflow
+            </button>
+          )}
+          {canCreate && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                setOpen(false)
+                onToggleStatus()
+              }}
+              className="w-full text-left px-3.5 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60 font-medium flex items-center gap-2.5 transition"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              {workflow.status === 'Active' ? 'Pause workflow' : 'Activate workflow'}
+            </button>
+          )}
+          {canCreate && (
+            <>
+              <div className="my-1 border-t border-slate-100 dark:border-slate-700/60" />
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setOpen(false)
+                  onDelete()
+                }}
+                className="w-full text-left px-3.5 py-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 font-medium flex items-center gap-2.5 transition"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path strokeLinecap="round" strokeLinejoin="round" d="M19 6l-1 14H6L5 6m5 0V4h4v2"/></svg>
+                Delete workflow
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
-function WorkflowGlyph({ className = 'w-4 h-4' }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-    </svg>
-  )
-}
-
-function IconWorkflow(props) {
-  return (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-      <circle cx="6" cy="6" r="2.5" />
-      <circle cx="18" cy="12" r="2.5" />
-      <circle cx="6" cy="18" r="2.5" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M8.5 7.5l7 3.5M8.5 16.5l7-3.5" />
-    </svg>
-  )
-}
-
-function StatusBadge({ status, onClick, interactive }) {
+/* ─── Workflow Status Pill Badge ─────────────────────────────────────── */
+function WorkflowStatusBadge({ status, onClick, interactive }) {
   const active = status === 'Active'
-  const cls = active
-    ? 'bg-success-subtle text-success-fg'
-    : 'bg-surface-3 text-fg-muted'
-  const base = `inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${cls}`
+  const paused = status === 'Paused'
+
+  let cls = 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+  let dotColor = 'bg-slate-400'
+
+  if (active) {
+    cls = 'bg-[#DCFCE7] text-[#16A34A] dark:bg-emerald-950/60 dark:text-emerald-400'
+    dotColor = 'bg-[#16A34A]'
+  } else if (paused) {
+    cls = 'bg-[#FEF3C7] text-[#D97706] dark:bg-amber-950/60 dark:text-amber-400'
+    dotColor = 'bg-[#D97706]'
+  }
+
+  const base = `inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${cls}`
+
   if (!interactive) {
     return (
       <span className={base}>
-        <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-success-fg' : 'bg-fg-subtle'}`} />
+        <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
         {status}
       </span>
     )
   }
+
   return (
     <button
       type="button"
-      onClick={onClick}
-      title={active ? 'Deactivate workflow' : 'Activate workflow'}
-      className={`${base} hover:brightness-95 transition`}
+      onClick={(e) => {
+        e.stopPropagation()
+        onClick?.()
+      }}
+      title={active ? 'Pause workflow' : 'Activate workflow'}
+      className={`${base} hover:brightness-95 transition cursor-pointer`}
     >
-      <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-success-fg' : 'bg-fg-subtle'}`} />
+      <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
       {status}
     </button>
   )
@@ -91,48 +175,78 @@ function Workflows() {
   const canCreate = canCreateWorkflow(me)
   const canEdit = canEditWorkflow(me)
   const readOnly = useReadOnly()
+  const { usage } = useUsage()
   const [search, setSearch] = useState('')
+  const [tagFilter, setTagFilter] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('All categories')
-  const [tagFilter, setTagFilter] = useState(null)
-  const [statusFilter, setStatusFilter] = useState('All status')
+  const [statusFilter, setStatusFilter] = useState('All') // 'All' | 'Active' | 'Drafts' | 'Paused'
+  const [sortBy, setSortBy] = useState('recently_updated') // 'recently_updated' | 'name' | 'steps'
   const [booting, setBooting] = useState(true)
-  useEffect(() => { workflowsStore.refresh().finally(() => setBooting(false)) }, [])
+  const [currentPage, setCurrentPage] = useState(1)
+  const pageSize = 10
 
-  // Derive unique tags based on current category filter (before tag filter is applied)
-  const uniqueTags = useMemo(() => {
-    const categoryMatched = workflows.filter((w) => categoryFilter === 'All categories' || w.category === categoryFilter)
-    const tags = new Set()
-    for (const w of categoryMatched) {
-      if (Array.isArray(w.tags)) {
-        for (const t of w.tags) {
-          tags.add(t)
-        }
-      }
-    }
-    return Array.from(tags).sort()
-  }, [workflows, categoryFilter])
-
-  // Reset tag filter if we switch categories and the tag isn't there anymore
   useEffect(() => {
-    if (tagFilter && !uniqueTags.includes(tagFilter)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setTagFilter(null)
-    }
-  }, [uniqueTags, tagFilter])
+    workflowsStore.refresh().finally(() => setBooting(false))
+  }, [])
+
+  const activeCount = useMemo(() => workflows.filter((w) => w.status === 'Active').length, [workflows])
+  const draftCount = useMemo(() => workflows.filter((w) => w.status === 'Draft').length, [workflows])
+  const pausedCount = useMemo(() => workflows.filter((w) => w.status === 'Paused').length, [workflows])
+
+  // Plan usage calculation from live organization usage
+  const planUsed = usage?.resources?.workflows?.used ?? workflows.length
+  const planLimit = usage?.licence?.limits?.maxWorkflows || usage?.resources?.workflows?.limit || 100
+  const planRemaining = Math.max(0, planLimit - planUsed)
+  const planPct = usage?.resources?.workflows?.percent != null ? usage.resources.workflows.percent : (planLimit > 0 ? Math.round((planUsed / planLimit) * 100) : 0)
 
   const filtered = useMemo(() => {
-    return workflows.filter((w) => {
+    let result = workflows.filter((w) => {
+      const q = search.trim().toLowerCase()
+      const wfTag = (getWorkflowTag(w) || '').toLowerCase()
+      const rawTags = (Array.isArray(w.tags) ? w.tags.join(' ') : String(w.tags || '')).toLowerCase()
+
       const matchesSearch =
-        !search.trim() ||
-        w.name.toLowerCase().includes(search.toLowerCase()) ||
-        (w.description || '').toLowerCase().includes(search.toLowerCase()) ||
-        (Array.isArray(w.tags) && w.tags.some(t => t.toLowerCase().includes(search.toLowerCase())))
+        !q ||
+        w.name.toLowerCase().includes(q) ||
+        (w.description || '').toLowerCase().includes(q) ||
+        wfTag.includes(q) ||
+        rawTags.includes(q)
+
       const matchesCat = categoryFilter === 'All categories' || w.category === categoryFilter
-      const matchesStatus = statusFilter === 'All status' || w.status === statusFilter
-      const matchesTag = !tagFilter || (Array.isArray(w.tags) && w.tags.includes(tagFilter))
-      return matchesSearch && matchesCat && matchesStatus && matchesTag
+
+      const t = tagFilter.trim().toLowerCase().replace(/^#/, '')
+      const matchesTag = !t || wfTag.replace(/^#/, '').includes(t) || rawTags.replace(/^#/, '').includes(t)
+
+      let matchesStatus = true
+      if (statusFilter === 'Active') matchesStatus = w.status === 'Active'
+      else if (statusFilter === 'Drafts') matchesStatus = w.status === 'Draft'
+      else if (statusFilter === 'Paused') matchesStatus = w.status === 'Paused'
+
+      return matchesSearch && matchesCat && matchesTag && matchesStatus
     })
-  }, [workflows, search, categoryFilter, statusFilter, tagFilter])
+
+    if (sortBy === 'recently_updated') {
+      result.sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
+    } else if (sortBy === 'name') {
+      result.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    } else if (sortBy === 'steps') {
+      result.sort((a, b) => (b.nodes?.length || 0) - (a.nodes?.length || 0))
+    }
+
+    return result
+  }, [workflows, search, categoryFilter, tagFilter, statusFilter, sortBy])
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [search, categoryFilter, tagFilter, statusFilter, sortBy])
+
+  const totalPages = Math.ceil(filtered.length / pageSize) || 1
+  const startIndex = (currentPage - 1) * pageSize
+  const endIndex = Math.min(startIndex + pageSize, filtered.length)
+  const paginatedWorkflows = useMemo(() => {
+    return filtered.slice(startIndex, endIndex)
+  }, [filtered, startIndex, endIndex])
 
   const handleToggleStatus = async (w) => {
     if (w.status === 'Active') {
@@ -154,12 +268,21 @@ function Workflows() {
 
   const handleDelete = async (w) => {
     const ok = await confirm({
-      title: 'Delete workflow?',
-      message: 'This permanently deletes the workflow and its runs and tasks. This cannot be undone.',
-      confirmLabel: 'Delete',
+      title: `Delete "${w.name}" workflow?`,
+      message: `Are you sure you want to delete "${w.name}"?`,
+      confirmLabel: 'Delete workflow',
       danger: true,
     })
     if (!ok) return
+
+    const finalOk = await confirm({
+      title: `Final Confirmation: Delete "${w.name}"?`,
+      message: `Are you absolutely sure you want to permanently delete "${w.name}"? This action cannot be undone. All associated tasks, configurations, and execution histories will be deleted.`,
+      confirmLabel: 'Yes, delete permanently',
+      danger: true,
+    })
+    if (!finalOk) return
+
     try {
       await workflowsStore.remove(w.id)
       toast.success('Workflow deleted')
@@ -168,323 +291,385 @@ function Workflows() {
     }
   }
 
-  const actions = canCreate ? (
-    <button
-      data-tour="workflows-create"
-      onClick={() => navigate('/workflows/new')}
-      disabled={readOnly}
-      title={readOnly ? 'The workspace licence has expired — new workflows are paused.' : undefined}
-      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold shadow-sm transition"
-    >
-      <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-      </svg>
-      New workflow
-    </button>
-  ) : null
+  const tabs = [
+    { key: 'All', label: 'All' },
+    { key: 'Active', label: 'Active' },
+    { key: 'Drafts', label: 'Drafts' },
+    { key: 'Paused', label: 'Paused' },
+  ]
+
+  const formatUpdatedDate = (w) => {
+    const d = new Date(w.updatedAt || w.createdAt || Date.now())
+    const day = d.getDate()
+    const month = d.toLocaleString('en-US', { month: 'short' })
+    const year = d.getFullYear()
+    return `Updated ${day} ${month} ${year}`
+  }
 
   return (
     <AppShell
       title="Workflows"
-      subtitle="Design approval routes and automation"
-      actions={actions}
-      mainClass="flex-1 min-h-0 flex flex-col p-4 md:p-6 pb-24 md:pb-6 overflow-hidden @container/main"
     >
-      <div className="flex-1 min-h-0 flex flex-col @6xl/main:flex-row gap-6 w-full">
-        {/* Left Sidebar (Macro Grouping: Departments) */}
-        <div className="w-full @6xl/main:w-56 @7xl/main:w-64 shrink-0">
-          <div className="bg-transparent @6xl/main:bg-surface @6xl/main:border border-line @6xl/main:rounded-xl px-1 pt-1 pb-3 @6xl/main:p-3 @6xl/main:shadow-sm flex flex-row @6xl/main:flex-col gap-2 @6xl/main:gap-1 overflow-x-auto no-scrollbar @6xl/main:pb-0">
-            <h3 className="hidden @6xl/main:block text-xs font-bold text-fg-subtle uppercase tracking-wider mb-2 px-3 pt-2">Departments</h3>
+      <div className="flex flex-col gap-5 w-full max-w-7xl mx-auto">
+        {/* Top Header Row */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
+          <div>
+            <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Workflows</h1>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+              {workflows.length} total · {activeCount} active
+            </p>
+          </div>
+          {canCreate && (
             <button
-              onClick={() => setCategoryFilter('All categories')}
-              className={`shrink-0 whitespace-nowrap text-left px-3.5 py-1.5 @6xl/main:py-2 rounded-full @6xl/main:rounded-lg text-sm font-medium transition ${
-                categoryFilter === 'All categories' 
-                  ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300 ring-1 ring-indigo-200 dark:ring-indigo-500/30 @6xl/main:ring-0' 
-                  : 'text-fg hover:bg-surface-2 border border-line @6xl/main:border-transparent'
-              }`}
+              data-tour="workflows-create"
+              onClick={() => navigate('/workflows/new')}
+              disabled={readOnly}
+              title={readOnly ? 'The workspace licence has expired — new workflows are paused.' : undefined}
+              className="inline-flex items-center gap-2 px-4.5 py-2.5 rounded-2xl bg-[#6366F1] hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold shadow-md shadow-indigo-500/20 transition cursor-pointer"
             >
-              All Workflows
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              New workflow
             </button>
-            {categories.map((c) => (
-              <button
-                key={c}
-                onClick={() => setCategoryFilter(c)}
-                className={`shrink-0 whitespace-nowrap text-left px-3.5 py-1.5 @6xl/main:py-2 rounded-full @6xl/main:rounded-lg text-sm font-medium transition ${
-                  categoryFilter === c 
-                    ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300 ring-1 ring-indigo-200 dark:ring-indigo-500/30 @6xl/main:ring-0' 
-                    : 'text-fg hover:bg-surface-2 border border-line @6xl/main:border-transparent'
-                }`}
-              >
-                {c}
-              </button>
-            ))}
+          )}
+        </div>
+
+        {/* Enterprise Plan Usage Bar Card */}
+        <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 py-4 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shrink-0">
+          <div className="flex items-center gap-3 text-xs">
+            <span className="bg-[#EEF2FF] dark:bg-indigo-500/15 text-[#6366F1] dark:text-indigo-400 font-bold px-3 py-1 rounded-xl text-[11px]">
+              Enterprise plan
+            </span>
+            <div className="text-slate-600 dark:text-slate-300">
+              <span className="font-bold text-slate-900 dark:text-white">{planUsed} of {planLimit} workflows used</span>{' '}
+              <span className="text-slate-400 dark:text-slate-500">· {planRemaining} workflows left</span>
+            </div>
+          </div>
+          <div className="w-full sm:w-72 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+              style={{ width: `${Math.min(planPct, 100)}%` }}
+            />
           </div>
         </div>
 
-        {/* Main Content Area */}
-        <div className="flex-1 min-w-0 flex flex-col gap-4">
-          <div data-tour="workflows-list" className="flex-1 min-h-0 flex flex-col bg-surface border border-line rounded-xl shadow-sm overflow-hidden">
-            {/* Top Bar (Micro Grouping: Tags & Filters) */}
-            <div className="shrink-0 px-5 py-4 flex flex-col gap-3 border-b border-line bg-surface-2/40">
-              <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-                <div className="relative flex-1 min-w-0">
-                  <SearchIcon />
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search by name or description…"
-                    aria-label="Search workflows"
-                    className={fieldCls}
-                  />
-                </div>
-                <div className="flex flex-wrap items-center gap-2 shrink-0">
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    aria-label="Filter by status"
-                    className={selectCls}
-                  >
-                    <option>All status</option>
-                    <option>Active</option>
-                    <option>Paused</option>
-                    <option>Draft</option>
-                  </select>
-                  
-                  {uniqueTags.length > 0 && (
-                    <select
-                      value={tagFilter || ''}
-                      onChange={(e) => setTagFilter(e.target.value === '' ? null : e.target.value)}
-                      aria-label="Filter by tag"
-                      className={selectCls}
-                    >
-                      <option value="">All tags</option>
-                      {uniqueTags.map(tag => (
-                        <option key={tag} value={tag}>#{tag}</option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-              </div>
-            </div>
+        {/* Search, Tag & Category Filters */}
+        <div className="shrink-0 flex flex-wrap items-center justify-between gap-3">
+          <div className="relative flex-1 min-w-[200px] max-w-sm">
+            <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search workflows..."
+              aria-label="Search workflows"
+              className="w-full h-10 pl-9 pr-4 text-xs font-medium rounded-2xl border border-slate-200/90 dark:border-slate-700 bg-white dark:bg-[#111a2e] text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-2xs transition"
+            />
+          </div>
 
-            <div className="flex-1 min-h-0 overflow-auto">
-              {booting && workflows.length === 0 ? (
-                <div className="divide-y divide-line">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="px-5 py-4 flex items-center gap-4">
-                      <Skeleton className="w-10 h-10 rounded-xl shrink-0" />
-                      <div className="flex-1 space-y-2">
-                        <Skeleton className="h-4 w-56" />
-                        <Skeleton className="h-3 w-80 max-w-full" />
-                      </div>
-                      <Skeleton className="h-6 w-16 rounded-full hidden sm:block" />
-                      <Skeleton className="h-8 w-20 rounded-lg" />
-                    </div>
-                  ))}
-                </div>
-              ) : filtered.length === 0 ? (
-                <div className="h-full min-h-[16rem] flex items-center justify-center">
-                  <EmptyState
-                    icon={<IconWorkflow className="w-5 h-5" />}
-                    title={workflows.length === 0 ? 'No workflows yet' : 'No workflows match'}
-                    description={
-                      workflows.length === 0
-                        ? canCreate
-                          ? 'Create a workflow to route form submissions through approvals and automations.'
-                          : 'No workflows have been published yet. Ask an Admin or Manager to create one.'
-                        : 'Try a different search or clear the filters.'
-                    }
-                    action={
-                      workflows.length === 0 && canCreate ? (
-                        <button
-                          onClick={() => navigate('/workflows/new')}
-                          className="mt-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-sm transition"
-                        >
-                          Create workflow
-                        </button>
-                      ) : null
-                    }
-                  />
-                </div>
-              ) : (
-                <>
-                  <div className="hidden md:block w-full">
-                    <table className="w-full table-fixed text-sm">
-                      <colgroup>
-                        <col />
-                        <col className="w-[8rem]" />
-                        <col className="w-[5.5rem]" />
-                        <col className="w-[7.5rem]" />
-                        <col className="w-[7rem]" />
-                        <col className="w-[10rem]" />
-                      </colgroup>
-                      <thead className="sticky top-0 z-10">
-                        <tr className="text-left text-[11px] font-semibold tracking-wider text-fg-subtle uppercase border-b border-line bg-surface-2/95 backdrop-blur-sm">
-                          <th scope="col" className="px-5 py-3 font-semibold">Workflow</th>
-                          <th scope="col" className="px-4 py-3 font-semibold">Category</th>
-                          <th scope="col" className="px-4 py-3 font-semibold text-right">Steps</th>
-                          <th scope="col" className="px-4 py-3 font-semibold">Status</th>
-                          <th scope="col" className="px-4 py-3 font-semibold">Created</th>
-                          <th scope="col" className="px-5 py-3 font-semibold text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-line">
-                        {filtered.map((w) => (
-                          <tr key={w.id} className="group hover:bg-surface-2/50 transition">
-                            <td className="px-5 py-3.5">
-                              <div className="flex items-start gap-3 min-w-0">
-                                <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300 flex items-center justify-center shrink-0 ring-1 ring-indigo-100 dark:ring-indigo-500/20">
-                                  <WorkflowGlyph className="w-[18px] h-[18px]" />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <button
-                                    type="button"
-                                    disabled={!canEdit}
-                                    onClick={() => canEdit && navigate(`/workflows/${w.id}/edit`)}
-                                    className="text-left font-semibold text-fg hover:text-indigo-600 disabled:hover:text-fg transition truncate w-full block"
-                                  >
-                                    {w.name || 'Untitled workflow'}
-                                  </button>
-                                  <p className="mt-0.5 text-xs text-fg-muted truncate">
-                                    {w.description || 'No description'}
-                                  </p>
-                                  {Array.isArray(w.tags) && w.tags.length > 0 && (
-                                    <div className="mt-1.5 flex items-center gap-1.5 flex-nowrap overflow-hidden">
-                                      {w.tags.slice(0, 2).map(tag => (
-                                        <span key={tag} className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-indigo-50/50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-100/50 dark:border-indigo-500/20 whitespace-nowrap">
-                                          #{tag}
-                                        </span>
-                                      ))}
-                                      {w.tags.length > 2 && (
-                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-surface-2 dark:bg-surface-3 text-fg-muted border border-line whitespace-nowrap">
-                                          +{w.tags.length - 2}
-                                        </span>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3.5 align-top">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium mt-1 ${categoryBadge(w.category)}`}>
-                                {w.category || '—'}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3.5 text-right tabular-nums text-fg font-medium align-top"><span className="block mt-1">{w.steps ?? 0}</span></td>
-                            <td className="px-4 py-3.5 align-top">
-                              <div className="mt-1">
-                                <StatusBadge
-                                  status={w.status}
-                                  interactive={canCreate}
-                                  onClick={() => handleToggleStatus(w)}
-                                />
-                              </div>
-                            </td>
-                            <td className="px-4 py-3.5 text-xs text-fg-muted whitespace-nowrap align-top"><span className="block mt-1.5">{formatDate(w.createdAt)}</span></td>
-                            <td className="px-5 py-3.5 align-top">
-                              <div className="flex items-center justify-end gap-1.5 mt-0.5">
-                                {canEdit && (
-                                  <button
-                                    type="button"
-                                    onClick={() => navigate(`/workflows/${w.id}/edit`)}
-                                    className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition"
-                                  >
-                                    Edit
-                                  </button>
-                                )}
-                                {canCreate && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDelete(w)}
-                                    title="Delete workflow"
-                                    aria-label={`Delete ${w.name}`}
-                                    className="w-8 h-8 rounded-lg border border-line text-fg-muted hover:text-danger-fg hover:border-danger-line hover:bg-danger-subtle flex items-center justify-center transition"
-                                  >
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3" />
-                                    </svg>
-                                  </button>
-                                )}
-                                {!canEdit && !canCreate && <span className="text-xs text-fg-subtle">—</span>}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-  
-                  <ul className="md:hidden divide-y divide-line">
-                    {filtered.map((w) => (
-                      <li key={w.id} className="px-4 py-4">
-                        <div className="flex items-start gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300 flex items-center justify-center shrink-0">
-                            <WorkflowGlyph className="w-[18px] h-[18px]" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="font-semibold text-fg truncate">{w.name || 'Untitled workflow'}</p>
-                            <p className="text-xs text-fg-muted line-clamp-2 mt-0.5">
-                              {w.description || 'No description'}
-                            </p>
-                            {Array.isArray(w.tags) && w.tags.length > 0 && (
-                              <div className="mt-2 flex items-center gap-1.5 flex-nowrap overflow-hidden">
-                                {w.tags.slice(0, 2).map(tag => (
-                                  <span key={tag} className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-indigo-50/50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-100/50 dark:border-indigo-500/20 whitespace-nowrap">
-                                    #{tag}
-                                  </span>
-                                ))}
-                                {w.tags.length > 2 && (
-                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-surface-2 dark:bg-surface-3 text-fg-muted border border-line whitespace-nowrap">
-                                    +{w.tags.length - 2}
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                            <div className="mt-3 flex flex-wrap items-center gap-2">
-                              {w.category && (
-                                <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium ${categoryBadge(w.category)}`}>
-                                  {w.category}
-                                </span>
-                              )}
-                              <StatusBadge
-                                status={w.status}
-                                interactive={canCreate}
-                                onClick={() => handleToggleStatus(w)}
-                              />
-                              <span className="text-[11px] text-fg-subtle">
-                                {w.steps ?? 0} steps · {formatDate(w.createdAt)}
-                              </span>
-                            </div>
-                            <div className="mt-3 flex items-center gap-2">
-                              {canEdit && (
-                                <button
-                                  type="button"
-                                  onClick={() => navigate(`/workflows/${w.id}/edit`)}
-                                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white"
-                                >
-                                  Edit
-                                </button>
-                              )}
-                              {canCreate && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleDelete(w)}
-                                  className="px-3 py-1.5 rounded-lg text-xs font-medium border border-line text-danger-fg"
-                                >
-                                  Delete
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </>
+          <div className="flex items-center gap-2.5 shrink-0">
+            {/* Tag Search (#) Input */}
+            <div className="relative w-36 sm:w-44">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-black text-indigo-600 dark:text-indigo-400 pointer-events-none select-none">#</span>
+              <input
+                type="text"
+                value={tagFilter}
+                onChange={(e) => setTagFilter(e.target.value)}
+                placeholder="Search #tag..."
+                aria-label="Search workflows by tag"
+                className="w-full h-10 pl-7.5 pr-7 text-xs font-bold rounded-2xl border border-slate-200/90 dark:border-slate-700 bg-white dark:bg-[#111a2e] text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-2xs transition"
+              />
+              {tagFilter && (
+                <button
+                  type="button"
+                  onClick={() => setTagFilter('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs font-bold p-0.5"
+                  title="Clear tag filter"
+                >
+                  ✕
+                </button>
               )}
             </div>
+
+            {/* Category Dropdown */}
+            <div className="relative">
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                aria-label="Filter by category"
+                className="appearance-none h-10 pl-4.5 pr-9 text-xs font-bold rounded-2xl border border-slate-200/90 dark:border-slate-700 bg-white dark:bg-[#111a2e] text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-2xs transition cursor-pointer"
+              >
+                <option>All categories</option>
+                {categories.map((c) => (
+                  <option key={c}>{c}</option>
+                ))}
+              </select>
+              <svg
+                className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth="2.5"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+              </svg>
+            </div>
           </div>
+        </div>
+
+        {/* Minimalist Tab Navigation & Sort Row (Matching Screenshot) */}
+        <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pt-2 shrink-0">
+          {/* Tabs */}
+          <div className="flex items-center gap-6 sm:gap-8">
+            {tabs.map((tab) => {
+              const isActive = statusFilter === tab.key
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setStatusFilter(tab.key)}
+                  className={`pb-3 text-xs sm:text-sm font-semibold transition relative cursor-pointer ${
+                    isActive
+                      ? 'text-[#6366F1] dark:text-indigo-400 font-bold'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  {tab.label}
+                  {isActive && (
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#6366F1] dark:bg-indigo-400 rounded-full" />
+                  )}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Sort By Dropdown */}
+          <div className="flex items-center gap-2 pb-2.5">
+            <span className="text-xs text-slate-400 dark:text-slate-500 font-medium">Sort by:</span>
+            <div className="relative flex items-center">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                aria-label="Sort workflows"
+                className="appearance-none bg-transparent pr-6 text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none cursor-pointer"
+              >
+                <option value="recently_updated" className="bg-white dark:bg-slate-800 text-slate-800 dark:text-white">Recently updated</option>
+                <option value="name" className="bg-white dark:bg-slate-800 text-slate-800 dark:text-white">Name (A-Z)</option>
+                <option value="steps" className="bg-white dark:bg-slate-800 text-slate-800 dark:text-white">Most steps</option>
+              </select>
+              <svg
+                className="w-4 h-4 text-slate-500 dark:text-slate-400 pointer-events-none absolute right-0 top-1/2 -translate-y-1/2"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h10.5m-10.5 5.25h6.5" />
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        {/* Workflow Rows / Cards List (Matching Screenshot) */}
+        <div data-tour="workflows-list" className="space-y-3.5">
+          {booting && workflows.length === 0 ? (
+            <div className="space-y-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-4 flex-1">
+                    <Skeleton className="w-12 h-12 rounded-2xl shrink-0" />
+                    <div className="space-y-2 flex-1 max-w-md">
+                      <Skeleton className="h-4 w-36" />
+                      <Skeleton className="h-3 w-64" />
+                      <div className="flex gap-2">
+                        <Skeleton className="h-5 w-10 rounded-md" />
+                        <Skeleton className="h-5 w-10 rounded-md" />
+                        <Skeleton className="h-5 w-14 rounded-md" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-2 flex flex-col items-end">
+                    <Skeleton className="h-6 w-20 rounded-full" />
+                    <Skeleton className="h-4 w-28" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-16 flex items-center justify-center shadow-xs">
+              <EmptyState
+                icon={<svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><circle cx="6" cy="6" r="2.5" /><circle cx="18" cy="12" r="2.5" /><circle cx="6" cy="18" r="2.5" /><path strokeLinecap="round" strokeLinejoin="round" d="M8.5 7.5l7 3.5M8.5 16.5l7-3.5" /></svg>}
+                title={workflows.length === 0 ? 'No workflows yet' : 'No workflows match'}
+                description={
+                  workflows.length === 0
+                    ? canCreate
+                      ? 'Create a workflow to route form submissions through approvals and automations.'
+                      : 'No workflows have been created yet.'
+                    : 'Try a different search query or filter choice.'
+                }
+                action={
+                  workflows.length === 0 && canCreate ? (
+                    <button
+                      onClick={() => navigate('/workflows/new')}
+                      className="mt-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-sm transition"
+                    >
+                      Create workflow
+                    </button>
+                  ) : null
+                }
+              />
+            </div>
+          ) : (
+            <>
+              {/* List of Workflow Horizontal Cards */}
+              <div className="space-y-3.5">
+                {paginatedWorkflows.map((w) => {
+                  const tag = getWorkflowTag(w)
+                  const category = w.category || w.department || 'IT'
+                  const stepsCount = w.steps ?? (w.nodes?.length ? w.nodes.filter(n => n.type !== 'start' && n.type !== 'end').length : 4)
+                  const desc = w.description || `Approval flow for ${w.name}${category ? ` (${category})` : ''}.`
+
+                  return (
+                    <div
+                      key={w.id}
+                      onClick={() => canEdit && navigate(`/workflows/${w.id}/edit`)}
+                      className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 shadow-2xs hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-700 transition flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer group"
+                    >
+                      {/* Left: Workflow Node Icon + Title + Description + Chips */}
+                      <div className="flex items-start gap-4 min-w-0 flex-1">
+                        <div className="w-12 h-12 rounded-2xl bg-[#EEF2FF] text-[#6366F1] dark:bg-indigo-950/60 dark:text-indigo-400 flex items-center justify-center shrink-0 shadow-2xs mt-0.5">
+                          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+                            <circle cx="6" cy="6" r="2.5" />
+                            <circle cx="18" cy="12" r="2.5" />
+                            <circle cx="6" cy="18" r="2.5" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8.5 7.5l7 3.5M8.5 16.5l7-3.5" />
+                          </svg>
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <h2 className="font-bold text-slate-900 dark:text-white text-sm sm:text-base group-hover:text-[#6366F1] dark:group-hover:text-indigo-400 transition truncate">
+                              {w.name || 'Untitled workflow'}
+                            </h2>
+                          </div>
+
+                          <p className="text-xs text-slate-400 dark:text-slate-400 mt-1 line-clamp-1 truncate" title={desc}>
+                            {desc}
+                          </p>
+
+                          {/* Chips: Category / Tag / Steps */}
+                          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                            {category && (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                {category}
+                              </span>
+                            )}
+                            {tag && tag !== category && (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                {tag.replace(/^#/, '')}
+                              </span>
+                            )}
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                              {stepsCount} Steps
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right: Status Pill Badge + 3-Dot Menu / Updated Date + Chevron */}
+                      <div className="flex md:flex-col items-center md:items-end justify-between md:justify-center gap-2.5 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100 dark:border-slate-800">
+                        <div className="flex items-center gap-2">
+                          <WorkflowStatusBadge
+                            status={w.status}
+                            interactive={canCreate}
+                            onClick={() => handleToggleStatus(w)}
+                          />
+                          <WorkflowRowMenu
+                            workflow={w}
+                            canEdit={canEdit}
+                            canCreate={canCreate}
+                            onEdit={() => navigate(`/workflows/${w.id}/edit`)}
+                            onToggleStatus={() => handleToggleStatus(w)}
+                            onDelete={() => handleDelete(w)}
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-400">
+                          <span>{formatUpdatedDate(w)}</span>
+                          <svg className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:translate-x-0.5 transition duration-150" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Pagination Footer */}
+              <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
+                <div>
+                  Showing <span className="font-semibold text-slate-700 dark:text-slate-200">{filtered.length > 0 ? startIndex + 1 : 0}-{endIndex}</span> of <span className="font-semibold text-slate-700 dark:text-slate-200">{filtered.length}</span>
+                </div>
+
+                {totalPages > 1 && (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={currentPage <= 1}
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      className="px-3 py-1.5 rounded-lg font-medium border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 disabled:opacity-40 transition cursor-pointer"
+                    >
+                      Prev
+                    </button>
+
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                      .reduce((acc, p, idx, arr) => {
+                        if (idx > 0 && p - arr[idx - 1] > 1) {
+                          acc.push('ellipsis-' + p)
+                        }
+                        acc.push(p)
+                        return acc
+                      }, [])
+                      .map((item) => {
+                        if (typeof item === 'string') {
+                          return <span key={item} className="px-1 text-slate-400">...</span>
+                        }
+                        const isCurrent = item === currentPage
+                        return (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() => setCurrentPage(item)}
+                            className={`min-w-[30px] h-7.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center cursor-pointer ${
+                              isCurrent
+                                ? 'bg-indigo-600 text-white shadow-xs'
+                                : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60'
+                            }`}
+                          >
+                            {item}
+                          </button>
+                        )
+                      })}
+
+                    <button
+                      type="button"
+                      disabled={currentPage >= totalPages}
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      className="px-3 py-1.5 rounded-lg font-medium border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 disabled:opacity-40 transition cursor-pointer"
+                    >
+                      Next
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </AppShell>
@@ -492,3 +677,4 @@ function Workflows() {
 }
 
 export default Workflows
+

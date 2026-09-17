@@ -8,7 +8,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import AppShell from '../components/AppShell'
 import { api } from '../utils/api'
 import { fetchAllUsers } from '../utils/users'
-import { useUser, initials } from '../utils/auth'
+import { useUser, initials, authStore } from '../utils/auth'
 import { useDepartmentNames } from '../lib/departmentsStore'
 import { canManageUsers } from '../utils/permissions'
 import { parseCsv, buildTemplate } from '../utils/csv'
@@ -19,7 +19,7 @@ import { AlertBanner } from '../components/Alert'
 import Modal from '../components/Modal'
 import { limitBanner, reportLimit } from '../lib/limitFeedback'
 import { usageStore, useReadOnly, useUsage } from '../lib/usageStore'
-import { meterText } from '../lib/licensing'
+import { meterText, formatDate } from '../lib/licensing'
 import { toast } from '../lib/toastStore'
 
 // A licensing refusal already carries an actionable sentence from the server;
@@ -53,7 +53,7 @@ function BuilderSeatField({ id, checked, onChange, seatsFull, seatsHint, designe
   // Keep an already-granted seat editable (uncheck / re-check) even at the limit.
   const grantBlocked = seatsFull && !checked
   return (
-    <div className={`rounded-md border border-line px-3 py-2.5 ${grantBlocked ? 'opacity-70' : ''}`}>
+    <div className={`rounded-xl border border-line px-3.5 py-3 bg-surface-2/40 ${grantBlocked ? 'opacity-70' : ''}`}>
       <label htmlFor={id} className={`flex items-start gap-3 ${grantBlocked ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
         <input
           id={id}
@@ -61,17 +61,14 @@ function BuilderSeatField({ id, checked, onChange, seatsFull, seatsHint, designe
           checked={checked}
           disabled={grantBlocked}
           onChange={(e) => onChange(e.target.checked)}
-          className="mt-0.5 rounded border-line text-indigo-600 focus:ring-indigo-400"
+          className="mt-0.5 rounded border-line text-indigo-600 focus:ring-indigo-400 w-4 h-4 cursor-pointer"
         />
         <span className="min-w-0">
-          <span className="block text-sm font-medium text-fg">Builder seat</span>
+          <span className="block text-xs font-bold text-fg">Builder seat</span>
           <span className="block text-[11px] text-fg-subtle mt-0.5">
             {grantBlocked
               ? 'No free builder seats — turn the seat off for someone else first.'
-              : seatsHint}
-            {!designerRole && !grantBlocked && (
-              <> Designing also requires the Administrator role.</>
-            )}
+              : seatsHint || 'Grants this user permission to design and edit forms.'}
           </span>
         </span>
       </label>
@@ -105,7 +102,8 @@ const ROLE_ORDER = ['Admin', 'CEO', 'VP', 'Manager', 'HR', 'Employee']
 
 // System-admin roles sit outside the org chart: no department, no reporting
 // manager, and their role isn't reassigned inline from this table.
-const SYSTEM_ADMIN_ROLES = new Set(['Admin'])
+const SYSTEM_ADMIN_ROLES = new Set(['SuperAdmin'])
+const ADMIN_ROLES = new Set(['Admin', 'SuperAdmin'])
 const sortRoles = (roles) => {
   const indexed = roles.map((r) => ({
     r,
@@ -132,6 +130,7 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
   const [form, setForm] = useState({
     name: '',
     email: '',
+    employeeId: '',
     department: '',
     roleId: defaultRoleId,
     managerId: '',
@@ -188,6 +187,7 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
       const payload = {
         name: form.name.trim(),
         email: form.email.trim().toLowerCase(),
+        employeeId: form.employeeId.trim() || undefined,
         department: form.department,
         roleId: form.roleId,
         managerId: form.managerId || undefined,
@@ -212,24 +212,42 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
       bodyClass="overflow-y-auto"
     >
       <form onSubmit={handleSubmit} className="px-5 py-4 space-y-3" noValidate>
-          <div>
-            <label htmlFor="cu-name" className="block text-xs font-medium text-fg-muted mb-1">Full name</label>
-            <input
-              id="cu-name"
-              name="name"
-              value={form.name}
-              onChange={handleChange}
-              placeholder="e.g. Arjun Kumar"
-              className="w-full px-3 py-2 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="cu-name" className="block text-xs font-medium text-fg-muted mb-1">Full name <span className="text-rose-500">*</span></label>
+              <input
+                id="cu-name"
+                name="name"
+                autoComplete="name"
+                value={form.name}
+                onChange={handleChange}
+                placeholder="e.g. Arjun Kumar"
+                className="w-full px-3 py-2 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+              />
+            </div>
+            <div>
+              <label htmlFor="cu-employeeId" className="block text-xs font-medium text-fg-muted mb-1">Employee ID</label>
+              <input
+                id="cu-employeeId"
+                name="employeeId"
+                autoComplete="off"
+                data-lpignore="true"
+                data-1p-ignore="true"
+                value={form.employeeId}
+                onChange={handleChange}
+                placeholder="e.g. EMP-001"
+                className="w-full px-3 py-2 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+              />
+            </div>
           </div>
 
           <div>
-            <label htmlFor="cu-email" className="block text-xs font-medium text-fg-muted mb-1">Work email</label>
+            <label htmlFor="cu-email" className="block text-xs font-medium text-fg-muted mb-1">Work email <span className="text-rose-500">*</span></label>
             <input
               id="cu-email"
               name="email"
               type="email"
+              autoComplete="username"
               value={form.email}
               onChange={handleChange}
               placeholder="arjun@company.com"
@@ -383,24 +401,21 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
   const sortedRoles = useMemo(() => sortRoles(roles || []), [roles])
   const orgDepartments = useDepartmentNames()
   const { seatsFull, seatsHint } = useBuilderSeats()
-  // System admins (Admin) sit outside the org chart: no department, manager or
-  // HR partner, and their role is managed separately. You also can't change
-  // your own role.
   const orgExempt = SYSTEM_ADMIN_ROLES.has(user.role?.name)
   const roleLocked = orgExempt || isSelf
 
   const [form, setForm] = useState({
     name: user.name || '',
     email: user.email || '',
+    employeeId: user.employeeId || '',
     password: '',
-    roleId: user.role?._id || '',
+    roleId: user.role?._id || user.role || '',
     department: user.department || '',
-    managerId: user.managerId || '',
-    hrId: user.hrId || '',
+    managerId: (typeof user.managerId === 'object' && user.managerId ? user.managerId._id : user.managerId) || '',
+    hrId: (typeof user.hrId === 'object' && user.hrId ? user.hrId._id : user.hrId) || '',
     canBuild: user.canBuild === true
   })
-  // Keep whoever is already filed under a retired department visible in the
-  // picker, so saving an unrelated change does not move them.
+
   const departments = useMemo(
     () => (form.department && !orgDepartments.includes(form.department)
       ? [...orgDepartments, form.department]
@@ -410,18 +425,72 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
   const [showPw, setShowPw] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
-  const selectedRole = sortedRoles.find((r) => r._id === form.roleId)
-  const designerRole = DESIGNER_ROLE_NAMES.has(selectedRole?.name || user.role?.name)
-
   const handleChange = (e) => {
     const { name, value } = e.target
     setForm((p) => ({ ...p, [name]: value }))
+  }
+
+  const handleDeactivate = async () => {
+    if (isSelf) {
+      toast.error('You cannot deactivate your own account.')
+      return
+    }
+
+    const firstOk = await confirm({
+      title: `Deactivate ${user.name}'s account?`,
+      message: `Are you sure you want to deactivate ${user.name}'s account? They will be signed out and won't be able to log in until reactivated.`,
+      confirmLabel: 'Deactivate account',
+      danger: true,
+    })
+    if (!firstOk) return
+
+    const secondOk = await confirm({
+      title: `Final Confirmation: Deactivate ${user.name}?`,
+      message: `Are you absolutely sure you want to deactivate ${user.name}'s account? Active sessions will be terminated and all access will be suspended.`,
+      confirmLabel: 'Yes, deactivate account',
+      danger: true,
+    })
+    if (!secondOk) return
+
+    setSubmitting(true)
+    try {
+      await api.delete(`/api/users/${user._id}`)
+      toast.success(`${user.name} has been deactivated`)
+      onSaved({ ...user, isActive: false })
+      onClose()
+    } catch (err) {
+      reportDialogError(err, 'Failed to deactivate account')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleReactivate = async () => {
+    const ok = await confirm({
+      title: `Reactivate ${user.name}'s account?`,
+      message: `Are you sure you want to restore access for ${user.name}?`,
+      confirmLabel: 'Reactivate account',
+    })
+    if (!ok) return
+
+    setSubmitting(true)
+    try {
+      await api.put(`/api/users/${user._id}`, { isActive: true })
+      toast.success(`${user.name} has been reactivated`)
+      onSaved({ ...user, isActive: true })
+      onClose()
+    } catch (err) {
+      reportDialogError(err, 'Failed to reactivate account')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     const name = form.name.trim()
     const email = form.email.trim().toLowerCase()
+    const employeeId = form.employeeId.trim()
     const password = form.password
     if (!name) { toast.error('Name is required'); return }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -434,11 +503,10 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
     }
     setSubmitting(true)
     try {
-      // Role has a dedicated endpoint; skip it when locked or unchanged.
       if (!roleLocked && form.roleId && form.roleId !== (user.role?._id || '')) {
         await api.post(`/api/users/${user._id}/assign-role`, { roleId: form.roleId })
       }
-      const payload = { name, email, canBuild: form.canBuild === true }
+      const payload = { name, email, employeeId: employeeId || null, canBuild: form.canBuild === true }
       if (password) payload.password = password
       if (!orgExempt) {
         payload.department = form.department
@@ -446,7 +514,7 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
         payload.hrId = form.hrId || null
       }
       const data = await api.put(`/api/users/${user._id}`, payload)
-      onSaved(data.user)
+      onSaved(data.user || { ...user, ...payload })
     } catch (err) {
       reportDialogError(err, 'Failed to update user')
     } finally {
@@ -455,147 +523,184 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
   }
 
   return (
-    <Modal
-      onClose={onClose}
-      title="Edit user"
-      description="Update name, email, role, builder seat, department, manager & HR partner, or reset the password."
-      bodyClass="overflow-y-auto"
-    >
-      <form onSubmit={handleSubmit} className="px-5 py-4 space-y-3" noValidate>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+      <div className="bg-white dark:bg-[#111a2e] rounded-3xl w-full max-w-lg shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="px-7 pt-7 pb-3 flex items-start justify-between">
           <div>
-            <label htmlFor="eu-name" className="block text-xs font-medium text-fg-muted mb-1">Full name</label>
-            <input
-              id="eu-name"
-              name="name"
-              value={form.name}
-              onChange={handleChange}
-              placeholder="e.g. Arjun Kumar"
-              className="w-full px-3 py-2 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
-            />
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">
+              Edit user
+            </h2>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+              Update name, email, employee ID, role, department, manager & HR partner, or reset the password.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition p-1 cursor-pointer"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Scrollable Form Body */}
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-7 py-3 space-y-4" noValidate>
+          {/* User ID display */}
+          <div className="bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800 flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase block">USER ID</span>
+              <span className="text-xs font-mono font-medium text-slate-700 dark:text-slate-300 select-all">{user._id || '—'}</span>
+            </div>
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+              user.isActive !== false ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800' : 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-400'
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${user.isActive !== false ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+              {user.isActive !== false ? 'Active' : 'Inactive'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label htmlFor="eu-name" className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5">
+                Full name <span className="text-rose-500">*</span>
+              </label>
+              <input
+                id="eu-name"
+                name="name"
+                autoComplete="name"
+                value={form.name}
+                onChange={handleChange}
+                placeholder="e.g. Arjun Kumar"
+                className="w-full px-4 py-3 text-sm font-medium rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition"
+              />
+            </div>
+            <div>
+              <label htmlFor="eu-employeeId" className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5">
+                Employee ID
+              </label>
+              <input
+                id="eu-employeeId"
+                name="employeeId"
+                autoComplete="off"
+                data-lpignore="true"
+                data-1p-ignore="true"
+                value={form.employeeId}
+                onChange={handleChange}
+                placeholder="e.g. EMP-001"
+                className="w-full px-4 py-3 text-sm font-medium rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition"
+              />
+            </div>
           </div>
 
           <div>
-            <label htmlFor="eu-email" className="block text-xs font-medium text-fg-muted mb-1">Work email</label>
+            <label htmlFor="eu-email" className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5">
+              Work email <span className="text-rose-500">*</span>
+            </label>
             <input
               id="eu-email"
               name="email"
               type="email"
+              autoComplete="username"
               value={form.email}
               onChange={handleChange}
               placeholder="arjun@company.com"
-              autoComplete="off"
-              className="w-full px-3 py-2 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+              className="w-full px-4 py-3 text-sm font-medium rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition"
             />
-            <p className="text-[11px] text-fg-subtle mt-1">
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5">
               The user signs in with this email — changing it updates their login.
             </p>
           </div>
 
-          {orgExempt ? (
-            <>
-              <div>
-                <label htmlFor="eu-role-locked" className="block text-xs font-medium text-fg-muted mb-1">Role</label>
-                <select
-                  id="eu-role-locked"
-                  name="roleId"
-                  value={form.roleId}
-                  onChange={handleChange}
-                  disabled
-                  title="System admin roles are managed separately"
-                  className="w-full px-3 py-2 text-sm rounded-md border border-line bg-surface-2 text-fg-muted cursor-not-allowed focus:outline-none"
-                >
-                  {sortedRoles.map((r) => <option key={r._id} value={r._id}>{r.name}</option>)}
-                </select>
-              </div>
-              <div className="p-2.5 rounded-md bg-surface-2 border border-line text-[11px] text-fg-muted">
-                System admins sit outside the org chart, so they have no department, reporting manager or HR partner.
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="eu-role" className="block text-xs font-medium text-fg-muted mb-1">Role</label>
-                  <select
-                    id="eu-role"
-                    name="roleId"
-                    value={form.roleId}
-                    onChange={handleChange}
-                    disabled={isSelf}
-                    title={isSelf ? "You can't change your own role" : ''}
-                    className="w-full px-3 py-2 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {sortedRoles.map((r) => <option key={r._id} value={r._id}>{r.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="eu-department" className="block text-xs font-medium text-fg-muted mb-1">Department</label>
-                  <select
-                    id="eu-department"
-                    name="department"
-                    value={form.department}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
-                  >
-                    {departments.map((d) => <option key={d}>{d}</option>)}
-                  </select>
-                </div>
-              </div>
+          <div className="grid grid-cols-2 gap-3.5">
+            <div>
+              <label htmlFor="eu-role" className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5">
+                Role
+              </label>
+              <select
+                id="eu-role"
+                name="roleId"
+                value={form.roleId}
+                onChange={handleChange}
+                disabled={roleLocked}
+                className="w-full px-4 py-3 text-sm font-medium rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {sortedRoles.map((r) => <option key={r._id} value={r._id}>{r.name}</option>)}
+              </select>
+            </div>
 
-              <div>
-                <label htmlFor="eu-manager" className="block text-xs font-medium text-fg-muted mb-1">Reporting manager</label>
-                <select
-                  id="eu-manager"
-                  name="managerId"
-                  value={form.managerId}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
-                >
-                  <option value="">— No manager —</option>
-                  {(managers || []).filter((m) => m._id !== user._id).map((m) => (
-                    <option key={m._id} value={m._id}>
-                      {m.name}{m.department ? ` · ${m.department}` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div>
+              <label htmlFor="eu-department" className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5">
+                Department
+              </label>
+              <select
+                id="eu-department"
+                name="department"
+                value={form.department}
+                onChange={handleChange}
+                className="w-full px-4 py-3 text-sm font-medium rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition cursor-pointer"
+              >
+                {departments.map((d) => <option key={d}>{d}</option>)}
+              </select>
+            </div>
+          </div>
 
-              <div>
-                <label htmlFor="eu-hr" className="block text-xs font-medium text-fg-muted mb-1">HR partner</label>
-                <select
-                  id="eu-hr"
-                  name="hrId"
-                  value={form.hrId}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
-                >
-                  <option value="">— No HR —</option>
-                  {(hrPeople || []).filter((h) => h._id !== user._id).map((h) => (
-                    <option key={h._id} value={h._id}>
-                      {h.name}{h.department ? ` · ${h.department}` : ''}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[11px] text-fg-subtle mt-1">
-                  {(hrPeople || []).length === 0
-                    ? 'No HR-role users yet — create one to assign HR partners.'
-                    : 'The HR person who handles this user’s people processes.'}
-                </p>
-              </div>
-            </>
-          )}
+          <div>
+            <label htmlFor="eu-manager" className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5">
+              Reporting manager
+            </label>
+            <select
+              id="eu-manager"
+              name="managerId"
+              value={form.managerId}
+              onChange={handleChange}
+              className="w-full px-4 py-3 text-sm font-medium rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition cursor-pointer"
+            >
+              <option value="">— No manager —</option>
+              {(managers || []).filter((m) => m._id !== user._id).map((m) => (
+                <option key={m._id} value={m._id}>
+                  {m.name}{m.department ? ` · ${m.department}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="eu-hr" className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5">
+              HR partner
+            </label>
+            <select
+              id="eu-hr"
+              name="hrId"
+              value={form.hrId}
+              onChange={handleChange}
+              className="w-full px-4 py-3 text-sm font-medium rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition cursor-pointer"
+            >
+              <option value="">— No HR —</option>
+              {(hrPeople || []).filter((h) => h._id !== user._id).map((h) => (
+                <option key={h._id} value={h._id}>
+                  {h.name}{h.department ? ` · ${h.department}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <BuilderSeatField
             id="eu-canBuild"
             checked={form.canBuild}
-            onChange={(canBuild) => { setForm((p) => ({ ...p, canBuild })); setError('') }}
+            onChange={(canBuild) => setForm((p) => ({ ...p, canBuild }))}
             seatsFull={seatsFull}
             seatsHint={seatsHint}
-            designerRole={designerRole}
+            designerRole={DESIGNER_ROLE_NAMES.has(roles?.find(r => r._id === form.roleId)?.name || user.role?.name)}
           />
 
-          <div>
-            <label htmlFor="eu-password" className="block text-xs font-medium text-fg-muted mb-1">New password</label>
+          <div className="pt-1">
+            <label htmlFor="eu-password" className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5">
+              New password
+            </label>
             <div className="relative">
               <input
                 id="eu-password"
@@ -605,40 +710,191 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
                 onChange={handleChange}
                 placeholder="Leave blank to keep current"
                 autoComplete="new-password"
-                className="w-full px-3 py-2 pr-14 text-sm rounded-md border border-line focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+                className="w-full px-4 py-3 pr-14 text-sm font-medium rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition"
               />
               <button
                 type="button"
                 onClick={() => setShowPw((s) => !s)}
                 tabIndex={-1}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-medium text-indigo-600 hover:text-indigo-700 px-1"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-indigo-600 hover:text-indigo-700 px-1"
               >
                 {showPw ? 'Hide' : 'Show'}
               </button>
             </div>
-            <p className="text-[11px] text-fg-subtle mt-1">
-              Optional — sets a new sign-in password (min 6 characters). Leave blank to keep the current one.
-            </p>
           </div>
 
-          <div className="pt-2 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-3 py-2 rounded-md border border-line hover:bg-surface-2 text-sm font-medium text-fg transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-sm font-semibold shadow-sm transition"
-            >
-              {submitting ? 'Saving…' : 'Save changes'}
-            </button>
+          {/* Footer inside modal */}
+          <div className="pt-5 pb-3 flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-800">
+            {/* Left: Deactivate / Reactivate account button */}
+            <div>
+              {!isSelf && (
+                user.isActive !== false ? (
+                  <button
+                    type="button"
+                    onClick={handleDeactivate}
+                    disabled={submitting}
+                    className="px-4 py-2.5 rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 hover:bg-rose-100 dark:bg-rose-950/30 dark:hover:bg-rose-950/50 text-rose-600 dark:text-rose-400 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                    </svg>
+                    Deactivate account
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleReactivate}
+                    disabled={submitting}
+                    className="px-4 py-2.5 rounded-2xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/70 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Reactivate account
+                  </button>
+                )
+              )}
+            </div>
+
+            {/* Right: Cancel & Save buttons */}
+            <div className="flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={submitting}
+                className="px-6 py-2.5 rounded-2xl bg-[#6366F1] hover:bg-indigo-600 active:scale-[0.99] disabled:opacity-60 text-white text-sm font-bold shadow-md shadow-indigo-500/25 transition cursor-pointer"
+              >
+                {submitting ? 'Saving…' : 'Save changes'}
+              </button>
+            </div>
           </div>
-      </form>
-    </Modal>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function ViewUserDialog({ user, managers = [], users = [], onClose, onEdit }) {
+  if (!user) return null
+
+  const roleName = user.role?.name || (user.name === 'Platform Super Admin' ? 'SuperAdmin' : 'Member')
+  const formattedJoined = user.createdAt ? formatDate(user.createdAt) : '—'
+  const formattedLastLogin = user.lastLogin ? formatDate(user.lastLogin) : 'Never'
+  const userId = user._id || '—'
+
+  const managerObj = typeof user.managerId === 'object' && user.managerId !== null
+    ? user.managerId
+    : (managers || []).find((m) => m._id === user.managerId) || (users || []).find((u) => u._id === user.managerId)
+  const managerName = managerObj ? managerObj.name : (user.managerName || '—')
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+      <div className="bg-white dark:bg-[#111a2e] rounded-3xl w-full max-w-lg shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        {/* Header */}
+        <div className="px-7 pt-7 pb-5 flex items-start justify-between border-b border-slate-100 dark:border-slate-800/80">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">
+                {user.name}
+              </h2>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                {roleName}
+              </span>
+            </div>
+            <p className="text-xs font-normal text-slate-400 dark:text-slate-500 mt-1">
+              {user.email}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition p-1 cursor-pointer"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body 2-Column Grid */}
+        <div className="p-7 grid grid-cols-2 gap-y-6 gap-x-8">
+          <div>
+            <p className="text-[10px] font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase mb-1">FULL NAME</p>
+            <p className="text-sm font-medium text-slate-900 dark:text-white">{user.name}</p>
+          </div>
+
+          <div>
+            <p className="text-[10px] font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase mb-1">EMPLOYEE ID</p>
+            <p className="text-sm font-medium text-slate-900 dark:text-white">{user.employeeId || '—'}</p>
+          </div>
+
+          <div>
+            <p className="text-[10px] font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase mb-1">EMAIL ADDRESS</p>
+            <p className="text-sm font-medium text-slate-900 dark:text-white">{user.email}</p>
+          </div>
+
+          <div>
+            <p className="text-[10px] font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase mb-1">ROLE</p>
+            <p className="text-sm font-medium text-slate-900 dark:text-white">{roleName}</p>
+          </div>
+
+          <div>
+            <p className="text-[10px] font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase mb-1">DEPARTMENT</p>
+            <p className="text-sm font-medium text-slate-900 dark:text-white">{user.department || 'IT'}</p>
+          </div>
+
+          <div>
+            <p className="text-[10px] font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase mb-1">REPORTING MANAGER</p>
+            <p className="text-sm font-medium text-slate-900 dark:text-white">{managerName}</p>
+          </div>
+
+          <div>
+            <p className="text-[10px] font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase mb-1">STATUS</p>
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+              user.isActive !== false
+                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
+                : 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${user.isActive !== false ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+              {user.isActive !== false ? 'Active' : 'Inactive'}
+            </span>
+          </div>
+
+          <div>
+            <p className="text-[10px] font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase mb-1">LAST LOGIN</p>
+            <p className="text-sm font-medium text-slate-900 dark:text-white">{formattedLastLogin}</p>
+          </div>
+
+          <div>
+            <p className="text-[10px] font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase mb-1">DATE JOINED</p>
+            <p className="text-sm font-medium text-slate-900 dark:text-white">{formattedJoined}</p>
+          </div>
+
+          <div>
+            <p className="text-[10px] font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase mb-1">USER ID</p>
+            <p className="text-xs font-mono text-slate-700 dark:text-slate-300 truncate" title={userId}>{userId}</p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-7 py-5 flex items-center justify-end border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/50">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-6 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 text-slate-700 dark:text-slate-200 font-semibold text-sm shadow-2xs transition cursor-pointer"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -657,8 +913,10 @@ function AdminPanel() {
   const [roleFilter, setRoleFilter] = useState('All roles')
   const [deptFilter, setDeptFilter] = useState('All departments')
   const [statusFilter, setStatusFilter] = useState('') // '', 'active', 'inactive', 'admins'
+  const [currentPage, setCurrentPage] = useState(1)
   const [createOpen, setCreateOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [viewUser, setViewUser] = useState(null)
   const [editUser, setEditUser] = useState(null)
   const [busy, setBusy] = useState({}) // { [userId]: 'role' | 'department' | 'deactivate' }
   const [feedback, setFeedback] = useState('')
@@ -712,7 +970,7 @@ function AdminPanel() {
 
   const handleToggleActive = async (user) => {
     if (user._id === me?._id) {
-      setError('You cannot deactivate your own account.')
+      setError('You cannot change your own account status.')
       return
     }
     if (user.isActive) {
@@ -721,6 +979,14 @@ function AdminPanel() {
         message: `${user.name} will be signed out and won't be able to log in until reactivated.`,
         confirmLabel: 'Deactivate',
         danger: true,
+      })
+      if (!ok) return
+    } else {
+      const ok = await confirm({
+        title: 'Activate user?',
+        message: `Activate ${user.name}? They will be able to log in to the workspace again.`,
+        confirmLabel: 'Activate',
+        danger: false,
       })
       if (!ok) return
     }
@@ -810,15 +1076,25 @@ function AdminPanel() {
         !statusFilter ||
         (statusFilter === 'active' && u.isActive) ||
         (statusFilter === 'inactive' && !u.isActive) ||
-        (statusFilter === 'admins' && SYSTEM_ADMIN_ROLES.has(u.role?.name))
+        (statusFilter === 'admins' && (ADMIN_ROLES.has(u.role?.name) || ADMIN_ROLES.has(u.role)))
       return matchesSearch && matchesRole && matchesDept && matchesStatus
     })
   }, [users, search, roleFilter, deptFilter, statusFilter])
 
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [search, roleFilter, deptFilter, statusFilter])
+
+  const paginatedUsers = useMemo(() => {
+    const start = (currentPage - 1) * 10
+    return filtered.slice(start, start + 10)
+  }, [filtered, currentPage])
+  const totalPages = Math.ceil(filtered.length / 10) || 1
+
   const userStats = useMemo(() => {
     const active = users.filter((u) => u.isActive).length
     const inactive = users.length - active
-    const admins = users.filter((u) => SYSTEM_ADMIN_ROLES.has(u.role?.name)).length
+    const admins = users.filter((u) => ADMIN_ROLES.has(u.role?.name) || ADMIN_ROLES.has(u.role)).length
     return { total: users.length, active, inactive, admins }
   }, [users])
 
@@ -846,85 +1122,68 @@ function AdminPanel() {
 
   const newUserBlocked = roles.length === 0 || readOnly
   const blockedHint = readOnly ? 'The workspace licence has expired — adding users is paused.' : undefined
-  const actions = (
-    <div className="flex items-center gap-2">
-      <button
-        onClick={() => setImportOpen(true)}
-        disabled={newUserBlocked}
-        title={blockedHint}
-        className="px-4 py-2 rounded-lg border border-line hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed text-fg text-sm font-medium transition"
-      >
-        Import users
-      </button>
-      <button
-        onClick={() => setCreateOpen(true)}
-        disabled={newUserBlocked}
-        title={blockedHint}
-        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold shadow-sm transition"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-        </svg>
-        New user
-      </button>
-    </div>
-  )
 
   const fieldCls =
-    'w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-line bg-surface-2 text-fg placeholder:text-fg-subtle focus:bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition'
+    'w-full pl-9 pr-3 py-2.5 text-[13px] font-medium rounded-[8px] border-none shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] bg-white dark:bg-[#111a2e] text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 transition'
   const selectCls =
-    'px-3 py-2 text-sm rounded-lg border border-line bg-surface text-fg focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition'
+    'px-4 py-2.5 text-[13px] font-medium rounded-[8px] border-none shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] bg-white dark:bg-[#111a2e] text-slate-600 dark:text-slate-300 focus:outline-none transition cursor-pointer'
 
   const selectStatus = (next) => setStatusFilter((cur) => (cur === next ? '' : next))
 
   return (
     <AppShell
-      title="Users"
-      subtitle="Invite teammates, assign roles and builder seats, and manage access"
-      actions={actions}
-      mainClass="flex-1 min-h-0 flex flex-col p-4 md:p-6 pb-24 md:pb-6 overflow-hidden"
+      title=""
+      subtitle=""
+      actions={null}
+      mainClass="flex-1 min-h-0 flex flex-col p-4 md:p-6 bg-[#e2e8f0] dark:bg-[#0b1120] overflow-hidden"
     >
-      <div className="flex-1 min-h-0 flex flex-col gap-4 w-full overflow-hidden">
-        <div className="shrink-0 grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="flex-1 min-h-0 flex flex-col gap-6 w-full max-w-[1400px] mx-auto overflow-hidden">
+        
+        {/* Page Header */}
+        <div className="shrink-0 flex items-center justify-between">
+          <div>
+            <h1 className="text-[22px] font-bold text-slate-800 dark:text-white tracking-tight">User Management</h1>
+            <p className="text-[13px] font-medium text-slate-400 dark:text-slate-500 mt-0.5">{userStats.total} users in your workspace</p>
+          </div>
+          <button
+            onClick={() => setCreateOpen(true)}
+            disabled={newUserBlocked}
+            title={blockedHint}
+            className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-[8px] bg-[#6366f1] hover:bg-indigo-600 disabled:opacity-50 text-white text-[13px] font-semibold shadow-sm transition"
+          >
+            + Invite user
+          </button>
+        </div>
+
+        {/* KPI Cards */}
+        <div className="shrink-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatusCard
-            label="All users"
+            label="Total Users"
             value={loading ? '—' : userStats.total}
-            hint="In this workspace"
             loading={loading}
-            active={!statusFilter}
-            onClick={() => setStatusFilter('')}
             tone="neutral"
-            icon={<IconUsers className="w-5 h-5" />}
+            icon={<IconUsers className="w-4 h-4" />}
           />
           <StatusCard
             label="Active"
             value={loading ? '—' : userStats.active}
-            hint="Can sign in"
             loading={loading}
-            active={statusFilter === 'active'}
-            onClick={() => selectStatus('active')}
             tone="success"
-            icon={<IconActive className="w-5 h-5" />}
-          />
-          <StatusCard
-            label="Inactive"
-            value={loading ? '—' : userStats.inactive}
-            hint="Deactivated accounts"
-            loading={loading}
-            active={statusFilter === 'inactive'}
-            onClick={() => selectStatus('inactive')}
-            tone="muted"
-            icon={<IconInactive className="w-5 h-5" />}
+            icon={<IconActive className="w-4 h-4" />}
           />
           <StatusCard
             label="Admins"
             value={loading ? '—' : userStats.admins}
-            hint="Workspace administrators"
             loading={loading}
-            active={statusFilter === 'admins'}
-            onClick={() => selectStatus('admins')}
             tone="info"
-            icon={<IconAdmin className="w-5 h-5" />}
+            icon={<IconAdmin className="w-4 h-4" />}
+          />
+          <StatusCard
+            label="Deactivated"
+            value={loading ? '—' : userStats.inactive}
+            loading={loading}
+            tone="muted"
+            icon={<IconInactive className="w-4 h-4" />}
           />
         </div>
 
@@ -941,55 +1200,44 @@ function AdminPanel() {
           </div>
         )}
 
-        <div className="flex-1 min-h-0 flex flex-col bg-surface border border-line rounded-xl shadow-sm overflow-hidden">
-          <div className="shrink-0 px-5 py-4 flex flex-col sm:flex-row gap-3 sm:items-center border-b border-line bg-surface-2/40">
-            <div className="relative flex-1 min-w-0">
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-fg-subtle absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by name or email…"
-                aria-label="Search users"
-                className={fieldCls}
-              />
-            </div>
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
-              <select
-                value={roleFilter}
-                onChange={(e) => setRoleFilter(e.target.value)}
-                aria-label="Filter by role"
-                className={selectCls}
-              >
-                <option>All roles</option>
-                {roles.map((r) => <option key={r._id}>{r.name}</option>)}
-              </select>
-              <select
-                value={deptFilter}
-                onChange={(e) => setDeptFilter(e.target.value)}
-                aria-label="Filter by department"
-                className={selectCls}
-              >
-                <option>All departments</option>
-                {departments.map((d) => <option key={d}>{d}</option>)}
-              </select>
-            </div>
+        {/* Filters */}
+        <div className="shrink-0 flex flex-col sm:flex-row gap-3 sm:items-center">
+          <div className="relative w-full sm:w-[320px]">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name or email…"
+              aria-label="Search users"
+              className={fieldCls}
+            />
           </div>
+          <DropdownSelect
+            value={roleFilter}
+            onChange={setRoleFilter}
+            placeholder="All roles"
+            options={roles.map((r) => r.name)}
+          />
+          <DropdownSelect
+            value={deptFilter}
+            onChange={setDeptFilter}
+            placeholder="All departments"
+            options={departments}
+          />
+        </div>
 
-          <div className="flex-1 min-h-0 overflow-auto">
+        {/* Table Container */}
+        <div className="flex-1 min-h-0 flex flex-col bg-white dark:bg-[#111a2e] rounded-[12px] shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-auto px-4 py-2">
             {loading ? (
-              <div className="divide-y divide-line">
+              <div className="divide-y divide-slate-100 dark:divide-white/5">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <div key={i} className="px-5 py-4 flex items-center gap-4">
-                    <Skeleton className="w-10 h-10 rounded-full shrink-0" />
-                    <div className="flex-1 space-y-2">
-                      <Skeleton className="h-4 w-40" />
-                      <Skeleton className="h-3 w-56" />
-                    </div>
-                    <Skeleton className="h-6 w-16 rounded-full hidden sm:block" />
-                    <Skeleton className="h-8 w-24 rounded-lg" />
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-3 w-56" />
                   </div>
                 ))}
               </div>
@@ -1006,176 +1254,135 @@ function AdminPanel() {
               </div>
             ) : (
               <>
-                <table className="hidden md:table w-full table-fixed text-sm">
-                  <colgroup>
-                    <col />
-                    <col className="w-[9rem]" />
-                    <col className="w-[7.5rem]" />
-                    <col className="w-[8rem]" />
-                    <col className="w-[14rem]" />
-                  </colgroup>
-                  <thead className="sticky top-0 z-10">
-                    <tr className="text-left text-[11px] font-semibold tracking-wider text-fg-subtle uppercase border-b border-line bg-surface-2/95 backdrop-blur-sm">
-                      <th scope="col" className="px-5 py-3 font-semibold">User</th>
-                      <th scope="col" className="px-4 py-3 font-semibold">Role</th>
-                      <th scope="col" className="px-4 py-3 font-semibold">Status</th>
-                      <th scope="col" className="px-4 py-3 font-semibold">Department</th>
-                      <th scope="col" className="px-5 py-3 font-semibold text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-line">
-                    {filtered.map((u) => {
-                      const isMe = u._id === me._id
-                      const userBusy = busy[u._id]
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left whitespace-nowrap">
+                    <thead>
+                      <tr className="text-[11px] font-black tracking-wider text-slate-700 dark:text-slate-200 uppercase border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
+                        <th className="px-6 py-3.5">User</th>
+                        <th className="px-4 py-3.5">Role</th>
+                        <th className="px-4 py-3.5">Department</th>
+                        <th className="px-4 py-3.5">Status</th>
+                        <th className="px-4 py-3.5">Last Login</th>
+                        <th className="px-4 py-3.5"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50 dark:divide-white/5">
+                      {paginatedUsers.map((u) => {
+                        const isMe = u._id === me._id
+                        const userBusy = busy[u._id]
+                        return (
+                          <tr key={u._id} className="hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors">
+                            <td className="px-6 py-3.5">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[13px] font-medium text-slate-700 dark:text-slate-200">{u.name}</span>
+                                {u.isProtected && <span className="text-[10px] font-bold text-orange-500 bg-orange-50 dark:bg-orange-500/10 px-1.5 py-0.5 rounded">Locked</span>}
+                                {isMe && <span className="text-[10px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 px-1.5 py-0.5 rounded">You</span>}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3.5 text-[13px] text-slate-500 dark:text-slate-400">{u.role?.name || '—'}</td>
+                            <td className="px-4 py-3.5 text-[13px] text-slate-500 dark:text-slate-400">{u.department || '—'}</td>
+                            <td className="px-4 py-3.5">
+                              <div className={`flex items-center gap-1.5 text-[12px] font-semibold ${u.isActive ? 'text-emerald-500' : 'text-slate-400'}`}>
+                                <div className={`w-1.5 h-1.5 rounded-full ${u.isActive ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                                {u.isActive ? 'Active' : 'Inactive'}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3.5 text-[13px] text-slate-500 dark:text-slate-400">
+                              {u.lastLogin ? formatDate(u.lastLogin) : 'Never'}
+                            </td>
+                            <td className="px-6 py-3.5 text-right">
+                              <div className="flex items-center justify-end gap-2 text-slate-400 dark:text-slate-500">
+                                <button
+                                  type="button"
+                                  onClick={() => setViewUser(u)}
+                                  disabled={!!userBusy}
+                                  className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 hover:text-indigo-600 dark:hover:text-indigo-400 transition cursor-pointer"
+                                  title="View Details"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditUser(u)}
+                                  disabled={!!userBusy}
+                                  className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 hover:text-indigo-600 dark:hover:text-indigo-400 transition cursor-pointer"
+                                  title="Edit User"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleActive(u)}
+                                  disabled={isMe || !!userBusy}
+                                  className={`p-1.5 rounded-lg transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer ${
+                                    u.isActive !== false
+                                      ? 'hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:text-amber-600 dark:hover:text-amber-400'
+                                      : 'hover:bg-emerald-50 dark:hover:bg-emerald-950/40 hover:text-emerald-600 dark:hover:text-emerald-400 text-emerald-500'
+                                  }`}
+                                  title={isMe ? 'Cannot change your own status' : u.isActive !== false ? 'Deactivate User' : 'Activate User'}
+                                >
+                                  {userBusy === 'deactivate' ? (
+                                    <span className="text-[10px] animate-pulse">...</span>
+                                  ) : (
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 5.636a9 9 0 11-12.728 0M12 3v9" />
+                                    </svg>
+                                  )}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                
+                {/* Pagination Footer */}
+                <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 dark:border-white/5 bg-white dark:bg-[#111a2e]">
+                  <p className="text-[11px] font-medium text-slate-400">
+                    Showing {filtered.length === 0 ? 0 : (currentPage - 1) * 10 + 1}-{Math.min(currentPage * 10, filtered.length)} of {filtered.length}
+                  </p>
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400">
+                    <button 
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="px-2 py-1 hover:text-slate-600 dark:hover:text-slate-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Prev
+                    </button>
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      // Simple logic to show a window of pages around current
+                      let startPage = Math.max(1, currentPage - 2);
+                      if (startPage + 4 > totalPages) {
+                        startPage = Math.max(1, totalPages - 4);
+                      }
+                      const page = startPage + i;
+                      if (page > totalPages) return null;
+                      
                       return (
-                        <tr key={u._id} className="hover:bg-surface-2/50 transition">
-                          <td className="px-5 py-3.5">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${avatarClassFor(u.name)}`}>
-                                {initials(u.name)}
-                              </div>
-                              <div className="min-w-0 leading-tight">
-                                <p className="font-semibold text-fg truncate">
-                                  {u.name}
-                                  {isMe && <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-info-fg bg-info-subtle px-1.5 py-0.5 rounded">You</span>}
-                                  {u.isProtected && <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-warning-fg bg-warning-subtle px-1.5 py-0.5 rounded" title="Protected system account">Locked</span>}
-                                  {u.canBuild && <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-700 bg-indigo-50 dark:text-indigo-200 dark:bg-indigo-500/20 px-1.5 py-0.5 rounded" title="Holds a builder seat">Builder</span>}
-                                </p>
-                                <p className="text-xs text-fg-muted truncate">{u.email}</p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3.5">
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-info-subtle text-info-fg">
-                              {u.role?.name || '—'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3.5">
-                            <span
-                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-                                u.isActive
-                                  ? 'bg-success-subtle text-success-fg'
-                                  : 'bg-surface-3 text-fg-muted'
-                              }`}
-                            >
-                              <span className={`w-1.5 h-1.5 rounded-full ${u.isActive ? 'bg-success-fg' : 'bg-fg-subtle'}`} />
-                              {u.isActive ? 'Active' : 'Inactive'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3.5 text-xs text-fg-muted">
-                            {u.department || '—'}
-                          </td>
-                          <td className="px-5 py-3.5">
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                onClick={() => setEditUser(u)}
-                                disabled={!!userBusy || u.isProtected}
-                                title={u.isProtected ? 'Protected account — cannot be edited' : 'Edit details, role, builder seat & org placement'}
-                                className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white transition"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => handleToggleActive(u)}
-                                disabled={isMe || !!userBusy || u.isProtected}
-                                title={
-                                  isMe
-                                    ? 'You cannot deactivate yourself'
-                                    : u.isProtected
-                                      ? 'Protected account — cannot be deactivated'
-                                      : u.isActive ? 'Deactivate user' : 'Reactivate user'
-                                }
-                                className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-line hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed text-fg transition"
-                              >
-                                {userBusy === 'deactivate'
-                                  ? '...'
-                                  : u.isActive ? 'Deactivate' : 'Reactivate'}
-                              </button>
-                              <button
-                                onClick={() => handleDelete(u)}
-                                disabled={isMe || !!userBusy || u.isProtected}
-                                aria-label={`Delete ${u.name}`}
-                                title={
-                                  isMe
-                                    ? 'You cannot delete yourself'
-                                    : u.isProtected
-                                      ? 'Protected account — cannot be deleted'
-                                      : 'Permanently delete user'
-                                }
-                                className="w-8 h-8 rounded-lg border border-line text-fg-muted hover:text-danger-fg hover:border-danger-line hover:bg-danger-subtle disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition"
-                              >
-                                {userBusy === 'delete' ? (
-                                  <span className="text-xs">…</span>
-                                ) : (
-                                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                  </svg>
-                                )}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
+                        <button
+                          key={page}
+                          onClick={() => setCurrentPage(page)}
+                          className={`w-6 h-6 rounded flex items-center justify-center transition ${
+                            currentPage === page 
+                              ? 'bg-[#6366f1] text-white' 
+                              : 'hover:bg-slate-100 dark:hover:bg-white/5'
+                          }`}
+                        >
+                          {page}
+                        </button>
                       )
                     })}
-                  </tbody>
-                </table>
-
-                <ul className="md:hidden divide-y divide-line">
-                  {filtered.map((u) => {
-                    const isMe = u._id === me._id
-                    const userBusy = busy[u._id]
-                    return (
-                      <li key={u._id} className="px-4 py-4">
-                        <div className="flex items-start gap-3">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${avatarClassFor(u.name)}`}>
-                            {initials(u.name)}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="font-semibold text-fg truncate">
-                              {u.name}
-                              {isMe && <span className="ml-1.5 text-[10px] font-semibold text-info-fg">You</span>}
-                            </p>
-                            <p className="text-xs text-fg-muted truncate">{u.email}</p>
-                            <div className="mt-2 flex flex-wrap items-center gap-2">
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-info-subtle text-info-fg">
-                                {u.role?.name || '—'}
-                              </span>
-                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
-                                u.isActive ? 'bg-success-subtle text-success-fg' : 'bg-surface-3 text-fg-muted'
-                              }`}>
-                                {u.isActive ? 'Active' : 'Inactive'}
-                              </span>
-                              {u.canBuild && (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium text-indigo-700 bg-indigo-50 dark:text-indigo-200 dark:bg-indigo-500/20">
-                                  Builder
-                                </span>
-                              )}
-                              {u.department && (
-                                <span className="text-[11px] text-fg-subtle">{u.department}</span>
-                              )}
-                            </div>
-                            <div className="mt-3 flex items-center gap-2">
-                              <button
-                                onClick={() => setEditUser(u)}
-                                disabled={!!userBusy || u.isProtected}
-                                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white disabled:opacity-50"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => handleToggleActive(u)}
-                                disabled={isMe || !!userBusy || u.isProtected}
-                                className="px-3 py-1.5 text-xs font-medium rounded-lg border border-line disabled:opacity-50"
-                              >
-                                {u.isActive ? 'Deactivate' : 'Reactivate'}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ul>
+                    <button 
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      className="px-2 py-1 hover:text-slate-600 dark:hover:text-slate-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
               </>
             )}
           </div>
@@ -1200,6 +1407,16 @@ function AdminPanel() {
         />
       )}
 
+      {viewUser && (
+        <ViewUserDialog
+          user={viewUser}
+          managers={managerOptions}
+          users={users}
+          onClose={() => setViewUser(null)}
+          onEdit={(u) => setEditUser(u)}
+        />
+      )}
+
       {editUser && (
         <EditUserDialog
           user={editUser}
@@ -1212,6 +1429,9 @@ function AdminPanel() {
             setEditUser(null)
             setFeedback(`Updated ${updated.name}'s details.`)
             loadUsers()
+            if (updated._id === me._id) {
+              authStore.refresh()
+            }
           }}
         />
       )}
@@ -1221,77 +1441,65 @@ function AdminPanel() {
 
 function StatusCard({ label, value, hint, tone = 'neutral', icon, active, onClick, loading }) {
   const tones = {
-    neutral: {
-      icon: 'bg-surface-2 text-fg-muted ring-line',
-      value: 'text-fg',
-      active: 'border-indigo-300 ring-2 ring-indigo-100 dark:ring-indigo-500/20',
-    },
-    success: {
-      icon: 'bg-success-subtle text-success-fg ring-success-line',
-      value: 'text-success-fg',
-      active: 'border-success-line ring-2 ring-success-subtle',
-    },
-    muted: {
-      icon: 'bg-surface-3 text-fg-muted ring-line',
-      value: 'text-fg',
-      active: 'border-line ring-2 ring-surface-3',
-    },
-    info: {
-      icon: 'bg-info-subtle text-info-fg ring-info-line',
-      value: 'text-info-fg',
-      active: 'border-info-line ring-2 ring-info-subtle',
-    },
+    neutral: "bg-[#EEF2FF] text-[#6366F1] dark:bg-indigo-950/60 dark:text-indigo-400",
+    success: "bg-[#E6F9F0] text-[#059669] dark:bg-emerald-950/60 dark:text-emerald-400",
+    info: "bg-[#FEF9E7] text-[#D97706] dark:bg-amber-950/60 dark:text-amber-400",
+    muted: "bg-[#FEE2E2] text-[#DC2626] dark:bg-rose-950/60 dark:text-rose-400",
   }
-  const t = tones[tone] || tones.neutral
+  const toneStyle = tones[tone] || tones.neutral
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-xl border bg-surface px-4 py-3.5 shadow-sm flex items-start gap-3 text-left transition w-full ${
-        active ? t.active : 'border-line hover:border-indigo-200'
-      }`}
-    >
-      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ring-1 ${t.icon}`}>
-        {icon}
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-4 flex items-center gap-3.5 hover:border-slate-300 dark:hover:border-slate-700 transition min-w-0">
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${toneStyle}`}>
+        {React.isValidElement(icon) ? React.cloneElement(icon, { className: 'w-4.5 h-4.5' }) : icon}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">{label}</p>
-        {loading ? (
-          <Skeleton className="h-7 w-12 mt-1.5" />
-        ) : (
-          <p className={`mt-1 text-2xl font-semibold tabular-nums tracking-tight ${t.value}`}>{value}</p>
+        <div className="flex items-baseline gap-1.5 flex-wrap">
+          {loading ? (
+            <Skeleton className="h-5 w-12" />
+          ) : (
+            <span className="text-lg font-bold text-slate-900 dark:text-white leading-tight tabular-nums">
+              {value}
+            </span>
+          )}
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400 leading-tight">
+            {label}
+          </span>
+        </div>
+        {hint && (
+          <div className="text-xs text-slate-400 dark:text-slate-500 font-medium truncate mt-0.5">
+            {hint}
+          </div>
         )}
-        {hint ? <p className="mt-0.5 text-[11px] text-fg-muted truncate">{hint}</p> : null}
       </div>
-    </button>
+    </div>
   )
 }
 
 function IconUsers(props) {
   return (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.5 20.25a7.5 7.5 0 0115 0" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
     </svg>
   )
 }
 function IconActive(props) {
   return (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
     </svg>
   )
 }
 function IconInactive(props) {
   return (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
     </svg>
   )
 }
 function IconAdmin(props) {
   return (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
     </svg>
   )
 }
@@ -1534,6 +1742,54 @@ function ImportUsersDialog({ roles, onClose, onImported }) {
           )}
         </div>
     </Modal>
+  )
+}
+
+function DropdownSelect({ value, onChange, options, placeholder }) {
+  const [isOpen, setIsOpen] = useState(false)
+  const ref = useRef()
+
+  useEffect(() => {
+    const handleClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setIsOpen(false) }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  return (
+    <div className="relative w-full sm:w-[200px]" ref={ref}>
+      <button 
+        type="button" 
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-4 py-2.5 text-[13px] font-medium rounded-[8px] border-none shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] bg-white dark:bg-[#111a2e] text-slate-600 dark:text-slate-300 focus:outline-none flex items-center justify-between gap-3 cursor-pointer"
+      >
+        <span className="truncate">{value || placeholder}</span>
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      
+      {isOpen && (
+        <div className="absolute top-[calc(100%+6px)] left-0 w-full max-h-[300px] overflow-y-auto bg-white dark:bg-[#111a2e] border border-slate-100 dark:border-white/5 rounded-lg shadow-lg z-50 py-1.5">
+          <button
+            type="button"
+            onClick={() => { onChange(placeholder); setIsOpen(false) }}
+            className={`w-full text-left px-4 py-2.5 text-[13px] hover:bg-slate-50 dark:hover:bg-white/5 transition-colors ${value === placeholder ? 'text-indigo-600 font-semibold bg-indigo-50/50 dark:bg-indigo-500/10' : 'text-slate-600 dark:text-slate-300'}`}
+          >
+            {placeholder}
+          </button>
+          {options.map((opt, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => { onChange(opt); setIsOpen(false) }}
+              className={`w-full text-left px-4 py-2.5 text-[13px] hover:bg-slate-50 dark:hover:bg-white/5 transition-colors ${value === opt ? 'text-indigo-600 font-semibold bg-indigo-50/50 dark:bg-indigo-500/10' : 'text-slate-600 dark:text-slate-300'}`}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 

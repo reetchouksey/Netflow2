@@ -41,14 +41,14 @@ const WorkflowExecution = require('../models/WorkflowExecution')
 const Task = require('../models/Task')
 const Notification = require('../models/Notification')
 const AuditLog = require('../models/AuditLog')
-const PlatformBroadcast = require('../models/PlatformBroadcast')
 const { protect } = require('../middleware/auth')
 const { roleGuard } = require('../middleware/roleGuard')
 const { sendSuccess, sendError } = require('../utils/apiResponse')
 const { checkEmailDomain } = require('../utils/domainPolicy')
 const { generatePassword } = require('../utils/password')
+const { sendPasswordResetEmail, sendWelcomeEmail } = require('../utils/emailService')
 const { writeAuditLog } = require('../utils/writeAuditLog')
-const { applyLicensingPayload, usageSnapshot, freshPeriod, resetNotified, licenceState } = require('../utils/licensing')
+const { applyLicensingPayload, usageSnapshot, freshPeriod, resetNotified } = require('../utils/licensing')
 const { countsFor } = require('../utils/usage')
 const dms = require('../services/dmsClient')
 const { ensurePeriod } = require('../utils/usageMeter')
@@ -81,20 +81,8 @@ const PLATFORM_ACTIONS = [
   'org_admin_password_reset',
   'org_storage_extended',
   'org_storage_extension_revoked',
-  'org_licence_expired',
-  'platform_broadcast_sent'
+  'org_licence_expired'
 ]
-
-const LIFECYCLE_ACTIONS = ['org_created', 'org_suspended', 'org_activated', 'org_deleted']
-const HISTORY_RANGES = { '3M': 3, '6M': 6, '12M': 12 }
-
-const monthStartUtc = (value = new Date()) =>
-  new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1))
-
-const monthKey = (value) => {
-  const date = new Date(value)
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
-}
 
 // A temporary storage grant is a support action, not a plan change: it buys a
 // tenant time to clean up (or to sign a bigger contract) without stranding the
@@ -134,204 +122,6 @@ const parseDomains = (input) => {
     raw.map((d) => String(d).toLowerCase().trim().replace(/^@/, '')).filter(Boolean)
   )]
 }
-
-// GET /api/platform/overview - compact, safe aggregates for the dashboard.
-// This avoids loading every tenant document and running usageFor() N times just
-// to render four KPIs and adoption percentages.
-router.get('/overview', async (req, res, next) => {
-  try {
-    const orgs = await Organization.find({ isDefault: { $ne: true } })
-      .select('_id status plan licence features integrations.dmsEnabled integrations.departmentDms integrations.s3.enabled')
-      .lean()
-
-    const operational = orgs.filter((org) => {
-      if ((org.status || 'active') === 'suspended') return false
-      return licenceState(org).readOnly === false
-    })
-    const operationalIds = operational.map((org) => org._id)
-
-    let activeUsers = 0
-    let formOrgIds = []
-    let workflowOrgIds = []
-    let builderOrgIds = []
-    if (operationalIds.length) {
-      [activeUsers, formOrgIds, workflowOrgIds, builderOrgIds] = await Promise.all([
-        User.countDocuments({ orgId: { $in: operationalIds }, isActive: { $ne: false } })
-          .setOptions({ skipOrgScope: true }),
-        Form.distinct('orgId', { orgId: { $in: operationalIds } })
-          .setOptions({ skipOrgScope: true }),
-        Workflow.distinct('orgId', { orgId: { $in: operationalIds } })
-          .setOptions({ skipOrgScope: true }),
-        User.distinct('orgId', {
-          orgId: { $in: operationalIds },
-          isActive: { $ne: false },
-          canBuild: true,
-          countsTowardSeats: { $ne: false }
-        }).setOptions({ skipOrgScope: true })
-      ])
-    }
-
-    const denominator = operational.length
-    const adoptionRow = (key, label, organizations) => ({
-      key,
-      label,
-      organizations,
-      percentage: denominator ? Math.round((organizations / denominator) * 100) : 0
-    })
-    const dmsOrganizations = operational.filter((org) =>
-      org.integrations?.dmsEnabled === true ||
-      (org.integrations?.departmentDms || []).some((item) => item?.enabled !== false)
-    ).length
-    const s3Organizations = operational.filter((org) => org.integrations?.s3?.enabled === true).length
-    const externalOrganizations = operational.filter((org) => org.features?.externalUsers === true).length
-
-    return sendSuccess(res, {
-      metrics: {
-        totalOrganizations: orgs.length,
-        activeOrganizations: operational.length,
-        suspendedOrganizations: orgs.filter((org) => (org.status || 'active') === 'suspended').length,
-        activeUsers
-      },
-      adoptionDenominator: denominator,
-      adoption: [
-        adoptionRow('forms', 'Forms', formOrgIds.length),
-        adoptionRow('workflows', 'Workflows', workflowOrgIds.length),
-        adoptionRow('builders', 'Builder access', builderOrgIds.length),
-        adoptionRow('dms', 'BaseLayer DMS', dmsOrganizations),
-        adoptionRow('s3', 'Dedicated S3', s3Organizations),
-        adoptionRow('externalUsers', 'External users', externalOrganizations)
-      ]
-    })
-  } catch (err) {
-    next(err)
-  }
-})
-
-// GET /api/platform/historical-stats?range=3M|6M|12M|ALL
-// Historical values are lifecycle event counts. No current state is projected
-// backwards, so every point remains auditable against AuditLog.
-router.get('/historical-stats', async (req, res, next) => {
-  try {
-    const range = String(req.query.range || '12M').toUpperCase()
-    if (range !== 'ALL' && !HISTORY_RANGES[range]) {
-      return sendError(res, 'range must be one of 3M, 6M, 12M or ALL', 'INVALID_RANGE', 400)
-    }
-
-    const nowMonth = monthStartUtc()
-    let firstMonth
-    if (range === 'ALL') {
-      const first = await AuditLog.findOne({ action: { $in: LIFECYCLE_ACTIONS } })
-        .setOptions({ skipOrgScope: true })
-        .select('createdAt')
-        .sort({ createdAt: 1 })
-        .lean()
-      firstMonth = first ? monthStartUtc(first.createdAt) : nowMonth
-    } else {
-      const months = HISTORY_RANGES[range]
-      firstMonth = new Date(Date.UTC(nowMonth.getUTCFullYear(), nowMonth.getUTCMonth() - months + 1, 1))
-    }
-
-    const logs = await AuditLog.find({
-      action: { $in: LIFECYCLE_ACTIONS },
-      createdAt: { $gte: firstMonth }
-    })
-      .setOptions({ skipOrgScope: true })
-      .select('action createdAt')
-      .sort({ createdAt: 1 })
-      .lean()
-
-    const currentTotalOrganizations = await Organization.countDocuments({ isDefault: { $ne: true } })
-
-    const buckets = new Map()
-    for (let cursor = firstMonth; cursor <= nowMonth;) {
-      const timestamp = new Date(cursor)
-      buckets.set(monthKey(timestamp), {
-        timestamp: timestamp.toISOString(),
-        metrics: { newOrgs: 0, suspendedOrgs: 0, activatedOrgs: 0, deletedOrgs: 0 }
-      })
-      cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1))
-    }
-
-    const metricByAction = {
-      org_created: 'newOrgs',
-      org_suspended: 'suspendedOrgs',
-      org_activated: 'activatedOrgs',
-      org_deleted: 'deletedOrgs'
-    }
-    for (const log of logs) {
-      const bucket = buckets.get(monthKey(log.createdAt))
-      const metric = metricByAction[log.action]
-      if (bucket && metric) bucket.metrics[metric] += 1
-    }
-
-    const snapshots = [...buckets.values()]
-    let runningTotalOrganizations = currentTotalOrganizations
-    for (let index = snapshots.length - 1; index >= 0; index -= 1) {
-      const snapshot = snapshots[index]
-      snapshot.metrics.totalOrganizations = runningTotalOrganizations
-      runningTotalOrganizations = Math.max(
-        0,
-        runningTotalOrganizations - snapshot.metrics.newOrgs + snapshot.metrics.deletedOrgs
-      )
-    }
-
-    return sendSuccess(res, { range, snapshots })
-  } catch (err) {
-    next(err)
-  }
-})
-
-// POST /api/platform/broadcast - replace the active platform-wide banner.
-router.post('/broadcast', async (req, res, next) => {
-  try {
-    const message = String(req.body?.message || '').trim()
-    const severity = String(req.body?.severity || 'info').toLowerCase()
-    const expiresAt = new Date(req.body?.expiresAt)
-
-    if (!message || message.length > 500) {
-      return sendError(res, 'Message must be between 1 and 500 characters', 'INVALID_MESSAGE', 400)
-    }
-    if (!['info', 'warning', 'critical'].includes(severity)) {
-      return sendError(res, 'Severity must be info, warning or critical', 'INVALID_SEVERITY', 400)
-    }
-    if (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) {
-      return sendError(res, 'Expiration must be in the future', 'INVALID_EXPIRY', 400)
-    }
-
-    const now = new Date()
-    await PlatformBroadcast.updateMany(
-      { supersededAt: null, expiresAt: { $gt: now } },
-      { $set: { supersededAt: now } }
-    )
-    const broadcast = await PlatformBroadcast.create({
-      message,
-      severity,
-      expiresAt,
-      createdBy: req.user._id
-    })
-    await writeAuditLog({
-      action: 'platform_broadcast_sent',
-      performedBy: req.user._id,
-      targetEntity: 'Platform',
-      department: req.user.department,
-      ipAddress: req.ip,
-      detail: `Sent a ${severity} platform broadcast`,
-      metadata: { broadcastId: String(broadcast._id), expiresAt }
-    })
-
-    return sendSuccess(res, {
-      broadcast: {
-        _id: broadcast._id,
-        message: broadcast.message,
-        severity: broadcast.severity,
-        expiresAt: broadcast.expiresAt,
-        createdAt: broadcast.createdAt
-      }
-    }, 201)
-  } catch (err) {
-    next(err)
-  }
-})
 
 // Raw counts for the org card. `users`/`forms`/`workflows` follow the licensing
 // rules (utils/usage.js) so the numbers here match what the quota gate enforces;
@@ -396,16 +186,37 @@ router.get('/orgs', async (req, res, next) => {
   try {
     const orgs = await Organization.find({ isDefault: { $ne: true } }).sort({ createdAt: 1 }).lean()
 
+    const adminRole = await Role.findOne({ name: 'Admin' }).lean()
+    const adminRoleId = adminRole?._id
+
     const adminIds = orgs.map((o) => o.adminUserId).filter(Boolean)
     const admins = adminIds.length
-      ? await User.find({ _id: { $in: adminIds } }).select('email name').setOptions({ skipOrgScope: true }).lean()
+      ? await User.find({ _id: { $in: adminIds } }).select('email name employeeId orgId').setOptions({ skipOrgScope: true }).lean()
       : []
     const adminById = new Map(admins.map((a) => [String(a._id), a]))
+    const adminByOrgId = new Map(admins.map((a) => [String(a.orgId), a]))
+
+    // For any org where adminUserId was missing or not found, query first Admin user in that org
+    const missingOrgIds = orgs.filter((o) => !o.adminUserId || !adminById.has(String(o.adminUserId))).map((o) => o._id)
+    if (missingOrgIds.length) {
+      const fallbackAdmins = await User.find({
+        orgId: { $in: missingOrgIds },
+        ...(adminRoleId ? { role: adminRoleId } : {})
+      }).select('email name employeeId orgId').setOptions({ skipOrgScope: true }).lean()
+      for (const a of fallbackAdmins) {
+        if (!adminByOrgId.has(String(a.orgId))) {
+          adminByOrgId.set(String(a.orgId), a)
+        }
+      }
+    }
 
     const withUsage = await Promise.all(
-      orgs.map((org) => withLicensing(org, {
-        admin: org.adminUserId ? adminById.get(String(org.adminUserId)) || null : null
-      }))
+      orgs.map((org) => {
+        const adm = (org.adminUserId && adminById.get(String(org.adminUserId))) || adminByOrgId.get(String(org._id)) || null
+        return withLicensing(org, {
+          admin: adm ? { name: adm.name, email: adm.email, employeeId: adm.employeeId || null, _id: adm._id } : null
+        })
+      })
     )
     return sendSuccess(res, { orgs: withUsage })
   } catch (err) {
@@ -419,7 +230,7 @@ router.get('/orgs', async (req, res, next) => {
 router.post('/orgs', async (req, res, next) => {
   try {
     const {
-      name, subdomain, allowedDomains, features, adminEmail, adminName,
+      name, subdomain, allowedDomains, features, adminEmail, adminName, adminEmployeeId, employeeId,
       // Platform Super Admin options for the bootstrap Org Admin (default on):
       //   adminCanBuild           — grant form/workflow builder access
       //   countAdminTowardSeats — bill this admin against user + builder limits
@@ -462,17 +273,6 @@ router.post('/orgs', async (req, res, next) => {
       if (integrations.dmsEnabled !== undefined) integrationsDoc.dmsEnabled = Boolean(integrations.dmsEnabled)
       if (integrations.dmsOrgSlug !== undefined) integrationsDoc.dmsOrgSlug = String(integrations.dmsOrgSlug || '').toLowerCase().trim().replace(/[^a-z0-9-]/g, '-')
       
-      if (integrations.s3 !== undefined) {
-        integrationsDoc.s3 = {
-          enabled: Boolean(integrations.s3.enabled),
-          bucket: String(integrations.s3.bucket || '').trim(),
-          endpoint: String(integrations.s3.endpoint || '').trim(),
-          region: String(integrations.s3.region || 'auto').trim(),
-          accessKeyId: String(integrations.s3.accessKeyId || '').trim(),
-          secretAccessKey: String(integrations.s3.secretAccessKey || '').trim()
-        }
-      }
-      
       if (Array.isArray(integrations.departmentDms)) {
         integrationsDoc.departmentDms = integrations.departmentDms
           .filter((d) => d && String(d.department || '').trim())
@@ -484,6 +284,13 @@ router.post('/orgs', async (req, res, next) => {
             enabled: d.enabled !== false
           }))
       }
+
+      if (integrations.s3Storage !== undefined) integrationsDoc.s3Storage = Boolean(integrations.s3Storage)
+      if (integrations.s3Bucket !== undefined) integrationsDoc.s3Bucket = String(integrations.s3Bucket || '').trim()
+      if (integrations.s3Region !== undefined) integrationsDoc.s3Region = String(integrations.s3Region || '').trim()
+      if (integrations.s3Endpoint !== undefined) integrationsDoc.s3Endpoint = String(integrations.s3Endpoint || '').trim()
+      if (integrations.s3AccessKeyId !== undefined) integrationsDoc.s3AccessKeyId = String(integrations.s3AccessKeyId || '').trim()
+      if (integrations.s3SecretAccessKey !== undefined) integrationsDoc.s3SecretAccessKey = String(integrations.s3SecretAccessKey || '').trim()
     }
 
     const org = new Organization({
@@ -511,6 +318,7 @@ router.post('/orgs', async (req, res, next) => {
         orgId: org._id,
         name: String(adminName || '').trim() || `${org.name} Admin`,
         email,
+        employeeId: String(adminEmployeeId || employeeId || '').trim() || undefined,
         password: tempPassword,
         department: 'IT',
         role: adminRole._id,
@@ -532,6 +340,29 @@ router.post('/orgs', async (req, res, next) => {
 
     org.adminUserId = admin._id
     await org.save()
+
+    const RESET_TTL_MINUTES = 60 * 24
+    const rawToken = admin.createPasswordResetToken(RESET_TTL_MINUTES)
+    await admin.save({ validateBeforeSave: false })
+
+    const base = (process.env.CLIENT_URL || 'http://localhost:5173').split(',')[0].trim().replace(/\/$/, '')
+    const resetUrl = `${base}/reset-password?token=${rawToken}&email=${encodeURIComponent(admin.email)}`
+
+    try {
+      await sendWelcomeEmail({
+        to: admin.email,
+        name: admin.name,
+        tempPassword
+      })
+      await sendPasswordResetEmail({
+        to: admin.email,
+        name: admin.name,
+        resetUrl,
+        expiresMinutes: RESET_TTL_MINUTES
+      })
+    } catch (mailErr) {
+      console.error('Welcome/Reset email error on org create:', mailErr.message)
+    }
 
     auditPlatform(req, 'org_created', org, `Created organization "${org.name}" (${org.subdomain}) with admin ${admin.email}`, {
       adminEmail: admin.email,
@@ -567,11 +398,33 @@ router.put('/orgs/:id', async (req, res, next) => {
     const org = await Organization.findById(req.params.id)
     if (!org) return sendError(res, 'Organization not found', 'ORG_NOT_FOUND', 404)
 
-    const { name, allowedDomains, features, integrations } = req.body || {}
+    const { name, allowedDomains, features, integrations, adminName, adminEmail, adminEmployeeId, employeeId } = req.body || {}
     if (name !== undefined) org.name = String(name).trim()
     if (allowedDomains !== undefined) org.allowedDomains = parseDomains(allowedDomains)
     if (features !== undefined) {
       if (features.externalUsers !== undefined) org.features.externalUsers = Boolean(features.externalUsers)
+    }
+
+    if (adminName || adminEmail || adminEmployeeId !== undefined || employeeId !== undefined) {
+      let adminUser = org.adminUserId ? await User.findById(org.adminUserId).setOptions({ skipOrgScope: true }) : null
+      if (!adminUser) {
+        const adminRole = await Role.findOne({ name: 'Admin' }).lean()
+        adminUser = await User.findOne({
+          orgId: org._id,
+          ...(adminRole ? { role: adminRole._id } : {})
+        }).setOptions({ skipOrgScope: true })
+      }
+      if (adminUser) {
+        if (adminName) adminUser.name = String(adminName).trim()
+        if (adminEmail) adminUser.email = String(adminEmail).toLowerCase().trim()
+        if (adminEmployeeId !== undefined || employeeId !== undefined) {
+          adminUser.employeeId = String(adminEmployeeId || employeeId || '').trim() || null
+        }
+        await adminUser.save({ validateBeforeSave: false })
+        if (!org.adminUserId) {
+          org.adminUserId = adminUser._id
+        }
+      }
     }
 
     // DMS integration settings — SuperAdmin only. dmsApiKey is write-once from
@@ -600,28 +453,6 @@ router.put('/orgs/:id', async (req, res, next) => {
           dmsChanges.push(`dmsOrgSlug=${newSlug || '(subdomain)'}`)
         }
       }
-
-      if (integrations.s3 !== undefined) {
-        const s3 = integrations.s3
-        if (!org.integrations.s3) org.integrations.s3 = {}
-        if (s3.enabled !== undefined) org.integrations.s3.enabled = Boolean(s3.enabled)
-        if (s3.bucket !== undefined) org.integrations.s3.bucket = String(s3.bucket || '').trim()
-        if (s3.endpoint !== undefined) org.integrations.s3.endpoint = String(s3.endpoint || '').trim()
-        if (s3.region !== undefined) org.integrations.s3.region = String(s3.region || 'auto').trim()
-        if (s3.accessKeyId !== undefined) org.integrations.s3.accessKeyId = String(s3.accessKeyId || '').trim()
-        if (s3.secretAccessKey !== undefined) {
-          const newSecret = String(s3.secretAccessKey || '').trim()
-          if (newSecret !== '••••••••') {
-            org.integrations.s3.secretAccessKey = newSecret
-            dmsChanges.push('s3.secretAccessKey')
-          }
-        }
-        dmsChanges.push('s3 settings')
-      }
-      
-      // Clean up legacy root-level S3 object
-      org.set('s3', undefined, { strict: false })
-
       // Per-department DMS configs — full replace (send the whole array to update)
       if (Array.isArray(integrations.departmentDms)) {
         org.integrations.departmentDms = integrations.departmentDms
@@ -629,14 +460,10 @@ router.put('/orgs/:id', async (req, res, next) => {
           .map((d) => {
             const deptName = String(d.department).trim()
             let apiKey = String(d.apiKey || '').trim()
-            // Preserve existing key if masked or missing
             if (apiKey === '••••••••' || !apiKey) {
               const existing = org.integrations.departmentDms?.find(
                 (e) => String(e.department).toLowerCase() === deptName.toLowerCase()
               )
-              // Only fallback to existing if we didn't explicitly send an empty string
-              // Wait, if !apiKey, how do we clear it? We can allow frontend to send
-              // a special flag or we just let it keep existing if it's strictly '••••••••'
               if (apiKey === '••••••••') {
                 apiKey = existing?.apiKey || ''
               }
@@ -650,6 +477,15 @@ router.put('/orgs/:id', async (req, res, next) => {
             }
           })
         dmsChanges.push(`departmentDms[${org.integrations.departmentDms.length}]`)
+      }
+
+      if (integrations.s3Storage !== undefined) org.integrations.s3Storage = Boolean(integrations.s3Storage)
+      if (integrations.s3Bucket !== undefined) org.integrations.s3Bucket = String(integrations.s3Bucket || '').trim()
+      if (integrations.s3Region !== undefined) org.integrations.s3Region = String(integrations.s3Region || '').trim()
+      if (integrations.s3Endpoint !== undefined) org.integrations.s3Endpoint = String(integrations.s3Endpoint || '').trim()
+      if (integrations.s3AccessKeyId !== undefined) org.integrations.s3AccessKeyId = String(integrations.s3AccessKeyId || '').trim()
+      if (integrations.s3SecretAccessKey !== undefined && integrations.s3SecretAccessKey !== '••••••••') {
+        org.integrations.s3SecretAccessKey = String(integrations.s3SecretAccessKey || '').trim()
       }
     }
 
@@ -862,19 +698,44 @@ router.post('/orgs/:id/reset-admin-password', async (req, res, next) => {
     }
     if (!admin) return sendError(res, 'No admin user found for this organization', 'NO_ORG_ADMIN', 404)
 
+    const RESET_TTL_MINUTES = 60
+    const rawToken = admin.createPasswordResetToken(RESET_TTL_MINUTES)
     const tempPassword = generatePassword(14)
     admin.password = tempPassword
     admin.mustChangePassword = true
     admin.tokenVersion = (admin.tokenVersion || 0) + 1
-    await admin.save()
+    await admin.save({ validateBeforeSave: false })
 
     if (!org.adminUserId) { org.adminUserId = admin._id; await org.save() }
+
+    const base = (process.env.CLIENT_URL || 'http://localhost:5173').split(',')[0].trim().replace(/\/$/, '')
+    const resetUrl = `${base}/reset-password?token=${rawToken}&email=${encodeURIComponent(admin.email)}`
+
+    try {
+      await sendPasswordResetEmail({
+        to: admin.email,
+        name: admin.name,
+        resetUrl,
+        expiresMinutes: RESET_TTL_MINUTES
+      })
+    } catch (mailErr) {
+      console.error('sendPasswordResetEmail error on admin reset:', mailErr.message)
+    }
+
+    await Notification.create({
+      orgId: org._id,
+      userId: admin._id,
+      title: 'Password reset notification',
+      message: 'Your administrator password has been reset by Platform SuperAdmin. A reset link has been dispatched to your email address.',
+      type: 'system',
+      triggeredBy: req.user._id
+    }).catch(() => {})
 
     auditPlatform(req, 'org_admin_password_reset', org, `Reset admin password for "${org.name}" (${admin.email})`, {
       adminEmail: admin.email
     })
 
-    return sendSuccess(res, { admin: { email: admin.email, name: admin.name, tempPassword } })
+    return sendSuccess(res, { admin: { email: admin.email, name: admin.name, tempPassword, resetUrl } })
   } catch (err) {
     next(err)
   }
@@ -1125,7 +986,7 @@ router.get('/admins', async (req, res, next) => {
 
     const admins = await User.find({ role: role._id })
       .setOptions({ skipOrgScope: true })
-      .select('name email department isActive isProtected mustChangePassword lastLogin createdAt')
+      .select('name email employeeId department isActive isProtected mustChangePassword lastLogin createdAt')
       .sort({ createdAt: 1 })
       .lean()
 
@@ -1146,6 +1007,7 @@ router.post('/admins', async (req, res, next) => {
   try {
     const email = String(req.body.email || '').trim().toLowerCase()
     const name = String(req.body.name || '').trim() || 'Platform Admin'
+    const employeeId = String(req.body.employeeId || '').trim() || undefined
     if (!EMAIL_RE.test(email)) return sendError(res, 400, 'A valid email is required')
 
     const role = await Role.findOne({ name: 'SuperAdmin' })
@@ -1164,6 +1026,7 @@ router.post('/admins', async (req, res, next) => {
       orgId: defaultOrg._id,
       name,
       email,
+      employeeId,
       password: tempPassword,
       department: 'IT',
       role: role._id,
@@ -1188,6 +1051,7 @@ router.post('/admins', async (req, res, next) => {
         _id: user._id,
         name: user.name,
         email: user.email,
+        employeeId: user.employeeId,
         tempPassword
       }
     }, 201)
@@ -1206,11 +1070,27 @@ router.post('/admins/:id/reset-password', async (req, res, next) => {
       .setOptions({ skipOrgScope: true })
     if (!user) return sendError(res, 404, 'Platform admin not found')
 
+    const RESET_TTL_MINUTES = 60
+    const rawToken = user.createPasswordResetToken(RESET_TTL_MINUTES)
     const tempPassword = generatePassword()
     user.password = tempPassword
     user.mustChangePassword = true
     user.tokenVersion = (user.tokenVersion || 0) + 1
-    await user.save()
+    await user.save({ validateBeforeSave: false })
+
+    const base = (process.env.CLIENT_URL || 'http://localhost:5173').split(',')[0].trim().replace(/\/$/, '')
+    const resetUrl = `${base}/reset-password?token=${rawToken}&email=${encodeURIComponent(user.email)}`
+
+    try {
+      await sendPasswordResetEmail({
+        to: user.email,
+        name: user.name,
+        resetUrl,
+        expiresMinutes: RESET_TTL_MINUTES
+      })
+    } catch (mailErr) {
+      console.error('sendPasswordResetEmail error on platform admin reset:', mailErr.message)
+    }
 
     writeAuditLog({
       action: 'platform_admin_password_reset',
@@ -1223,7 +1103,7 @@ router.post('/admins/:id/reset-password', async (req, res, next) => {
     })
 
     return sendSuccess(res, {
-      admin: { _id: user._id, email: user.email, tempPassword }
+      admin: { _id: user._id, email: user.email, tempPassword, resetUrl }
     })
   } catch (err) {
     next(err)
@@ -1405,3 +1285,5 @@ router.get('/dms-documents', async (req, res, next) => {
 })
 
 module.exports = router
+
+

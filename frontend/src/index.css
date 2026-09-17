@@ -1,45 +1,47 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 /*
   Dark mode
   ---------
   Class-based toggle: adding `.dark` to <html> flips every dark: variant AND
-  the semantic color tokens below. The tokens (surface / fg / line) are the
-  primary mechanism — components use `bg-surface`, `text-fg`, `border-line`,
-  etc., and those automatically re-resolve per theme. Accent colors
-  (indigo / emerald / rose / amber / sky …) are intentionally left as Tailwind
-  defaults for v1 and spot-fixed with `dark:` where needed.
-
-  Dark token overrides MUST live in `@layer theme` so they win over the light
-  values `@theme` registers on `:root`. Overrides outside that layer lose the
-  cascade → surfaces stay white while `color-scheme: dark` paints input text
-  light = invisible white-on-white fields.
+  the semantic color tokens below.
 */
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+
+  /* Brand Colors */
+  --color-brand-50: #f3f1ff;
+  --color-brand-100: #e7e3ff;
+  --color-brand-200: #cfc7ff;
+  --color-brand-300: #b3a6ff;
+  --color-brand-400: #8b7bff;
+  --color-brand-500: #6d5df6;
+  --color-brand-600: #5b4bff;
+  --color-brand-700: #4b3ddb;
+  --color-brand-800: #3d33b0;
+  --color-brand-900: #322b8c;
+
   /* Surfaces — page + cards + subtle fills */
   --color-surface: #ffffff;      /* white  — cards, menus, inputs        */
-  --color-surface-2: #f9fafb;    /* gray-50  — page bg, hover fills       */
-  --color-surface-3: #f3f4f6;    /* gray-100 — stronger fills, tracks     */
+  --color-surface-2: #f7f7fc;    /* gray-50  — page bg, hover fills       */
+  --color-surface-3: #f3f4ff;    /* gray-100 — stronger fills, tracks     */
+  --color-slate-850: #111a2e;
 
   /* Foreground text */
-  --color-fg: #1f2937;           /* gray-800 — primary text / headings    */
-  --color-fg-muted: #4b5563;     /* gray-600 — secondary text             */
-  --color-fg-subtle: #9ca3af;    /* gray-400 — hints, meta, placeholders  */
+  --color-fg: #0f172a;           /* slate-900 — primary text / headings   */
+  --color-fg-muted: #475569;     /* slate-600 — secondary text            */
+  --color-fg-subtle: #64748b;    /* slate-500 — hints, meta, placeholders */
 
   /* Lines */
-  --color-line: #e5e7eb;         /* gray-200 — borders, dividers          */
+  --color-line: rgba(0, 0, 0, 0.08); /* subtle border                     */
 
   /* Sign-in / password screens sit outside the app shell on their own wall */
   --color-auth-bg: #f0f0ff;
 
-  /*
-    Status tones — success / danger / warning / info.
-    Each has a `-subtle` fill, a `-fg` text colour and a `-line` border so a
-    banner or badge is `bg-danger-subtle border-danger-line text-danger-fg`.
-    These re-resolve in dark mode, unlike raw `bg-red-50 text-red-700`.
-  */
+  /* Status tones */
   --color-success-subtle: #ecfdf5;  /* emerald-50  */
   --color-success-fg: #047857;      /* emerald-700 */
   --color-success-line: #a7f3d0;    /* emerald-200 */
@@ -63,19 +65,18 @@
 
 @layer theme {
   .dark {
-    --color-surface: #0f172a;      /* slate-900 */
-    --color-surface-2: #111a2e;    /* slightly darker than cards for page   */
-    --color-surface-3: #1e293b;    /* slate-800 — fills / hover             */
+    --color-surface: #111a2e;      /* slate-900/card */
+    --color-surface-2: #0b1120;    /* page bg        */
+    --color-surface-3: #1e293b;    /* slate-800      */
 
-    --color-fg: #e2e8f0;           /* slate-200 */
-    --color-fg-muted: #94a3b8;     /* slate-400 */
-    --color-fg-subtle: #64748b;     /* slate-500 */
+    --color-fg: #f8fafc;           /* slate-50 */
+    --color-fg-muted: #cbd5e1;     /* slate-300 */
+    --color-fg-subtle: #94a3b8;     /* slate-400 */
 
-    --color-line: #293548;         /* subtle slate border                   */
+    --color-line: rgba(255, 255, 255, 0.08);
 
-    --color-auth-bg: #0b1220;
+    --color-auth-bg: #0b1120;
 
-    /* Status tones: dim the fill, brighten the text so contrast holds on dark. */
     --color-success-subtle: #06281d;
     --color-success-fg: #6ee7b7;
     --color-success-line: #0f5132;
@@ -98,36 +99,94 @@
   }
 }
 
-/*
-  Stacking order
-  --------------
-  Overlay layers were picked ad hoc, which put the assistant button on top of
-  modals and the Admin panel's dialogs underneath the mobile nav. Keep new
-  overlays on this scale:
+/* Custom Shadows from Reference UI */
+.shadow-soft {
+  box-shadow: 0 8px 30px rgba(109, 93, 246, 0.08);
+}
+.shadow-glow {
+  box-shadow: 0 12px 30px -8px rgba(109, 93, 246, 0.5);
+}
+.shadow-pop {
+  box-shadow: 0 12px 32px -8px rgba(16, 24, 40, 0.18);
+}
 
-    z-10      in-card popovers and chart tooltips
-    z-20      sticky page chrome (the top bar)
-    z-30      menus anchored to page chrome, bottom tab bar, assistant launcher
-    z-40      backdrop behind a drawer or dialog
-    z-50      slide-in drawers (mobile nav, response detail)
-    z-[60]    centred modals and dialogs
-    z-[70]    a dialog opened from another dialog
-    z-[100]   toasts
-    z-[110]   confirm dialog (must beat everything it guards)
-    z-[120]   skip link
-*/
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Custom Scrollbars */
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+}
+.sidebar-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: 9999px;
+}
+
+.thin-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+}
+.thin-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.3);
+  border-radius: 9999px;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
 
 @layer base {
   html { color-scheme: light; }
   html.dark { color-scheme: dark; }
 
   body {
-    background-color: var(--color-surface-2);
+    background-color: #eaedf4;
     color: var(--color-fg);
+    font-family: var(--font-sans);
+    letter-spacing: -0.01em;
+    -webkit-font-smoothing: antialiased;
   }
 
-  /* Native controls inherit color-scheme paint; pin them to our tokens so
-     dark mode never leaves light text on a white field. */
+  .dark body {
+    background-color: #111a2e;
+  }
+
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
   select,
   textarea {
@@ -146,39 +205,3 @@
   }
 }
 
-@layer utilities {
-  .animate-blob {
-    animation: blob 7s infinite;
-  }
-  .animation-delay-2000 {
-    animation-delay: 2s;
-  }
-  .animation-delay-4000 {
-    animation-delay: 4s;
-  }
-  
-  /* Hide scrollbar for Chrome, Safari and Opera */
-  .no-scrollbar::-webkit-scrollbar {
-    display: none;
-  }
-  /* Hide scrollbar for IE, Edge and Firefox */
-  .no-scrollbar {
-    -ms-overflow-style: none;  /* IE and Edge */
-    scrollbar-width: none;  /* Firefox */
-  }
-}
-
-@keyframes blob {
-  0% {
-    transform: translate(0px, 0px) scale(1);
-  }
-  33% {
-    transform: translate(30px, -50px) scale(1.1);
-  }
-  66% {
-    transform: translate(-20px, 20px) scale(0.9);
-  }
-  100% {
-    transform: translate(0px, 0px) scale(1);
-  }
-}

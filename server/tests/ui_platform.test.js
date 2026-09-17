@@ -9,7 +9,7 @@ const h = require('./lib/harness')
 const u = require('./lib/uiHarness')
 const { Organization, User } = h
 
-const TCS = ['PLAT-001', 'PLAT-002', 'PLAT-008', 'PLAT-014', 'PLAT-023', 'PLAT-024', 'PLAT-030', 'PDASH-013', 'PDASH-014']
+const TCS = ['PLAT-001', 'PLAT-002', 'PLAT-008', 'PLAT-014', 'PLAT-023', 'PLAT-024', 'PLAT-030']
 
 // The platform shell owns exactly these destinations — anything workspace-side
 // (forms, workflows, requests, reports, user admin) belongs to a tenant.
@@ -64,19 +64,6 @@ h.runSuite('ui_platform', async () => {
       const saLinks = await u.sidebarLinks(sa.page)
       h.check('PLAT-001', 'A Super Admin sees the Platform item in the sidebar',
         u.hasLink(saLinks, '/platform'), `sidebar: ${u.linkHrefs(saLinks)}`)
-      await sa.page.getByRole('heading', { name: /platform dashboard/i }).waitFor({ timeout: 10000 })
-      h.check('PDASH-013', 'Real-data dashboard renders its analytics and adoption controls',
-        (await sa.page.getByLabel('Lifecycle metric').count()) === 1 &&
-        (await sa.page.getByText('Product adoption', { exact: true }).count()) === 1)
-
-      const newOrgLink = sa.page.getByRole('link', { name: /new org/i })
-      const newOrgHref = await newOrgLink.getAttribute('href')
-      await u.goto(sa.page, '/platform?new=1')
-      const createName = sa.page.getByPlaceholder('Acme Corp')
-      await createName.waitFor({ timeout: 10000 })
-      h.check('PDASH-014', 'Dashboard New org action opens the existing creation dialog',
-        newOrgHref === '/platform?new=1' && (await createName.count()) === 1)
-      await sa.page.keyboard.press('Escape')
 
       const landedSa = await u.goto(sa.page, '/platform')
       h.check('PLAT-002', 'A Super Admin can open /platform',

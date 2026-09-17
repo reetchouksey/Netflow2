@@ -1,11 +1,17 @@
 const express = require('express')
 const { protect } = require('../middleware/auth')
+const { roleGuard } = require('../middleware/roleGuard')
 const { sendSuccess, sendError } = require('../utils/apiResponse')
 const dmsClient = require('../services/dmsClient')
+const S3File = require('../models/S3File')
+const { urlFor } = require('../utils/fileStore')
 
 const router = express.Router()
 
 router.use(protect)
+
+// Only Admin users can access DMS routes
+router.use(roleGuard('Admin'))
 
 // GET /api/dms/documents
 router.get('/documents', async (req, res) => {
@@ -13,15 +19,18 @@ router.get('/documents', async (req, res) => {
     const { folderId } = req.query
     
     // Fetch directly from BaseLayer DMS
-    const result = await dmsClient.listDocuments({ org: req.organization, user: req.user, limit: 200 })
-    if (!result) {
-       return sendSuccess(res, { documents: [], message: 'DMS not configured or disabled' })
+    let documents = []
+    try {
+      const result = await dmsClient.listDocuments({ org: req.organization, user: req.user, limit: 200 })
+      if (result && Array.isArray(result.documents)) {
+        documents = result.documents
+      }
+    } catch (err) {
+      console.warn('[dms] listDocuments failed:', err.message)
     }
     
-    let documents = result.documents || []
-    
-    // Transform to frontend format
-    documents = documents.map(doc => {
+    // Transform DMS documents to frontend format
+    let formattedDocs = documents.map(doc => {
        const orgName = req.organization?.name || 'Organization'
        const dept = doc.department || 'General'
        const uploadedBy = (typeof doc.uploadedBy === 'string' ? doc.uploadedBy : doc.uploadedBy?.name) || 'System'
@@ -45,12 +54,47 @@ router.get('/documents', async (req, res) => {
        }
     })
 
-    // Filter by folder if the UI requested a specific folder path
-    if (folderId) {
-      documents = documents.filter(d => d.folderPath === folderId)
+    // Include files stored locally via native database persistence
+    try {
+      const orgId = req.organization?._id || req.user?.organization
+      if (orgId) {
+        const localFiles = await S3File.find({ orgId }).populate('uploadedBy', 'name email').lean()
+        const orgName = req.organization?.name || 'Organization'
+
+        for (const file of localFiles) {
+          const docId = String(file._id)
+          if (!formattedDocs.some(d => d._id === docId || d.name === file.filename)) {
+            const uploaderName = file.uploadedBy?.name || 'System'
+            const docExt = (file.filename || '').split('.').pop() || 'FILE'
+            
+            formattedDocs.push({
+              _id: docId,
+              name: file.originalName || file.filename,
+              type: file.mimetype || docExt.toUpperCase(),
+              sizeBytes: file.size,
+              folderPath: `${orgName}/General/${uploaderName}/Document`,
+              uploadedBy: file.uploadedBy || { name: 'System' },
+              createdAt: file.createdAt,
+              tags: ['Upload'],
+              description: 'Uploaded Document',
+              dmsId: docId,
+              fileUrl: urlFor(orgId, file.filename),
+              version: '1.0',
+              status: 'Synced'
+            })
+          }
+        }
+      }
+    } catch (localErr) {
+      console.warn('[dms] local uploads read error:', localErr.message)
     }
 
-    sendSuccess(res, { documents })
+    // Filter by folder if the UI requested a specific folder path
+    if (folderId) {
+      formattedDocs = formattedDocs.filter(d => d.folderPath === folderId)
+    }
+
+    sendSuccess(res, { documents: formattedDocs })
   } catch (err) {
     if (err instanceof dmsClient.DmsError) {
       const code = err.status === 401 ? 'DMS_UNAUTHORIZED' : (err.code || 'DMS_ERROR')
@@ -63,15 +107,20 @@ router.get('/documents', async (req, res) => {
 // GET /api/dms/folders
 router.get('/folders', async (req, res) => {
   try {
-    // Generate virtual folder tree from document metadata (matching BaseLayer's default virtual profile)
-    const result = await dmsClient.listDocuments({ org: req.organization, user: req.user, limit: 500 })
-    if (!result) {
-       return sendSuccess(res, { folders: [], message: 'DMS not configured' })
-    }
-    const docs = result.documents || []
+    const fs = require('fs')
+    const path = require('path')
     
-    // Extract unique virtual folder paths
-    // BaseLayer default virtual profile: OrgName / Department / Uploaded By / Document Type
+    // Generate virtual folder tree from document metadata
+    let docs = []
+    try {
+      const result = await dmsClient.listDocuments({ org: req.organization, user: req.user, limit: 500 })
+      if (result && Array.isArray(result.documents)) {
+        docs = result.documents
+      }
+    } catch (err) {
+      console.warn('[dms] listDocuments for folders error:', err.message)
+    }
+    
     const paths = new Set()
     for (const doc of docs) {
        const orgName = req.organization?.name || 'Organization'
@@ -82,12 +131,16 @@ router.get('/folders', async (req, res) => {
        const pathStr = `${orgName}/${dept}/${uploadedBy}/${type}`
        paths.add(pathStr)
     }
+
+    // Include local folder path
+    const orgName = req.organization?.name || 'Organization'
+    paths.add(`${orgName}/General/${req.user?.name || 'Admin'}/Document`)
     
     // Construct frontend-friendly tree format
     const foldersMap = {}
     
-    paths.forEach(path => {
-        const parts = path.split('/').filter(Boolean)
+    paths.forEach(pathStr => {
+        const parts = pathStr.split('/').filter(Boolean)
         let currentPath = ''
         let parentId = null
         for (let i = 0; i < parts.length; i++) {
@@ -104,9 +157,7 @@ router.get('/folders', async (req, res) => {
     })
 
     const folders = Object.values(foldersMap)
-    
     sendSuccess(res, { folders })
-
   } catch (err) {
     if (err instanceof dmsClient.DmsError) {
       const code = err.status === 401 ? 'DMS_UNAUTHORIZED' : (err.code || 'DMS_ERROR')
@@ -120,7 +171,28 @@ router.get('/folders', async (req, res) => {
 router.get('/documents/:id/url', async (req, res) => {
   try {
     const { mode } = req.query // 'view' or 'download'
-    const url = await dmsClient.signedUrl(req.params.id, {
+    const docId = req.params.id
+
+    if (docId && docId.startsWith('local-')) {
+      const filename = docId.replace(/^local-/, '')
+      const orgId = req.organization?._id || req.user?.organization
+      return sendSuccess(res, { url: urlFor(orgId, filename) })
+    }
+
+    // Check if this is a native S3File record (local DB persistence)
+    const orgId = req.organization?._id || req.user?.organization
+    if (orgId && docId && docId.length === 24) {
+      try {
+        const file = await S3File.findOne({ _id: docId, orgId })
+        if (file) {
+          return sendSuccess(res, { url: urlFor(orgId, file.filename) })
+        }
+      } catch (lookupErr) {
+        // Not a valid ObjectId or not found — fall through to DMS
+      }
+    }
+
+    const url = await dmsClient.signedUrl(docId, {
       org: req.organization,
       user: req.user,
       mode: mode || 'view'
@@ -143,26 +215,64 @@ router.get('/documents/:id/url', async (req, res) => {
 // DELETE /api/dms/documents/:id
 router.delete('/documents/:id', async (req, res) => {
   try {
-    await dmsClient.deleteDoc(req.params.id, {
-      org: req.organization,
-      user: req.user
-    })
+    const docId = req.params.id
+    if (docId && docId.startsWith('local-')) {
+      const filename = docId.replace(/^local-/, '')
+      const { removeStored } = require('../utils/fileStore')
+      const orgId = req.organization?._id || req.user?.organization
+      await removeStored(orgId, filename)
+    } else {
+      let isNativeLocal = false
+      const orgId = req.organization?._id || req.user?.organization
+      if (orgId && docId && docId.length === 24) {
+        const file = await S3File.findOne({ _id: docId, orgId })
+        if (file) {
+          isNativeLocal = true
+          const { removeStored } = require('../utils/fileStore')
+          await removeStored(orgId, file.filename)
+          await S3File.deleteOne({ _id: file._id })
+        }
+      }
+      if (!isNativeLocal) {
+        await dmsClient.deleteDoc(docId, {
+          org: req.organization,
+          user: req.user
+        })
+      }
+    }
     sendSuccess(res, { message: 'Document deleted successfully' })
   } catch (err) {
     if (err instanceof dmsClient.DmsError) {
       const code = err.status === 401 ? 'DMS_UNAUTHORIZED' : (err.code || 'DMS_ERROR')
       return sendError(res, err.message, code, err.status || 500)
     }
-    sendError(res, err.message, 'DMS_DOCUMENT_ERROR')
+    sendError(res, err.message, 'DMS_DELETE_ERROR')
   }
 })
 
 // GET /api/dms/stats
 router.get('/stats', async (req, res) => {
   try {
-    const stats = await dmsClient.getStorageUsage({ org: req.organization, user: req.user })
+    let stats = await dmsClient.getStorageUsage({ org: req.organization, user: req.user })
     if (!stats) {
-      return sendSuccess(res, { stats: null, message: 'No stats available' })
+      // Calculate local native storage stats
+      const orgId = req.organization?._id || req.user?.organization
+      if (orgId) {
+        const localFiles = await S3File.find({ orgId }).select('size').lean()
+        const usedBytes = localFiles.reduce((acc, f) => acc + (f.size || 0), 0)
+        stats = {
+          enabled: true,
+          source: 'local_native',
+          usedBytes,
+          usedMb: usedBytes / (1024 * 1024),
+          limitBytes: (req.organization.limits?.maxStorageMb || (500 * 1024)) * 1024 * 1024,
+          limitMb: req.organization.limits?.maxStorageMb || (500 * 1024),
+          documentCount: localFiles.length,
+          organizationId: String(orgId),
+        }
+      } else {
+        return sendSuccess(res, { stats: null, message: 'No stats available' })
+      }
     }
     
     // Inject the NetFlow Organization's plan data into the DMS stats payload

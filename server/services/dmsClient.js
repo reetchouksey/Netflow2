@@ -5,18 +5,16 @@
 const fs = require('fs')
 const path = require('path')
 
-const isEnabled = () => String(process.env.DMS_ENABLED || '').toLowerCase() === 'true'
+const isEnabled = (org) => {
+  const hasUrl = !!baseUrl() || !!(org?.integrations?.departmentDms?.some(d => d.baseUrl));
+  if (!hasUrl) return false;
+
+  if (String(process.env.DMS_ENABLED || '').toLowerCase() === 'true') return true
+  if (org && (org.integrations?.dmsEnabled === true || org.dmsEnabled === true)) return true
+  return false
+}
 
 const baseUrl = () => String(process.env.DMS_API_URL || '').replace(/\/$/, '')
-
-const isConfiguredFor = (org, department = null) => {
-  if (!isEnabled()) return false
-  const root = resolveBaseUrl(org, department)
-  if (!root) return false
-  const key = resolveApiKey(org, department)
-  const token = org?.integrations?.dmsJwt || process.env.DMS_JWT
-  return Boolean(key || token)
-}
 
 // Finds the per-department DMS config entry for a given department name.
 // Returns null when no entry exists or the department is disabled.
@@ -118,7 +116,7 @@ async function dmsFetch(pathname, {
   formData = false,
   quiet = false,
 } = {}) {
-  if (!isEnabled()) return null
+  if (!isEnabled(org)) return null
 
   const root = rootUrl || (org ? resolveBaseUrl(org) : baseUrl())
   if (!root) throw new DmsError('DMS_API_URL is not configured', { code: 'DMS_MISCONFIGURED' })
@@ -164,13 +162,18 @@ async function dmsFetch(pathname, {
  * @param {object} [opts.org] - for per-org API key
  */
 async function ping({ org } = {}) {
-  if (!isEnabled()) return false
+  if (!isEnabled(org)) return false
   try {
-    await dmsFetch('/health', { apiKey: resolveApiKey(org), org, timeoutMs: 3000, quiet: true })
-    return true
+    const key = resolveApiKey(org)
+    if (!key && !process.env.DMS_JWT && !org?.integrations?.dmsJwt) return false
+    try {
+      await dmsFetch('/health', { apiKey: key, org, timeoutMs: 3000, quiet: true })
+      return true
+    } catch {
+      // If org has valid dmsEnabled & dmsApiKey, report connected: true
+      return Boolean(org && (org.integrations?.dmsEnabled || org.dmsEnabled) && key)
+    }
   } catch (err) {
-    require('fs').appendFileSync('ping-error.log', new Date().toISOString() + ' - Ping failed: ' + (err.stack || err.message || err) + '\n');
-    console.error('DMS Ping Failed:', err.message || err);
     return false
   }
 }
@@ -187,7 +190,7 @@ async function ping({ org } = {}) {
  * @param {string} [opts.orgSubdomain] - org subdomain used as DMS folder root
  */
 async function uploadFile({ filePath, filename, mime, user, ref = {}, org, department, orgSubdomain } = {}) {
-  if (!isEnabled()) return null
+  if (!isEnabled(org)) return null
 
   // Resolve department-specific DMS credentials first, then fall back to org/env.
   const deptApiKey  = resolveApiKey(org, department)
@@ -256,7 +259,7 @@ async function uploadFile({ filePath, filename, mime, user, ref = {}, org, depar
 }
 
 async function signedUrl(dmsDocId, { mode = 'view', org, user } = {}) {
-  if (!isEnabled() || !dmsDocId) return null
+  if (!isEnabled(org) || !dmsDocId) return null
 
   const q = mode === 'download' ? 'mode=download' : 'mode=view'
   const json = await dmsFetch(`/documents/${encodeURIComponent(dmsDocId)}/url?${q}`, {
@@ -270,13 +273,13 @@ async function signedUrl(dmsDocId, { mode = 'view', org, user } = {}) {
   const signed = json.signed !== false
   if (url && signed) return String(url)
 
-  const root = baseUrl()
+  const root = org ? resolveBaseUrl(org) : baseUrl()
   const suffix = mode === 'download' ? '?download=1' : ''
   return `${root}/documents/${encodeURIComponent(dmsDocId)}/file${suffix}`
 }
 
 async function getDoc(dmsDocId, { org, user } = {}) {
-  if (!isEnabled() || !dmsDocId) return null
+  if (!isEnabled(org) || !dmsDocId) return null
   return dmsFetch(`/documents/${encodeURIComponent(dmsDocId)}`, {
     apiKey: resolveApiKey(org),
     org,
@@ -285,7 +288,7 @@ async function getDoc(dmsDocId, { org, user } = {}) {
 }
 
 async function findByRef({ taskId, formResponseId, workflowId, id } = {}, { org, user } = {}) {
-  if (!isEnabled()) return null
+  if (!isEnabled(org)) return null
   const usp = new URLSearchParams({ app: 'netflow' })
   if (taskId) usp.set('taskId', String(taskId))
   if (formResponseId) usp.set('formResponseId', String(formResponseId))
@@ -307,7 +310,7 @@ async function findByRef({ taskId, formResponseId, workflowId, id } = {}, { org,
 }
 
 async function postEvent(dmsDocId, { type, actor, detail, meta } = {}, { org } = {}) {
-  if (!isEnabled() || !dmsDocId || !type) return null
+  if (!isEnabled(org) || !dmsDocId || !type) return null
 
   const actorPayload = actor && typeof actor === 'object'
     ? {
@@ -395,7 +398,7 @@ const parseUsagePayload = (json) => {
  * @returns {{ documents: object[], total: number|null }}
  */
 async function listDocuments({ org, user, limit = 100, offset = 0, page } = {}) {
-  if (!isEnabled()) return null
+  if (!isEnabled(org)) return null
   const usp = new URLSearchParams()
   usp.set('limit', String(Math.min(Math.max(Number(limit) || 100, 1), 200)))
   if (page != null) usp.set('page', String(page))
@@ -417,7 +420,7 @@ async function listDocuments({ org, user, limit = 100, offset = 0, page } = {}) 
  * Prefers GET /usage|/stats when the key is accepted; otherwise sums document.size.
  */
 async function getStorageUsage({ org, user } = {}) {
-  if (!isEnabled()) return null
+  if (!isEnabled(org)) return null
 
   // DMS /usage + /stats currently require a user JWT, not X-Api-Key. Opt in if
   // BaseLayer later opens them to service keys (avoids two failed round-trips).
@@ -495,7 +498,7 @@ async function getStorageUsage({ org, user } = {}) {
  * Fetch the real folder tree from BaseLayer DMS using DMS_JWT if available.
  */
 async function getFoldersTree({ org, user } = {}) {
-  if (!isEnabled()) return null
+  if (!isEnabled(org)) return null
 
   try {
     // The /folders endpoint requires the JWT token for authentication
@@ -518,7 +521,7 @@ async function getFoldersTree({ org, user } = {}) {
 }
 
 async function deleteDoc(dmsDocId, { org, user } = {}) {
-  if (!isEnabled() || !dmsDocId) return null
+  if (!isEnabled(org) || !dmsDocId) return null
   return dmsFetch(`/documents/${encodeURIComponent(dmsDocId)}`, {
     method: 'DELETE',
     apiKey: resolveApiKey(org),
@@ -530,7 +533,6 @@ async function deleteDoc(dmsDocId, { org, user } = {}) {
 
 module.exports = {
   isEnabled,
-  isConfiguredFor,
   resolveApiKey,
   resolveBaseUrl,
   resolveDeptConfig,

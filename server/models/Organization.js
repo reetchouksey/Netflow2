@@ -41,16 +41,6 @@ const organizationSchema = new mongoose.Schema({
   // All DMS config is set by the Platform Super Admin only — Org Admins get a
   // read-only status view (GET /api/organization/dms-status).
   integrations: {
-    // S3 Dedicated Storage (per tenant bypass of DMS)
-    s3: {
-      enabled:         { type: Boolean, default: false },
-      bucket:          { type: String, default: '' },
-      endpoint:        { type: String, default: '' },
-      region:          { type: String, default: 'auto' },
-      accessKeyId:     { type: String, default: '' },
-      secretAccessKey: { type: String, default: '' }
-    },
-
     // Org-level fallback key — used when a department has no key of its own.
     dmsApiKey:  { type: String, default: '' },
     dmsJwt:     { type: String, default: '' },
@@ -70,7 +60,15 @@ const organizationSchema = new mongoose.Schema({
       baseUrl:    { type: String, default: '' },     // optional: dept-specific DMS server URL
       folder:     { type: String, default: '' },     // optional folder override (default: orgSlug/dept)
       enabled:    { type: Boolean, default: true }
-    }]
+    }],
+    
+    // S3 Dedicated Storage
+    s3Storage: { type: Boolean, default: false },
+    s3Bucket: { type: String, default: '' },
+    s3Region: { type: String, default: 'auto' },
+    s3Endpoint: { type: String, default: '' },
+    s3AccessKeyId: { type: String, default: '' },
+    s3SecretAccessKey: { type: String, default: '' }
   },
 
   // Subscription tier. 'custom' is what an org becomes once any single limit is

@@ -15,7 +15,7 @@ const cardCls =
 // Generate Now calls the AI API here, then opens the builder already seeded.
 export default function NewFormModal({ open, onClose }) {
   const navigate = useNavigate()
-  const [aiAvailable, setAiAvailable] = useState(false)
+  const [aiAvailable, setAiAvailable] = useState(true)
   const [view, setView] = useState('home') // 'home' | 'templates'
   const [quickPrompt, setQuickPrompt] = useState('')
   const [suggestion, setSuggestion] = useState('')
@@ -37,8 +37,8 @@ export default function NewFormModal({ open, onClose }) {
     let cancelled = false
     api
       .get('/api/forms/ai-status')
-      .then((d) => { if (!cancelled) setAiAvailable(!!d.aiConfigured) })
-      .catch(() => {})
+      .then((d) => { if (!cancelled) setAiAvailable(d?.aiConfigured !== false) })
+      .catch(() => { if (!cancelled) setAiAvailable(true) })
     return () => {
       cancelled = true
       if (suggestTimer.current) clearTimeout(suggestTimer.current)
@@ -126,14 +126,19 @@ export default function NewFormModal({ open, onClose }) {
 
   const startQuickGenerate = async () => {
     const prompt = (quickPrompt + (suggestion || '')).trim()
-    if (!prompt || !aiAvailable || generating) return
+    if (!prompt) {
+      setGenError('Please describe the form you want to generate.')
+      promptInputRef.current?.focus()
+      return
+    }
+    if (generating) return
     setSuggestion('')
     if (suggestTimer.current) clearTimeout(suggestTimer.current)
     setGenerating(true)
     setGenError('')
     try {
       const res = await api.post('/api/forms/ai-draft', { prompt })
-      const fields = Array.isArray(res.fields) ? res.fields : []
+      const fields = Array.isArray(res?.fields) ? res.fields : []
       if (!fields.length) {
         setGenError('No fields were generated. Try rephrasing.')
         return
@@ -160,7 +165,7 @@ export default function NewFormModal({ open, onClose }) {
     }
   }
 
-  const canGenerate = aiAvailable && !!quickPrompt.trim() && !generating
+  const canGenerate = !generating
 
   return (
     <div
@@ -234,7 +239,7 @@ export default function NewFormModal({ open, onClose }) {
                     onKeyDown={onPromptKeyDown}
                     onBlur={() => setSuggestion('')}
                     placeholder="Build with AI"
-                    disabled={!aiAvailable || generating}
+                    disabled={generating}
                     autoComplete="off"
                     className="relative z-10 w-full px-4 py-3 text-sm rounded-xl bg-transparent text-fg placeholder:text-fg-muted focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                   />
@@ -242,10 +247,20 @@ export default function NewFormModal({ open, onClose }) {
                 <button
                   type="button"
                   onClick={startQuickGenerate}
-                  disabled={!canGenerate}
+                  disabled={generating}
                   className="shrink-0 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold shadow-sm transition min-w-[8.5rem]"
                 >
-                  {generating ? 'Generating…' : 'Generate Now'}
+                  {generating ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>Generating…</span>
+                    </>
+                  ) : (
+                    'Generate Now'
+                  )}
                 </button>
               </div>
               {aiAvailable && !genError && (

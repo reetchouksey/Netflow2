@@ -5,6 +5,7 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import { api } from '../utils/api'
+import { useNotificationsPanelOpen } from '../lib/notificationsStore'
 
 const GREETING = {
   role: 'assistant',
@@ -78,6 +79,7 @@ export default function AssistantWidget() {
   const [busy, setBusy] = useState(false)
   const scrollRef = useRef(null)
   const inputRef = useRef(null)
+  const notifOpen = useNotificationsPanelOpen()
 
   useEffect(() => {
     let cancelled = false
@@ -101,7 +103,7 @@ export default function AssistantWidget() {
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
 
-  if (!available) return null
+  if (!available || notifOpen) return null
 
   const ask = async (text) => {
     const q = String(text || '').trim()

@@ -72,6 +72,16 @@ const ROLES = [
       'tasks:read', 'tasks:act'
     ]
   },
+  { name: 'Accountant', description: 'Workspace role.', permissions: [] },
+  { name: 'Hardware Technician', description: 'Workspace role.', permissions: [] },
+  { name: 'Helpdesk Agent', description: 'Workspace role.', permissions: [] },
+  { name: 'IT Administrator', description: 'Workspace role.', permissions: [] },
+  { name: 'IT Manager', description: 'Workspace role.', permissions: [] },
+  { name: 'Lab / Department head', description: 'Workspace role.', permissions: [] },
+  { name: 'Network Engineer', description: 'Workspace role.', permissions: [] },
+  { name: 'QA', description: 'Workspace role.', permissions: [] },
+  { name: 'Software Engineer / Support', description: 'Workspace role.', permissions: [] },
+  { name: 'Viewer', description: 'Read-only.', permissions: [] }
 ]
 
 // Roles this catalogue used to carry. Every one of them promised something the
@@ -80,7 +90,6 @@ const ROLES = [
 // "Receiving Staff" could not actually submit the form it existed for. They are
 // swept below rather than silently left behind in the catalogue.
 const RETIRED = [
-  'Viewer',
   'Receiving Staff', 'Warehouse Manager', 'Accounts Officer',
   'Brand Rep', 'Finance Approver'
 ]

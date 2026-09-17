@@ -144,7 +144,7 @@ router.post('/:token', hooksLimiter, async (req, res, next) => {
     }
 
     const hasSignature = Boolean(req.get('x-netflow-signature') || req.get('X-NetFlow-Signature'))
-    const sig = verifyWebhookSignature(req, workflow.inboundWebhook)
+    const sig = verifyWebhookSignature(req, workflow.inboundWebhook?.secret)
     if (!sig.ok) {
       await runWithOrgId(workflow.orgId, () => logDelivery({
         orgId: workflow.orgId,

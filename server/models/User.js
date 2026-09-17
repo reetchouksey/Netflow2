@@ -43,8 +43,6 @@ const userSchema = new mongoose.Schema({
   // password reset, deactivation, role change). Tokens embed this value ("tv")
   // and are rejected by the auth middleware once it no longer matches.
   tokenVersion: { type: Number, default: 0 },
-  // Active session IDs to allow logging out from a single device.
-  activeSessions: { type: [String], default: [] },
   // Licensing: may this user create/edit forms and workflows? Deliberately a
   // per-user grant rather than a role check, because plans sell "1 builder"
   // while roles are global and shared across tenants. The Org Admin decides
@@ -57,7 +55,11 @@ const userSchema = new mongoose.Schema({
   // Protected (system-seeded) accounts — e.g. the permanent CEO — cannot be
   // edited, re-roled, or deactivated from the Admin Panel. Only a seed can.
   isProtected: { type: Boolean, default: false },
-  avatar: { type: String },
+  avatar: { type: String, default: null },
+  photo: { type: String, default: null },
+  designation: { type: String, default: '' },
+  phone: { type: String, default: '' },
+  employeeId: { type: String, trim: true, default: null },
   managerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   // HR partner responsible for this user (an HR-role user).
   hrId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

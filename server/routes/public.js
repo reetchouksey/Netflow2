@@ -18,7 +18,6 @@ const { checkQuota, checkStorage } = require('../middleware/quota')
 const { writeBlockFor } = require('../middleware/licence')
 const { meterSubmission, addStorage } = require('../utils/usageMeter')
 const { dirForOrg, safeFilename, urlFor } = require('../utils/fileStore')
-const s3Client = require('../services/s3Client')
 
 const router = express.Router()
 
@@ -245,16 +244,18 @@ router.post('/forms/:token/upload', rateLimit, async (req, res, next) => {
       }
       if (!req.file) return sendError(res, 'No file provided', 'NO_FILE', 400)
 
-      // ── DMS path (quota tracked — NetFlow meters DMS storage too) ─────────
-      if (!s3Client.isEnabled(org) && dms.isConfiguredFor(org)) {
-        // Multer has already written the temp file; check quota before accepting.
-        const room = await checkStorage(org, req.file.size)
-        if (!room.ok) {
-          fs.promises.unlink(req.file.path).catch(() => {})
-          return sendError(res, 'This form is not accepting attachments right now. Please contact the form owner.',
-            'LIMIT_REACHED', 403, { resource: room.extra?.resource || 'storage' })
-        }
+      // Multer has already written the file, so an over-quota upload has to be
+      // deleted rather than merely refused — otherwise the disk fills with bytes
+      // the tenant was never allowed to store. No buffer here: an anonymous
+      // upload is never the thing unblocking an approval.
+      const room = await checkStorage(org, req.file.size)
+      if (!room.ok) {
+        fs.promises.unlink(req.file.path).catch(() => {})
+        return sendError(res, 'This form is not accepting attachments right now. Please contact the form owner.',
+          'LIMIT_REACHED', 403, { resource: room.extra?.resource || 'storage' })
+      }
 
+      if (dms.isEnabled()) {
         const provisionalId = require('crypto').randomBytes(12).toString('hex')
         try {
           const doc = await dms.uploadFile({
@@ -282,41 +283,6 @@ router.post('/forms/:token/upload', rateLimit, async (req, res, next) => {
           await fs.promises.unlink(req.file.path).catch(() => {})
           return sendError(res, 'Document service failed to accept the file.', 'DMS_ERROR', 502)
         }
-      }
-
-      // ── S3 path (no quota tracking — org manages their own bucket) ─────────
-      if (s3Client.isEnabled(org)) {
-        const s3Key = `${form.orgId}/${req.file.filename}`
-        try {
-          const fileBuffer = await fs.promises.readFile(req.file.path)
-          await s3Client.uploadFile(org, s3Key, fileBuffer, req.file.mimetype)
-          await fs.promises.unlink(req.file.path).catch(() => {})
-
-          return sendSuccess(res, {
-            file: {
-              name: req.file.originalname,
-              s3Key,
-              mime: req.file.mimetype,
-              size: req.file.size
-            }
-          }, 201)
-        } catch (s3Err) {
-          await fs.promises.unlink(req.file.path).catch(() => {})
-          console.error('[s3] public upload failed:', s3Err.message)
-          return sendError(res, 'S3 upload failed. Please try again or contact the form owner.', 'S3_UPLOAD_FAILED', 502)
-        }
-      }
-
-      // ── Local disk path (quota tracked) ────────────────────────────────────
-      // Multer has already written the file, so an over-quota upload has to be
-      // deleted rather than merely refused — otherwise the disk fills with bytes
-      // the tenant was never allowed to store. No buffer here: an anonymous
-      // upload is never the thing unblocking an approval.
-      const room = await checkStorage(org, req.file.size)
-      if (!room.ok) {
-        fs.promises.unlink(req.file.path).catch(() => {})
-        return sendError(res, 'This form is not accepting attachments right now. Please contact the form owner.',
-          'LIMIT_REACHED', 403, { resource: room.extra?.resource || 'storage' })
       }
 
       await addStorage(form.orgId, req.file.size)

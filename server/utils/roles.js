@@ -6,7 +6,7 @@ const OPS_ROLES = ['Admin', 'CEO', 'Manager', 'HR', 'VP']
 const SUBMITTER_ROLES = ['Admin', 'CEO', 'Manager', 'HR', 'VP', 'Employee']
 const REPORT_ROLES = ['Admin', 'CEO', 'Manager', 'HR', 'VP']
 
-const isDesigner = (user) => DESIGNER_ROLES.includes(user?.role?.name)
+const isDesigner = (user) => DESIGNER_ROLES.includes(user?.role?.name) || Boolean(user?.canBuild)
 const isOps = (user) => OPS_ROLES.includes(user?.role?.name)
 
 const shellFor = (roleName) => {

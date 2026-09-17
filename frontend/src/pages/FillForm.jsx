@@ -9,9 +9,9 @@ import { api, toAbsoluteUrl } from '../utils/api'
 import { useUser } from '../utils/auth'
 import { formsStore } from '../lib/formsStore'
 import { fieldMaxMb, MAX_UPLOAD_MB } from '../utils/uploads'
-import { fieldDomId, focusFirstError, isFieldVisible, isSignatureEmpty, SignaturePad, stripHiddenValues, UploadProgress, validateField, CameraCapture, ReferenceUserSelect } from '../components/FormFields'
+import { fieldDomId, focusFirstError, isFieldVisible, isSignatureEmpty, SignaturePad, stripHiddenValues, UploadProgress, validateField } from '../components/FormFields'
 import { limitBanner } from '../lib/limitFeedback'
-import { FilePreviewPane } from '../components/FilePreviewPane'
+import Modal from '../components/Modal'
 
 const inputCls =
   'w-full px-3 py-2 text-sm rounded-md border border-line bg-surface text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition'
@@ -42,13 +42,289 @@ function buildUserPrefill(fields, me) {
   return seed
 }
 
-// Uploads the chosen file to /api/uploads and stores { name, url, mime, size }
-// as the field value, so the approver can later open the actual attachment.
-function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB, onRequestPreview }) {
+// Provides a modal camera capture interface and uploads the result just like FileField.
+function CameraField({ value, onChange, maxMb = MAX_UPLOAD_MB }) {
+  const [modalOpen, setModalOpen] = useState(false)
+  const [stream, setStream] = useState(null)
+  const [previewDataUrl, setPreviewDataUrl] = useState(null)
+  
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(null)
   const [uploadError, setUploadError] = useState('')
-  const [useCamera, setUseCamera] = useState(false)
+  const [cameraError, setCameraError] = useState('')
+
+  const videoRef = useRef(null)
+  const fileInputRef = useRef(null)
+
+  const stopCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop())
+      setStream(null)
+    }
+  }
+
+  const startCamera = async () => {
+    setCameraError('')
+    setPreviewDataUrl(null)
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Camera not supported on this browser')
+      }
+
+      let s = null
+      try {
+        // Try ideal environment camera first
+        s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
+      } catch {
+        try {
+          // Fallback to any default camera
+          s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+        } catch {
+          // Fallback to user facing camera
+          s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+        }
+      }
+
+      setStream(s)
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = s
+          videoRef.current.play?.().catch(() => {})
+        }
+      }, 50)
+    } catch (err) {
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setCameraError('Camera access was denied in browser permissions. Please allow camera access or upload a photo directly from your device.')
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        setCameraError('No camera found on this device. Please upload a photo from your device.')
+      } else {
+        setCameraError('Unable to open camera. You can try again or upload a photo directly from your device.')
+      }
+    }
+  }
+
+  const handleOpen = async () => {
+    setModalOpen(true)
+    await startCamera()
+  }
+
+  const handleClose = () => {
+    stopCamera()
+    setModalOpen(false)
+    setPreviewDataUrl(null)
+    setUploadError('')
+  }
+
+  const handleCapture = () => {
+    if (!videoRef.current) return
+    const video = videoRef.current
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth || 640
+    canvas.height = video.videoHeight || 480
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+    
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.9)
+    setPreviewDataUrl(dataUrl)
+    stopCamera()
+  }
+
+  const handleRetake = async () => {
+    setPreviewDataUrl(null)
+    setUploadError('')
+    await startCamera()
+  }
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      setPreviewDataUrl(reader.result)
+      setCameraError('')
+      stopCamera()
+    }
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
+
+  const handleUsePhoto = async () => {
+    if (!previewDataUrl) return
+    
+    const res = await fetch(previewDataUrl)
+    const blob = await res.blob()
+    const file = new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' })
+
+    if (file.size > maxMb * 1024 * 1024) {
+      setUploadError(`Photo is too large. Max ${maxMb} MB.`)
+      return
+    }
+
+    setUploading(true)
+    setProgress(0)
+    setUploadError('')
+    try {
+      const { file: saved } = await api.upload(file, maxMb, { onProgress: setProgress })
+      onChange(saved)
+      handleClose()
+    } catch (err) {
+      const limit = limitBanner(err)
+      setUploadError(limit ? `${limit.title} — ${limit.message}` : (err.message || 'Upload failed'))
+    } finally {
+      setUploading(false)
+      setProgress(null)
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop())
+      }
+    }
+  }, [stream])
+
+  const current = value && typeof value === 'object' && value.url ? value : null
+
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={handleOpen}
+          disabled={uploading}
+          className="px-3.5 py-1.5 text-xs font-bold rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-500/15 dark:text-indigo-300 dark:hover:bg-indigo-500/25 transition disabled:opacity-60 cursor-pointer shadow-2xs"
+        >
+          📷 Take Photo
+        </button>
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          className="px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 transition disabled:opacity-60 cursor-pointer shadow-2xs"
+        >
+          📁 Upload photo
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleFileSelect}
+        />
+      </div>
+
+      {uploading && !modalOpen && <UploadProgress percent={progress} />}
+      {uploadError && !modalOpen && <p className="mt-1 text-xs text-danger-fg">{uploadError}</p>}
+      
+      {current && !uploading && (
+        <p className="mt-1 text-xs text-success-fg">
+          Attached:{' '}
+          <a href={toAbsoluteUrl(current.url)} target="_blank" rel="noreferrer" className="underline hover:brightness-110">
+            {current.name}
+          </a>
+        </p>
+      )}
+
+      {modalOpen && (
+        <Modal title="Take Photo" onClose={handleClose} size="md">
+          <div className="space-y-4">
+            {cameraError ? (
+              <div className="space-y-3.5">
+                <div className="p-4 bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400 rounded-2xl text-xs font-medium border border-red-200 dark:border-red-800/40 leading-relaxed">
+                  {cameraError}
+                </div>
+                <div className="flex flex-col sm:flex-row items-center gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full sm:w-auto px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition cursor-pointer"
+                  >
+                    📁 Upload photo from device
+                  </button>
+                  <button
+                    type="button"
+                    onClick={startCamera}
+                    className="w-full sm:w-auto px-4 py-2 text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/15 hover:bg-indigo-100 rounded-xl transition cursor-pointer"
+                  >
+                    🔄 Try camera again
+                  </button>
+                </div>
+              </div>
+            ) : previewDataUrl ? (
+              <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-black aspect-video flex items-center justify-center">
+                <img src={previewDataUrl} alt="Preview" className="max-w-full max-h-full object-contain" />
+              </div>
+            ) : (
+              <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-black aspect-video relative">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
+
+            {uploadError && <p className="text-xs text-danger-fg">{uploadError}</p>}
+            {uploading && <UploadProgress percent={progress} />}
+
+            <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={handleClose}
+                disabled={uploading}
+                className="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 rounded-xl transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              
+              {!cameraError && (
+                previewDataUrl ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleRetake}
+                      disabled={uploading}
+                      className="px-4 py-2 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 dark:text-indigo-300 dark:bg-indigo-500/15 dark:hover:bg-indigo-500/25 rounded-xl transition cursor-pointer"
+                    >
+                      Retake
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleUsePhoto}
+                      disabled={uploading}
+                      className="px-4.5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 rounded-xl shadow-xs transition cursor-pointer"
+                    >
+                      {uploading ? 'Uploading...' : 'Use Photo'}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleCapture}
+                    disabled={!stream}
+                    className="px-4.5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 rounded-xl shadow-xs transition disabled:opacity-50 cursor-pointer"
+                  >
+                    Capture
+                  </button>
+                )
+              )}
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+// Uploads the chosen file to /api/uploads and stores { name, url, mime, size }
+// as the field value, so the approver can later open the actual attachment.
+function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB, accept, capture }) {
+  const [uploading, setUploading] = useState(false)
+  const [progress, setProgress] = useState(null)
+  const [uploadError, setUploadError] = useState('')
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0]
@@ -80,70 +356,25 @@ function FileField({ value, onChange, maxMb = MAX_UPLOAD_MB, onRequestPreview })
 
   const current = value && typeof value === 'object' && value.url ? value : null
 
-  if (useCamera) {
-    return (
-      <div className="space-y-2">
-        <CameraCapture
-          value={value}
-          onChange={(val) => {
-            onChange(val)
-            if (val) setUseCamera(false)
-          }}
-          autoStart={true}
-          inlineMode={true}
-          onCancel={() => setUseCamera(false)}
-        />
-      </div>
-    )
-  }
-
   return (
     <div>
-      <div className="flex items-center gap-3">
-        <input
-          type="file"
-          onChange={handleFile}
-          disabled={uploading}
-          className="block w-full text-sm text-fg-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-info-subtle file:text-info-fg hover:file:brightness-95 disabled:opacity-60"
-        />
-        <button
-          type="button"
-          onClick={() => setUseCamera(true)}
-          disabled={uploading}
-          className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-surface-2 text-fg hover:bg-surface-3 transition border border-line disabled:opacity-60"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
-            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
-          </svg>
-          Camera
-        </button>
-      </div>
+      <input
+        type="file"
+        accept={accept}
+        capture={capture}
+        onChange={handleFile}
+        disabled={uploading}
+        className="block w-full text-sm text-fg-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-info-subtle file:text-info-fg hover:file:brightness-95 disabled:opacity-60"
+      />
       {!uploading && !uploadError && <p className="mt-1 text-xs text-fg-subtle">Max {maxMb} MB</p>}
       {uploading && <UploadProgress percent={progress} />}
       {uploadError && <p className="mt-1 text-xs text-danger-fg">{uploadError}</p>}
       {current && !uploading && (
-        <p className="mt-1 text-xs flex flex-wrap items-center gap-x-2 gap-y-1 text-success-fg">
-          <span>
-            Uploaded:{' '}
-            <a href={toAbsoluteUrl(current.url)} target="_blank" rel="noreferrer" className="underline hover:brightness-110">
-              {current.name}
-            </a>
-          </span>
-          {onRequestPreview && (current.mime?.startsWith('image/') || current.mime === 'application/pdf' || current.name?.match(/\.(pdf|jpe?g|png|webp|gif)$/i)) && (
-            <button
-              type="button"
-              onClick={() => onRequestPreview(current)}
-              className="text-fg-muted hover:text-indigo-600 transition flex items-center gap-1 bg-surface-2 px-2 py-0.5 rounded border border-line"
-              title="Preview file"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-              </svg>
-              Preview
-            </button>
-          )}
+        <p className="mt-1 text-xs text-success-fg">
+          Uploaded:{' '}
+          <a href={toAbsoluteUrl(current.url)} target="_blank" rel="noreferrer" className="underline hover:brightness-110">
+            {current.name}
+          </a>
         </p>
       )}
     </div>
@@ -243,16 +474,7 @@ function GridField({ field, value, onChange }) {
   )
 }
 
-function FieldRow({ field, value, onChange, error, onRequestPreview }) {
-  if (field.type === 'heading') {
-    return (
-      <div data-field-row={field.id} className="pt-4 pb-2 border-b border-line mb-4">
-        <h3 className="text-lg font-semibold text-fg">{field.label}</h3>
-        {field.placeholder && <p className="text-sm text-fg-muted mt-1">{field.placeholder}</p>}
-      </div>
-    )
-  }
-
+function FieldRow({ field, value, onChange, error }) {
   const cls = `${inputCls} ${error ? inputErrorCls : ''}`
   // Same wiring as the shared FieldRow: the label points at the control and
   // focusFirstError finds it by this id after a failed submit.
@@ -293,7 +515,7 @@ function FieldRow({ field, value, onChange, error, onRequestPreview }) {
         return (
           <input
             {...a11y}
-            type={field.includeTime ? "datetime-local" : "date"}
+            type="date"
             value={value ?? ''}
             onChange={(e) => onChange(e.target.value)}
             className={cls}
@@ -314,32 +536,6 @@ function FieldRow({ field, value, onChange, error, onRequestPreview }) {
           </select>
         )
       case 'checkbox':
-        if (field.options && field.options.length > 0) {
-          const selectedValues = Array.isArray(value) ? value : []
-          return (
-            <div className={field.layout === 'horizontal' ? "flex flex-wrap gap-x-6 gap-y-2" : "space-y-1.5"} role="group" aria-labelledby={labelId}>
-              {field.options.map((opt, i) => (
-                <label key={opt} className="flex items-center gap-2 text-sm text-fg">
-                  <input
-                    id={i === 0 ? inputId : undefined}
-                    type="checkbox"
-                    value={opt}
-                    checked={selectedValues.includes(opt)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        onChange([...selectedValues, opt])
-                      } else {
-                        onChange(selectedValues.filter((v) => v !== opt))
-                      }
-                    }}
-                    className="w-4 h-4 rounded border-line text-indigo-600 focus:ring-indigo-400"
-                  />
-                  <span>{opt}</span>
-                </label>
-              ))}
-            </div>
-          )
-        }
         return (
           <label className="flex items-center gap-2 text-sm text-fg">
             <input
@@ -360,11 +556,14 @@ function FieldRow({ field, value, onChange, error, onRequestPreview }) {
           />
         )
       case 'file':
-        return <FileField value={value} onChange={onChange} maxMb={fieldMaxMb(field)} onRequestPreview={onRequestPreview} />
+        return <FileField value={value} onChange={onChange} maxMb={fieldMaxMb(field)} />
+
+      case 'camera':
+        return <CameraField value={value} onChange={onChange} maxMb={fieldMaxMb(field)} />
 
       case 'radio':
         return (
-          <div className={field.layout === 'horizontal' ? "flex flex-wrap gap-x-6 gap-y-2" : "space-y-1.5"} role="radiogroup" aria-labelledby={labelId} aria-describedby={errorId}>
+          <div className="space-y-1.5" role="radiogroup" aria-labelledby={labelId} aria-describedby={errorId}>
             {(field.options || []).map((opt, i) => (
               <label key={opt} className="flex items-center gap-2 text-sm text-fg">
                 <input
@@ -381,8 +580,6 @@ function FieldRow({ field, value, onChange, error, onRequestPreview }) {
             ))}
           </div>
         )
-      case 'camera':
-        return <CameraCapture value={value} onChange={onChange} />
       case 'grid':
         return <GridField field={field} value={value} onChange={onChange} />
 
@@ -394,17 +591,6 @@ function FieldRow({ field, value, onChange, error, onRequestPreview }) {
         )
       case 'text':
       default:
-        if (field.referenceUser) {
-          return (
-            <ReferenceUserSelect
-              a11y={a11y}
-              value={value ?? ''}
-              onChange={(val) => onChange(val)}
-              placeholder={field.placeholder || 'Search users...'}
-              className={cls}
-            />
-          )
-        }
         return (
           <input
             {...a11y}
@@ -444,7 +630,6 @@ function FillForm() {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
   const [result, setResult] = useState(null)
-  const [previewFile, setPreviewFile] = useState(null)
 
   const [draftRestored, setDraftRestored] = useState(false)
   const [savingDraft, setSavingDraft] = useState(false)
@@ -454,18 +639,6 @@ function FillForm() {
   const me = useUser()
   const prefilled = useRef(false)
   const draftLoaded = useRef(false)
-
-  const availableDocs = useMemo(() => {
-    const docs = []
-    if (!form?.fields) return docs
-    for (const f of form.fields) {
-      const v = values[f.id]
-      if (v && typeof v === 'object' && v.url && (v.mime?.startsWith('image/') || v.mime === 'application/pdf' || v.name?.match(/\.(pdf|jpe?g|png|webp|gif)$/i))) {
-        docs.push({ ...v, fieldLabel: f.label })
-      }
-    }
-    return docs
-  }, [form, values])
 
   useEffect(() => {
     let cancelled = false
@@ -521,39 +694,16 @@ function FillForm() {
     return form.fields.filter((f) => f.type !== 'repeater' && isFieldVisible(f, values))
   }, [form, values])
 
-  const pages = useMemo(() => {
-    const maxPage = visibleFields.reduce((max, f) => Math.max(max, f.page || 1), 1)
-    const p = []
-    for (let i = 1; i <= maxPage; i++) {
-      const pageFields = visibleFields.filter(f => (f.page || 1) === i)
-      if (pageFields.length > 0) p.push(pageFields)
-    }
-    if (p.length === 0) p.push([])
-    return p
-  }, [visibleFields])
-
-  const [currentPage, setCurrentPage] = useState(0)
-  useEffect(() => {
-    if (currentPage >= pages.length) {
-      setCurrentPage(Math.max(0, pages.length - 1))
-    }
-  }, [pages.length, currentPage])
-
   const setFieldValue = (fieldId, v) => {
     setValues((prev) => ({ ...prev, [fieldId]: v }))
     setFieldErrors((prev) => (prev[fieldId] ? { ...prev, [fieldId]: '' } : prev))
     setSubmitError('')
     if (draftSavedAt) setDraftSavedAt(null)
-
-    // Feature: File Preview Split Screen
-    if (v && typeof v === 'object' && v.url && (v.mime?.startsWith('image/') || v.mime === 'application/pdf')) {
-      setPreviewFile(v)
-    }
   }
 
-  const validate = (fieldsToValidate) => {
+  const validate = () => {
     const errs = {}
-    for (const f of fieldsToValidate) {
+    for (const f of visibleFields) {
       const v = values[f.id]
       if (f.required) {
         if (f.type === 'grid') {
@@ -567,14 +717,13 @@ function FillForm() {
           }
           continue
         }
-          const isEmpty = f.type === 'signature'
+        const isEmpty = f.type === 'signature'
           ? isSignatureEmpty(v)
           : (
             v === undefined ||
             v === null ||
             v === '' ||
-            (f.type === 'checkbox' && f.options && f.options.length > 0 && (!Array.isArray(v) || v.length === 0)) ||
-            (f.type === 'checkbox' && (!f.options || f.options.length === 0) && v === false)
+            (f.type === 'checkbox' && v === false)
           )
         if (isEmpty) {
           errs[f.id] = `${f.label} is required`
@@ -588,41 +737,13 @@ function FillForm() {
     return errs
   }
 
-  const handleNext = () => {
-    setSubmitError('')
-    const errs = validate(pages[currentPage])
-    setFieldErrors(errs)
-    if (Object.keys(errs).length > 0) {
-      focusFirstError(pages[currentPage], errs)
-      return
-    }
-    setCurrentPage((p) => p + 1)
-  }
-
-  const handlePrev = () => {
-    setSubmitError('')
-    setCurrentPage((p) => Math.max(0, p - 1))
-  }
-
   const handleSubmit = async (e) => {
     e.preventDefault()
     setSubmitError('')
-
-    if (currentPage < pages.length - 1) {
-      handleNext()
-      return
-    }
-
-    const errs = validate(visibleFields.filter(f => f.type !== 'page_break'))
+    const errs = validate()
     setFieldErrors(errs)
     if (Object.keys(errs).length > 0) {
-      const errPageIdx = pages.findIndex(p => p.some(f => errs[f.id]))
-      if (errPageIdx !== -1 && errPageIdx !== currentPage) {
-        setCurrentPage(errPageIdx)
-        setTimeout(() => focusFirstError(pages[errPageIdx], errs), 0)
-      } else {
-        focusFirstError(pages[currentPage], errs)
-      }
+      focusFirstError(visibleFields, errs)
       return
     }
 
@@ -631,8 +752,7 @@ function FillForm() {
       // Only submit currently-visible fields — a value entered then hidden by a
       // rule change must not leak into the response.
       const payload = stripHiddenValues(visibleFields, values)
-      const uploadedPayload = await api.uploadPendingFiles(payload)
-      const data = await formsStore.submit(id, uploadedPayload)
+      const data = await formsStore.submit(id, payload)
       // The server clears the draft on submit; reflect that locally too.
       setDraftRestored(false)
       setResult(data)
@@ -774,10 +894,7 @@ function FillForm() {
         </button>
       }
     >
-      <div className="flex flex-col lg:flex-row gap-6 relative">
-        {/* Form Container */}
-        <div className="flex-1 transition-all duration-300">
-          <form onSubmit={handleSubmit} noValidate className={`${previewFile ? 'w-full' : 'max-w-xl mx-auto'} bg-surface border border-line rounded-lg p-6 space-y-5`}>
+      <form onSubmit={handleSubmit} noValidate className="max-w-xl mx-auto bg-surface border border-line rounded-lg p-6 space-y-5">
         {draftRestored && (
           <div className="flex items-center justify-between gap-3 p-3 rounded-md bg-warning-subtle border border-warning-line text-sm text-warning-fg">
             <span>We restored your saved draft. Pick up where you left off.</span>
@@ -808,25 +925,13 @@ function FillForm() {
           </div>
         )}
 
-        {pages.length > 1 && (
-          <div className="mb-4 flex items-center justify-between text-xs font-medium text-fg-subtle uppercase tracking-wider">
-            <span>Page {currentPage + 1} of {pages.length}</span>
-            <div className="flex gap-1">
-              {pages.map((_, i) => (
-                <span key={i} className={`h-1.5 w-6 rounded-full transition-colors ${i === currentPage ? 'bg-indigo-500' : i < currentPage ? 'bg-indigo-200 dark:bg-indigo-900/30' : 'bg-line'}`} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {pages[currentPage]?.map((f) => (
+        {visibleFields.map((f) => (
           <FieldRow
             key={f.id}
             field={f}
             value={values[f.id]}
             onChange={(v) => setFieldValue(f.id, v)}
             error={fieldErrors[f.id]}
-            onRequestPreview={(file) => setPreviewFile(file)}
           />
         ))}
 
@@ -844,24 +949,13 @@ function FillForm() {
           {draftSavedAt && !savingDraft && (
             <span className="mr-auto text-xs text-success-fg">Draft saved</span>
           )}
-          {currentPage > 0 && (
-            <button
-              type="button"
-              onClick={handlePrev}
-              className="px-4 py-2 rounded-md border border-line hover:bg-surface-2 text-sm font-medium text-fg transition mr-auto"
-            >
-              Previous
-            </button>
-          )}
-          {currentPage === 0 && (
-            <button
-              type="button"
-              onClick={() => navigate('/forms')}
-              className="px-4 py-2 rounded-md border border-line hover:bg-surface-2 text-sm font-medium text-fg transition"
-            >
-              Cancel
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => navigate('/forms')}
+            className="px-4 py-2 rounded-md border border-line hover:bg-surface-2 text-sm font-medium text-fg transition"
+          >
+            Cancel
+          </button>
           <button
             type="button"
             onClick={handleSaveDraft}
@@ -875,29 +969,10 @@ function FillForm() {
             disabled={submitting || visibleFields.length === 0}
             className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium shadow-sm transition"
           >
-            {currentPage < pages.length - 1 ? 'Next' : (submitting ? 'Submitting…' : 'Submit')}
+            {submitting ? 'Submitting…' : 'Submit'}
           </button>
         </div>
-        {savingDraft && (
-          <p className="mt-4 text-center text-xs font-medium text-fg-subtle animate-pulse">
-            Saving draft...
-          </p>
-        )}
-          </form>
-        </div>
-
-        {/* File Preview Sidebar (Option B: Contextual Slide-out with Sticky positioning) */}
-        {previewFile && (
-          <div className="hidden lg:block w-[40%] xl:w-[45%] shrink-0 self-stretch">
-            <FilePreviewPane 
-              file={previewFile} 
-              onClose={() => setPreviewFile(null)}
-              availableDocs={availableDocs}
-              onSelect={(file) => setPreviewFile(file)}
-            />
-          </div>
-        )}
-      </div>
+      </form>
     </AppShell>
   )
 }

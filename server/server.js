@@ -55,7 +55,12 @@ connectDB().then(async () => {
   startUsageCron()
 })
 
-app.use(helmet())
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  crossOriginEmbedderPolicy: false,
+  frameguard: false,
+  contentSecurityPolicy: false,
+}))
 const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
   .split(',')
   .map(s => s.trim())
@@ -96,10 +101,10 @@ app.use('/api/files', require('./routes/files'))
 if (process.env.SERVE_LEGACY_UPLOADS !== '0') {
   app.use(
     '/uploads',
-    helmet.crossOriginResourcePolicy({ policy: 'cross-origin' }),
-    // Flat files only. Without this, /uploads/<orgId>/<file> would walk straight
-    // into the per-org directories and undo the access control above.
     (req, res, next) => {
+      res.setHeader('Access-Control-Allow-Origin', '*')
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
+      res.removeHeader('X-Frame-Options')
       const rel = String(req.path || '').replace(/^\/+/, '')
       if (!rel || rel.includes('/')) {
         return res.status(404).json({ success: false, error: 'File not found', code: 'FILE_NOT_FOUND' })
@@ -133,8 +138,8 @@ app.use('/api/departments', require('./routes/departments'))
 app.use('/api/organization', require('./routes/organization'))
 app.use('/api/forms', require('./routes/forms'))
 app.use('/api/uploads', require('./routes/uploads'))
-app.use('/api/dms', require('./routes/dms'))
 app.use('/api/s3', require('./routes/s3'))
+app.use('/api/dms', require('./routes/dms'))
 
 // Public (unauthenticated) form links — collect data from non-users.
 app.use('/api/public', require('./routes/public'))
@@ -151,7 +156,6 @@ app.use('/api/team', require('./routes/team'))
 // Routes — M3
 app.use('/api/tasks', require('./routes/tasks'))
 app.use('/api/notifications', require('./routes/notifications'))
-app.use('/api/broadcasts', require('./routes/broadcasts'))
 app.use('/api/audit-logs', require('./routes/auditLogs'))
 app.use('/api/analytics', require('./routes/analytics'))
 

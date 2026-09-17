@@ -8,7 +8,7 @@
 // queue, oldest first, and the team's load sits next to it.
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import { api } from '../utils/api'
 import { useUser } from '../utils/auth'
@@ -32,23 +32,43 @@ const greeting = () => {
 // item, so this reads as an age rather than a timestamp.
 const waitingFor = (task) => relativeTime(task.createdAt) || 'just now'
 
-function StatCard({ icon: Icon, tone, label, value, hint }) {
-  const tones = {
-    indigo: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300',
-    danger: 'bg-danger-subtle text-danger-fg',
-    warning: 'bg-warning-subtle text-warning-fg',
-    success: 'bg-success-subtle text-success-fg',
-    sky: 'bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300'
+function StatCard({ icon: Icon, tone, label, value, hint, onClick }) {
+  const colorStyles = {
+    indigo: 'text-[#6366F1] bg-[#EEF2FF] dark:bg-indigo-500/15 dark:text-indigo-400',
+    danger: 'text-[#DC2626] bg-[#FEE2E2] dark:bg-rose-500/15 dark:text-rose-400',
+    warning: 'text-[#D97706] bg-[#FEF3C7] dark:bg-amber-500/15 dark:text-amber-400',
+    success: 'text-[#0F766E] bg-[#EAFBF1] dark:bg-emerald-500/15 dark:text-emerald-400',
+    sky: 'text-[#0284C7] bg-[#E0F2FE] dark:bg-cyan-500/15 dark:text-cyan-400',
+    purple: 'text-[#7C3AED] bg-[#F3E8FF] dark:bg-purple-500/15 dark:text-purple-400',
   }
+  const iconTheme = colorStyles[tone] || colorStyles.indigo
+
   return (
-    <div className="bg-surface border border-line rounded-xl p-5 flex items-start gap-4">
-      <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${tones[tone] || tones.indigo}`}>
-        <Icon className="w-5 h-5" />
+    <div
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
+      className={`bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between transition min-w-0 ${onClick ? 'cursor-pointer hover:shadow-sm hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-150' : ''}`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          {label}
+        </div>
+        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${iconTheme}`}>
+          <Icon className="w-4 h-4" />
+        </div>
       </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-xs text-fg-muted mb-0.5">{label}</p>
-        <p className="text-2xl font-bold text-fg leading-tight">{value}</p>
-        {hint ? <p className="text-[11px] text-fg-subtle mt-0.5 truncate">{hint}</p> : null}
+
+      <div className="mt-2">
+        <div className="text-2xl sm:text-3xl font-bold tabular-nums text-slate-900 dark:text-white tracking-tight leading-tight">
+          {value}
+        </div>
+        {hint && (
+          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 truncate">
+            {hint}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -255,6 +275,7 @@ function RecentDecisions({ tasks }) {
 }
 
 function OpsDashboard() {
+  const navigate = useNavigate()
   const user = useUser()
   const myTasks = useTasks()
   const myId = user?._id || user?.id || null
@@ -314,12 +335,33 @@ function OpsDashboard() {
 
   const oldest = queue[0]
 
+  const today = new Date()
+  const dateStr = today.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' })
+  const hour = today.getHours()
+  const greetingText = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+
   return (
     <AppShell
-      title={<>{greeting()}, {firstName}</>}
-      subtitle="Your approvals and your team, at a glance."
+      title="Dashboard"
+      mainClass="flex-1 p-4 md:p-6 pb-24 md:pb-6 space-y-5 overflow-y-auto bg-[#e2e8f0] dark:bg-slate-900"
     >
       <div className="space-y-5">
+        {/* ── 1. Header Bar ── */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1A2340] dark:text-white tracking-tight">
+                Welcome back, {firstName}
+              </h1>
+              <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#eef2ff] text-[#4f46e5] border border-indigo-200 dark:bg-indigo-950/70 dark:text-indigo-300 dark:border-indigo-800 shadow-2xs">
+                Manager
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 mt-2 leading-relaxed bg-slate-100/90 dark:bg-slate-800/90 px-3 py-1.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80 inline-block shadow-2xs">
+              <span className="text-indigo-600 dark:text-indigo-400 font-extrabold">{greetingText} · {dateStr}</span> — {user?.department || 'Department'} overview — here's what's happening in your department.
+            </p>
+          </div>
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
           {booting && myTasks.length === 0 ? (
             Array.from({ length: 5 }).map((_, i) => <StatCardSkeleton key={i} />)
@@ -331,21 +373,36 @@ function OpsDashboard() {
                 label="Waiting on you"
                 value={queue.length}
                 hint={oldest ? `oldest ${waitingFor(oldest)}` : 'queue is clear'}
+                onClick={() => navigate('/tasks?scope=assigned&filter=Pending')}
               />
-              <StatCard icon={IconAlert} tone="danger" label="Overdue" value={overdue.length} />
-              <StatCard icon={IconCheck} tone="success" label="You decided" value={decided.length} />
+              <StatCard
+                icon={IconAlert}
+                tone="danger"
+                label="Overdue"
+                value={overdue.length}
+                onClick={() => navigate('/tasks?scope=assigned&filter=SLA breached')}
+              />
+              <StatCard
+                icon={IconCheck}
+                tone="success"
+                label="You decided"
+                value={decided.length}
+                onClick={() => navigate('/tasks?scope=assigned&filter=Approved')}
+              />
               <StatCard
                 icon={IconTeam}
                 tone="sky"
                 label="Team requests"
                 value={team?.totals?.openRequests ?? 0}
                 hint={`${team?.totals?.members || 0} people`}
+                onClick={() => navigate('/tasks?scope=team&filter=All tasks')}
               />
               <StatCard
                 icon={IconClock}
                 tone="warning"
                 label="Team overdue"
                 value={team?.totals?.overdue ?? 0}
+                onClick={() => navigate('/tasks?scope=team&filter=SLA breached')}
               />
             </>
           )}

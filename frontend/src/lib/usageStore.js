@@ -31,15 +31,16 @@ const POLL_MS = 5 * 60 * 1000
 let pollTimer = null
 
 const fetchAll = async ({ withUsage = state.canManage } = {}) => {
-  if (inflight) return inflight
+  if (inflight && (!withUsage || inflight.withUsage)) return inflight
   if (!getToken()) {
     setState({ loading: false })
     return null
   }
-  inflight = (async () => {
+  const promise = (async () => {
     try {
       const lic = await api.get('/api/usage/licence')
-      const patch = { licence: lic.licence || null, loading: false, error: '' }
+      const patch = { licence: lic.licence || null, error: '' }
+      if (inflight === promise) patch.loading = false
 
       if (withUsage) {
         try {
@@ -58,13 +59,17 @@ const fetchAll = async ({ withUsage = state.canManage } = {}) => {
       setState(patch)
       return state
     } catch (err) {
-      setState({ loading: false, error: err?.message || 'Could not read the licence state' })
+      if (inflight === promise) {
+        setState({ loading: false, error: err?.message || 'Could not read the licence state' })
+      }
       return null
     } finally {
-      inflight = null
+      if (inflight === promise) inflight = null
     }
   })()
-  return inflight
+  promise.withUsage = withUsage
+  inflight = promise
+  return promise
 }
 
 const isStale = () => cacheToken !== getToken() || Date.now() - lastFetchedAt > POLL_MS

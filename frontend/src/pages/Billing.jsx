@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import AppShell from '../components/AppShell'
 import UsageCharts from '../components/UsageCharts'
-import { useUsage } from '../lib/usageStore'
+import { useUsage, usageStore } from '../lib/usageStore'
 import { METER_ORDER, meterText, licenceChip, formatDate } from '../lib/licensing'
 import { Skeleton } from '../components/Skeleton'
 import { AlertBanner } from '../components/Alert'
@@ -33,9 +33,12 @@ export default function Billing() {
   const { usage, loading, error, canManage } = useUsage()
   const [lastUpdated, setLastUpdated] = useState(new Date().toLocaleTimeString())
 
-  const handleRefresh = () => {
-    // In a real implementation this would trigger a refetch from useUsage / api
-    setLastUpdated(new Date().toLocaleTimeString())
+  const handleRefresh = async () => {
+    try {
+      await usageStore.refresh()
+    } finally {
+      setLastUpdated(new Date().toLocaleTimeString())
+    }
   }
 
   if (loading && !usage) {
@@ -61,7 +64,7 @@ export default function Billing() {
 
   const { licence, period, resources } = usage
   const planLabel = licence?.planLabel || 'Unknown'
-  const planActive = licence?.status === 'active' || true // Example
+  const planActive = licence?.status === 'active' || (licence?.daysLeft != null && licence.daysLeft > 0) || !licence?.readOnly
   const renewsOn = licence?.expiresAt ? formatDate(licence.expiresAt) : '—'
   const usageReset = period?.end ? formatDate(period.end) : '—'
 
@@ -69,85 +72,124 @@ export default function Billing() {
 
   return (
     <AppShell>
-      <div className="max-w-[1400px] mx-auto p-4 md:p-8 space-y-8">
+      <div className="max-w-[1400px] mx-auto space-y-6">
         
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-fg tracking-tight">Plan &amp; Usage</h1>
-            <p className="text-sm text-fg-muted mt-1">Monitor your organization's plan, limits, and resource consumption.</p>
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-[#6366F1] text-white flex items-center justify-center text-xl font-black shrink-0 shadow-md shadow-indigo-500/20">
+              <IconCrown className="w-6 h-6" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Plan &amp; Usage</h1>
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Track your plan limits and resource consumption.</p>
+            </div>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-xs font-medium text-fg-subtle">Last updated: {lastUpdated}</span>
-            <button onClick={handleRefresh} className="text-xs font-semibold px-3 py-1.5 bg-surface-2 hover:bg-surface-3 rounded-lg border border-line transition text-fg">
+            <span className="text-xs font-medium text-slate-400 dark:text-slate-500">Last updated: {lastUpdated}</span>
+            <button
+              onClick={handleRefresh}
+              className="text-xs font-bold px-4.5 py-2.5 bg-white dark:bg-slate-800 hover:bg-slate-50 text-slate-700 dark:text-slate-200 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xs transition cursor-pointer"
+            >
               Refresh
             </button>
-            <button className="text-xs font-semibold px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm rounded-lg transition">
+            <button className="text-xs font-bold px-5 py-2.5 bg-[#6366F1] hover:bg-indigo-600 text-white rounded-2xl shadow-md shadow-indigo-500/20 transition cursor-pointer">
               Upgrade Plan
             </button>
           </div>
         </div>
 
         {/* Top Banner (Plan Summary) */}
-        <div className="bg-white border border-line rounded-2xl shadow-sm overflow-hidden flex flex-col md:flex-row items-stretch">
-          <div className="p-6 md:p-8 md:w-1/3 border-b md:border-b-0 md:border-r border-line flex flex-col justify-center relative">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center shrink-0 shadow-sm border border-indigo-100">
-                <IconCrown className="w-6 h-6" />
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-fg-subtle uppercase tracking-wider mb-0.5">Current Plan</p>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-xl font-bold text-fg leading-none">{planLabel}</h2>
-                  {planActive && <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 uppercase tracking-wider">Active</span>}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {/* Card 1: Current Plan */}
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl flex flex-col justify-between shadow-2xs border border-slate-200/80 dark:border-slate-800 min-h-[190px]">
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-[#EEF2FF] dark:bg-indigo-500/15 text-[#6366F1] dark:text-indigo-400 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                  </div>
+                  <div>
+                    <p className="text-[10.5px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Current Plan</p>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-xl font-black text-slate-900 dark:text-white leading-none tracking-tight">{planLabel}</h2>
+                      {planActive && <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#e3f7ed] text-[#12a15f] dark:bg-emerald-500/15 dark:text-emerald-300 uppercase tracking-wider">Active</span>}
+                    </div>
+                  </div>
                 </div>
               </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
+                Ideal for small teams getting started.
+              </p>
             </div>
-            <p className="text-sm text-fg-muted mb-5">Ideal for small teams getting started.</p>
-            <button className="text-xs font-bold text-indigo-600 border border-indigo-200 hover:bg-indigo-50 rounded-lg px-4 py-2 self-start transition">
-              View Plan Details
-            </button>
+            <div className="pt-4">
+              <button className="text-xs font-bold text-[#6366F1] dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-xl px-4 py-2 transition cursor-pointer">
+                View Plan Details
+              </button>
+            </div>
           </div>
           
-          <div className="p-6 md:p-8 md:w-1/3 border-b md:border-b-0 md:border-r border-line flex flex-col justify-center gap-6">
+          {/* Card 2: Renews On */}
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl flex flex-col justify-between shadow-2xs border border-slate-200/80 dark:border-slate-800 min-h-[190px]">
             <div>
-              <p className="text-xs font-semibold text-fg-subtle uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" /></svg>
-                Renews On
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-sky-50 dark:bg-sky-500/15 text-sky-600 dark:text-sky-400 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  </div>
+                  <div>
+                    <p className="text-[10.5px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Renews On</p>
+                    <h2 className="text-xl font-black text-slate-900 dark:text-white leading-none tracking-tight">{renewsOn}</h2>
+                  </div>
+                </div>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300 uppercase tracking-wider">
+                  Auto-renew
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
+                Subscription auto-renews at next term.
               </p>
-              <h3 className="text-lg font-bold text-fg">{renewsOn}</h3>
-              {licence?.daysLeft != null && <p className="text-xs text-fg-muted mt-0.5">{licence.daysLeft} days left</p>}
             </div>
-            <div>
-              <p className="text-xs font-semibold text-fg-subtle uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
-                Billing Cycle
-              </p>
-              <h3 className="text-lg font-bold text-fg">Yearly</h3>
-              <p className="text-xs text-fg-muted mt-0.5">Billed annually</p>
+            <div className="pt-4">
+              <button className="text-xs font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl px-4 py-2 transition cursor-pointer">
+                Manage Renewal
+              </button>
             </div>
           </div>
 
-          <div className="p-6 md:p-8 md:w-1/3 flex flex-col justify-center relative overflow-hidden">
-            <div className="relative z-10">
-              <p className="text-xs font-semibold text-fg-subtle uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
-                Usage Reset
+          {/* Card 3: Billing Cycle */}
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl flex flex-col justify-between shadow-2xs border border-slate-200/80 dark:border-slate-800 min-h-[190px]">
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-purple-50 dark:bg-purple-500/15 text-purple-600 dark:text-purple-400 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                  </div>
+                  <div>
+                    <p className="text-[10.5px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">Billing Cycle</p>
+                    <h2 className="text-xl font-black text-slate-900 dark:text-white leading-none tracking-tight">Yearly</h2>
+                  </div>
+                </div>
+                <div className="w-9 h-9 bg-[#EEF2FF] dark:bg-indigo-500/15 rounded-xl flex items-center justify-center shrink-0 shadow-2xs text-[#6366F1]">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z" />
+                  </svg>
+                </div>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
+                Billed annually with 2 months free.
               </p>
-              <h3 className="text-lg font-bold text-fg">{usageReset}</h3>
-              {period?.daysLeft != null && <p className="text-xs text-fg-muted mt-0.5">{period.daysLeft} days left</p>}
             </div>
-            {/* CSS Abstract Illustration */}
-            <div className="absolute right-0 top-1/2 -translate-y-1/2 opacity-20 pointer-events-none">
-               <svg width="150" height="150" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-                 <path fill="#4f46e5" d="M45.7,-76.4C58.9,-69.5,69.1,-55.4,78.2,-41.2C87.3,-27,95.3,-13.5,95.2,-0.1C95.1,13.4,86.9,26.7,78,39.7C69.1,52.7,59.5,65.3,47.1,73.5C34.7,81.7,19.5,85.5,4.7,77.6C-10.1,69.7,-24.5,50.1,-37,40.1C-49.5,30.1,-60.1,29.7,-68.5,23.3C-76.9,16.9,-83.1,4.5,-80.6,-6.4C-78.1,-17.3,-66.9,-26.8,-57,-35.1C-47.1,-43.4,-38.5,-50.5,-28.5,-59C-18.5,-67.5,-7.1,-77.4,5.1,-86.3C17.3,-95.2,32.5,-83.3,45.7,-76.4Z" transform="translate(100 100)" />
-               </svg>
+            <div className="pt-4">
+              <button className="text-xs font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl px-4 py-2 transition cursor-pointer">
+                Change Cycle
+              </button>
             </div>
           </div>
         </div>
 
         {/* Usage Meters Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           {METER_ORDER.map(({ key, label }) => {
             const meter = resources?.[key]
             if (!meter) return null
@@ -160,35 +202,30 @@ export default function Billing() {
             const percent = meter.unlimited ? 0 : Math.min(100, Math.max(0, (usedRaw / maxRaw) * 100))
             const percentStr = percent > 0 && percent < 1 ? '<1' : Math.round(percent)
             
-            // Re-apply Red if exceeded, otherwise use brand color
             const isExceeded = !meter.unlimited && meter.state === 'exceeded'
             const barColor = isExceeded ? 'bg-red-500' : config.color
-            const textColor = isExceeded ? 'text-red-600' : 'text-fg'
 
             return (
-              <div key={key} className="bg-white border border-line rounded-xl p-3 shadow-sm flex flex-col overflow-hidden">
-                <div className="flex items-start gap-2.5 mb-3">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${config.iconBg}`}>
+              <div key={key} className="bg-white dark:bg-slate-900 rounded-3xl p-5 shadow-2xs border border-slate-200/80 dark:border-slate-800 flex flex-col items-center flex-1 min-w-[130px]">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-2xs ${config.iconBg}`}>
                     <Icon className="w-4 h-4" />
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <h4 className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wide text-fg-subtle truncate">{label}</h4>
-                    <div className="flex items-baseline gap-1 mt-0.5 flex-wrap">
-                      <span className={`text-sm font-black ${textColor}`}>{meter.unlimited ? usedRaw : meterText(key, meter).split(' of ')[0]}</span>
-                      {!meter.unlimited && <span className="text-[10px] text-fg-muted font-medium whitespace-nowrap">/ {meterText(key, meter).split(' of ')[1]}</span>}
-                      {meter.unlimited && <span className="text-[10px] text-fg-muted font-medium">/ &infin;</span>}
-                    </div>
-                  </div>
+                  <h4 className="text-[11px] font-bold text-slate-500 dark:text-slate-400">{label}</h4>
                 </div>
                 
-                <div className="mt-auto">
-                  <div className="h-1.5 w-full rounded-full bg-surface-3 overflow-hidden">
-                    <div className={`h-full ${barColor} rounded-full`} style={{ width: `${meter.unlimited ? 100 : percent}%` }} />
-                  </div>
-                  <p className="text-[10px] text-fg-muted mt-2 font-medium">
-                    {meter.unlimited ? 'Unlimited' : `${percentStr}% used`}
-                  </p>
+                <div className="flex items-baseline gap-1 mb-3">
+                  <span className="text-xl font-black text-slate-900 dark:text-white tabular-nums">{usedRaw}</span>
+                  <span className="text-xs font-bold text-slate-400">/ &infin;</span>
                 </div>
+                
+                <div className="w-full h-1 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden mb-2">
+                  <div className={`h-full ${barColor} rounded-full opacity-60`} style={{ width: '100%' }} />
+                </div>
+                
+                <p className="text-[10px] font-bold text-slate-900 dark:text-white uppercase tracking-widest">
+                  Unlimited
+                </p>
               </div>
             )
           })}

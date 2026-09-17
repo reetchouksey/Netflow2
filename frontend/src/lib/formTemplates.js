@@ -24,7 +24,7 @@ export const FORM_TEMPLATES = [
     description: 'Request to buy goods or services with line items.',
     fields: [
       { type: 'text', label: 'Requested by', required: true },
-      { type: 'dropdown', label: 'Department', required: true, options: ['HR', 'Finance', 'IT', 'Operations', 'Sales', 'Legal'] },
+      { type: 'dropdown', label: 'Department', required: true, options: ['HR', 'Finance', 'IT', 'Operations', 'Sales', 'Legal', 'Corporate'] },
       { type: 'grid', label: 'Items', required: true, columns: [
         { id: 'c1', label: 'Item', type: 'text' },
         { id: 'c2', label: 'Qty', type: 'number' },
@@ -96,8 +96,9 @@ export const FORM_TEMPLATES = [
       { type: 'text', label: 'Personal email', required: true },
       { type: 'text', label: 'Phone number', required: false },
       { type: 'date', label: 'Start date', required: true },
-      { type: 'dropdown', label: 'Department', required: true, options: ['HR', 'Finance', 'IT', 'Operations', 'Sales', 'Legal'] },
+      { type: 'dropdown', label: 'Department', required: true, options: ['HR', 'Finance', 'IT', 'Operations', 'Sales', 'Legal', 'Corporate'] },
       { type: 'text', label: 'Job title', required: true },
+      { type: 'camera', label: 'Photo', required: false },
       { type: 'file', label: 'ID proof', required: true, fileTypes: 'PDF / JPG / PNG', maxSize: 5 },
       { type: 'file', label: 'Signed offer letter', required: true, fileTypes: 'PDF', maxSize: 10 },
       { type: 'signature', label: 'Employee signature', required: true },
@@ -160,7 +161,7 @@ export const FORM_TEMPLATES = [
     description: 'Request hardware or equipment for an employee.',
     fields: [
       { type: 'text', label: 'Requested by', required: true },
-      { type: 'dropdown', label: 'Department', required: false, options: ['HR', 'Finance', 'IT', 'Operations', 'Sales', 'Legal'] },
+      { type: 'dropdown', label: 'Department', required: false, options: ['HR', 'Finance', 'IT', 'Operations', 'Sales', 'Legal', 'Corporate'] },
       { type: 'grid', label: 'Items requested', required: true, columns: [
         { id: 'c1', label: 'Asset', type: 'dropdown', options: ['Laptop', 'Monitor', 'Keyboard', 'Mouse', 'Phone', 'Other'] },
         { id: 'c2', label: 'Quantity', type: 'number' },

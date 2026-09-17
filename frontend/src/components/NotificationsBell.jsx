@@ -3,7 +3,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { notificationsStore, useNotifications, useUnreadCount } from '../lib/notificationsStore'
+import { notificationsStore, useNotifications, useUnreadCount, setNotificationsPanelOpen } from '../lib/notificationsStore'
 import { useOutsideDismiss } from '../utils/a11y'
 
 export default function NotificationsBell() {
@@ -13,6 +13,9 @@ export default function NotificationsBell() {
   const [open, setOpen] = useState(false)
   const [marking, setMarking] = useState(false)
   const wrapRef = useRef(null)
+
+  // Keep shared panel-open state in sync so other floating UI can react.
+  useEffect(() => { setNotificationsPanelOpen(open) }, [open])
 
   useOutsideDismiss(open, wrapRef, () => setOpen(false))
 
@@ -92,14 +95,26 @@ export default function NotificationsBell() {
                 {unreadCount > 0 ? `${unreadCount} unread` : 'You’re all caught up'}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={onMarkAll}
-              disabled={unreadCount === 0 || marking}
-              className="shrink-0 text-xs font-semibold text-indigo-600 hover:text-indigo-700 disabled:text-fg-subtle disabled:cursor-not-allowed transition"
-            >
-              {marking ? 'Marking…' : 'Mark all read'}
-            </button>
+            <div className="flex items-center gap-4 shrink-0">
+              <button
+                type="button"
+                onClick={onMarkAll}
+                disabled={unreadCount === 0 || marking}
+                className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 disabled:text-fg-subtle disabled:cursor-not-allowed transition"
+              >
+                {marking ? 'Marking…' : 'Mark all read'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="p-1 -mr-1 rounded-md text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                aria-label="Close notifications"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           <ul className="max-h-[min(24rem,60vh)] overflow-y-auto">

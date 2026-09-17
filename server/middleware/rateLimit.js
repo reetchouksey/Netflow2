@@ -5,7 +5,7 @@ const rateLimit = require('express-rate-limit')
 const { RedisStore } = require('rate-limit-redis')
 const { getRedis } = require('../utils/redis')
 
-const skipWhenDisabled = () => process.env.DISABLE_RATE_LIMIT === '1'
+const skipWhenDisabled = () => process.env.DISABLE_RATE_LIMIT === '1' || process.env.NODE_ENV !== 'production'
 
 const redisStore = (prefix) => {
   const redis = getRedis()
