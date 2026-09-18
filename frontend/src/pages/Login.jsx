@@ -229,8 +229,8 @@ function Login() {
 
   return (
     <div className="h-screen max-h-screen overflow-hidden flex bg-white dark:bg-slate-900 font-sans">
-      {/* ---------- Left Royal Blue Hero Panel ---------- */}
-      <div className="hidden lg:flex flex-col justify-between w-1/2 p-10 lg:p-14 bg-gradient-to-br from-[#2563EB] via-[#1D4ED8] to-[#1E40AF] text-white relative overflow-hidden shrink-0 h-full">
+      {/* ---------- Left Dark Blue Hero Panel ---------- */}
+      <div className="hidden lg:flex flex-col justify-between w-1/2 p-10 lg:p-14 bg-gradient-to-br from-[#0c2340] via-[#103668] to-[#134287] text-white relative overflow-hidden shrink-0 h-full">
         
         {/* Decorative Background Waves & Orbs */}
         <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
@@ -307,7 +307,7 @@ function Login() {
 
           {/* Mobile Logo Header */}
           <Link to="/" className="flex items-center gap-3 lg:hidden mb-4 hover:opacity-90 transition cursor-pointer" title="Back to landing page">
-            <span className="w-9 h-9 rounded-2xl bg-[#2563EB] text-white font-black text-lg flex items-center justify-center shadow-md">
+            <span className="w-9 h-9 rounded-2xl bg-[#134287] text-white font-black text-lg flex items-center justify-center shadow-md">
               N
             </span>
             <span className="text-xl font-black text-slate-900 dark:text-white">NetFlow</span>
@@ -317,7 +317,7 @@ function Login() {
             <div className="w-full max-w-[360px] mx-auto">
               {/* Back to website link */}
               <div className="mb-4">
-                <Link to="/" className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline">
+                <Link to="/" className="inline-flex items-center gap-1.5 text-xs font-bold text-[#134287] dark:text-blue-400 hover:text-[#0c2340] hover:underline">
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
                   </svg>
@@ -357,7 +357,7 @@ function Login() {
                     value={form.email}
                     onChange={handleChange}
                     placeholder="superadmin@netflow.com"
-                    className="w-full px-3 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder:text-slate-400 text-[14px] outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition shadow-sm"
+                    className="w-full px-3 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder:text-slate-400 text-[14px] outline-none focus:border-[#134287] focus:ring-1 focus:ring-[#134287] transition shadow-sm"
                   />
                   {errors.email && <p className="mt-1.5 text-[12px] font-medium text-rose-500">{errors.email}</p>}
                 </div>
@@ -368,7 +368,7 @@ function Login() {
                     <label htmlFor="password" className="block text-[13px] font-semibold text-slate-700 dark:text-slate-300">
                       Password
                     </label>
-                    <Link to="/forgot-password" className="text-[13px] font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline">
+                    <Link to="/forgot-password" className="text-[13px] font-medium text-[#134287] hover:text-[#0c2340] dark:text-blue-400 hover:underline">
                       Forgot password?
                     </Link>
                   </div>
@@ -381,7 +381,7 @@ function Login() {
                       value={form.password}
                       onChange={handleChange}
                       placeholder="••••••••••••"
-                      className="w-full px-3 pr-16 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder:text-slate-400 text-[14px] outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition shadow-sm"
+                      className="w-full px-3 pr-16 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder:text-slate-400 text-[14px] outline-none focus:border-[#134287] focus:ring-1 focus:ring-[#134287] transition shadow-sm"
                     />
                     <button
                       type="button"
@@ -398,7 +398,7 @@ function Login() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-60 text-white text-[14px] font-semibold shadow-sm transition mt-2 cursor-pointer"
+                  className="w-full py-2.5 rounded-lg bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] disabled:opacity-60 text-white text-[14px] font-semibold shadow-sm transition mt-2 cursor-pointer"
                 >
                   {submitting ? 'Signing in…' : 'Sign in'}
                 </button>
@@ -449,12 +449,12 @@ function Login() {
                 />
                 <button
                   type="submit" disabled={busy}
-                  className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-sm font-semibold shadow transition"
+                  className="w-full py-2.5 rounded-lg bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] disabled:opacity-60 text-white text-sm font-semibold shadow transition cursor-pointer"
                 >
                   {busy ? 'Verifying…' : 'Verify & sign in'}
                 </button>
               </form>
-              <button onClick={backToLogin} className="mt-5 text-sm text-indigo-600 hover:text-indigo-800 font-medium">
+              <button onClick={backToLogin} className="mt-5 text-sm text-[#134287] hover:text-[#0c2340] font-medium cursor-pointer">
                 ← Back to sign in
               </button>
             </>
@@ -489,16 +489,16 @@ function Login() {
                   value={code}
                   onChange={(e) => { setCode(e.target.value); setMfaError('') }}
                   placeholder="Enter 6-digit code"
-                  className="w-full px-4 py-2.5 rounded-lg border border-line bg-surface text-fg placeholder:text-fg-subtle text-sm tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition"
+                  className="w-full px-4 py-2.5 rounded-lg border border-line bg-surface text-fg placeholder:text-fg-subtle text-sm tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-[#134287]/30 focus:border-[#134287] transition"
                 />
                 <button
                   type="submit" disabled={busy || !setupData}
-                  className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-sm font-semibold shadow transition"
+                  className="w-full py-2.5 rounded-lg bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] disabled:opacity-60 text-white text-sm font-semibold shadow transition cursor-pointer"
                 >
                   {busy ? 'Verifying…' : 'Enable & continue'}
                 </button>
               </form>
-              <button onClick={backToLogin} className="mt-5 text-sm text-indigo-600 hover:text-indigo-800 font-medium">
+              <button onClick={backToLogin} className="mt-5 text-sm text-[#134287] hover:text-[#0c2340] font-medium cursor-pointer">
                 ← Back to sign in
               </button>
             </>
@@ -518,7 +518,7 @@ function Login() {
               </div>
               <button
                 onClick={() => navigate('/dashboard')}
-                className="w-full mt-6 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow transition"
+                className="w-full mt-6 py-2.5 rounded-lg bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white text-sm font-semibold shadow transition cursor-pointer"
               >
                 I've saved them — continue
               </button>
