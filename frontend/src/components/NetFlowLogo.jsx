@@ -1,9 +1,6 @@
-import React, { useState } from 'react'
-import logoImg from '../assets/logo.png'
+import React from 'react'
 
 export default function NetFlowLogo({ className = "w-[42px] h-[42px]", size = 42 }) {
-  const [imgFailed, setImgFailed] = useState(false)
-
   const containerStyle = {
     width: typeof size === 'number' ? `${size}px` : size,
     height: typeof size === 'number' ? `${size}px` : size,
@@ -12,55 +9,58 @@ export default function NetFlowLogo({ className = "w-[42px] h-[42px]", size = 42
   return (
     <div
       style={containerStyle}
-      className={`rounded-2xl overflow-hidden shadow-md shadow-blue-950/25 shrink-0 select-none flex items-center justify-center bg-gradient-to-br from-[#0c2340] via-[#103668] to-[#134287] p-1.5 ${className}`}
+      className={`rounded-2xl overflow-hidden shadow-md shadow-blue-950/20 shrink-0 select-none flex items-center justify-center bg-[#134287] p-1.5 ${className}`}
     >
-      {!imgFailed ? (
-        <img
-          src={logoImg}
-          alt="NetFlow"
-          onError={() => setImgFailed(true)}
-          className="w-full h-full object-contain rounded-xl"
+      <svg
+        viewBox="0 0 48 48"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className="w-full h-full drop-shadow-sm"
+      >
+        {/* 1. S-Curve Arrow: Top Node to Bottom-Left Node */}
+        <path
+          d="M 27 17 C 25.5 22.5, 18.5 22.5, 16 27.5"
+          stroke="#FFFFFF"
+          strokeWidth="2.5"
+          strokeLinecap="round"
         />
-      ) : (
-        <svg
-          viewBox="0 0 48 48"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          className="w-full h-full drop-shadow-sm"
-        >
-          {/* S-curve path: Bottom-left to Top node */}
-          <path
-            d="M15 30 C15 22, 22 22, 23 16"
-            stroke="#FFFFFF"
-            strokeWidth="2.75"
-            strokeLinecap="round"
-          />
-          {/* Curve path: Top to Bottom-right node */}
-          <path
-            d="M27 15 C33 18, 33 26, 33 30"
-            stroke="#FFFFFF"
-            strokeWidth="2.75"
-            strokeLinecap="round"
-          />
-          {/* Horizontal path: Bottom-left to Bottom-right node */}
-          <path
-            d="M16 33 L32 33"
-            stroke="#FFFFFF"
-            strokeWidth="2.75"
-            strokeLinecap="round"
-          />
-          
-          {/* Node connector plugs */}
-          <circle cx="15" cy="23" r="1.5" fill="#FFFFFF" />
-          <circle cx="27" cy="14" r="1.5" fill="#FFFFFF" />
-          <circle cx="25" cy="33" r="1.5" fill="#FFFFFF" />
+        <polygon
+          points="14,29.5 19.5,28 16.5,23.5"
+          fill="#FFFFFF"
+        />
 
-          {/* 3 Main Workflow Nodes */}
-          <circle cx="14" cy="33" r="5" fill="#FFFFFF" />
-          <circle cx="24" cy="13" r="5" fill="#FFFFFF" />
-          <circle cx="34" cy="33" r="5" fill="#FFFFFF" />
-        </svg>
-      )}
+        {/* 2. Bottom Horizontal Arrow: Bottom-Left Node to Bottom-Right Node */}
+        <path
+          d="M 19 34 L 28 34"
+          stroke="#FFFFFF"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+        />
+        <polygon
+          points="30.5,34 25.5,31 25.5,37"
+          fill="#FFFFFF"
+        />
+
+        {/* 3. Arch Curve Arrow: Bottom-Right Node up to Top Node */}
+        <path
+          d="M 35 29.5 C 37.5 24, 34.5 17.5, 30.5 15"
+          stroke="#FFFFFF"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+        />
+        <polygon
+          points="29,14 34,16 32,20.5"
+          fill="#FFFFFF"
+        />
+
+        {/* 3 Solid White Workflow Nodes */}
+        {/* Top Node */}
+        <circle cx="29" cy="13" r="4.2" fill="#FFFFFF" />
+        {/* Bottom-Left Node */}
+        <circle cx="15" cy="34" r="4.2" fill="#FFFFFF" />
+        {/* Bottom-Right Node */}
+        <circle cx="35" cy="34" r="4.2" fill="#FFFFFF" />
+      </svg>
     </div>
   )
 }

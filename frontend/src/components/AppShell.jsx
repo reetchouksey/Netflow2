@@ -323,12 +323,12 @@ function Sidebar({ user, pendingCount, open, onToggle }) {
                 type="button"
                 onClick={onToggle}
                 aria-label="Expand sidebar"
-                className="relative w-10 h-10 rounded-2xl flex items-center justify-center shadow-md shadow-indigo-500/30 hover:scale-105 transition-all duration-200 cursor-pointer overflow-hidden group"
+                className="relative w-10 h-10 rounded-2xl flex items-center justify-center shadow-md shadow-blue-950/20 hover:scale-105 transition-all duration-200 cursor-pointer overflow-hidden group"
               >
                 <NetFlowLogo size={40} className="w-10 h-10 shrink-0 transition-all duration-200 group-hover:scale-0 group-hover:opacity-0" />
                 {/* Right Expand Arrow on Hover */}
                 <svg
-                  className="w-5 h-5 text-indigo-600 dark:text-indigo-400 absolute transition-all duration-200 scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-100"
+                  className="w-5 h-5 text-[#134287] dark:text-blue-400 absolute transition-all duration-200 scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-100"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -342,7 +342,7 @@ function Sidebar({ user, pendingCount, open, onToggle }) {
               <div className="absolute left-full ml-3.5 px-3 py-1.5 bg-[#F1F5F9] dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs font-bold rounded-xl shadow-md border border-slate-300/80 dark:border-slate-700 whitespace-nowrap opacity-0 pointer-events-none group-hover/logotip:opacity-100 transition-opacity duration-75 z-50 flex items-center gap-1.5">
                 <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-[#F1F5F9] dark:bg-slate-800 border-l border-b border-slate-300/80 dark:border-slate-700 rotate-45" />
                 <span>Open sidebar</span>
-                <span className="text-indigo-600 dark:text-indigo-400 font-extrabold text-sm">→</span>
+                <span className="text-[#134287] dark:text-blue-400 font-extrabold text-sm">→</span>
               </div>
             </div>
 
