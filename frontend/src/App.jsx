@@ -47,6 +47,7 @@ import PrototypePage from './prototype/PrototypePage'
 import Toaster from './components/Toaster'
 import ConfirmDialog from './components/ConfirmDialog'
 import UserGuideHost from './components/UserGuideHost'
+import WorkspaceSplashScreen from './components/WorkspaceSplashScreen'
 
 // Users flagged mustChangePassword (e.g. a freshly provisioned org admin) are
 // held on /change-password until they set a real password.
@@ -161,19 +162,19 @@ function App() {
     // On boot, if we have a token try to refresh user info. This kicks invalid
     // tokens out via the /api wrapper's 401 redirect.
     const token = getToken()
-    if (token) {
-      authStore.refresh().finally(() => setReady(true))
-    } else {
-      setReady(true)
-    }
+    const start = Date.now()
+    const minWait = 1400
+
+    const init = token ? authStore.refresh() : Promise.resolve()
+    init.finally(() => {
+      const elapsed = Date.now() - start
+      const remaining = Math.max(0, minWait - elapsed)
+      setTimeout(() => setReady(true), remaining)
+    })
   }, [])
 
   if (!ready) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-surface-2">
-        <div className="text-sm text-fg-muted">Loading NetFlow...</div>
-      </div>
-    )
+    return <WorkspaceSplashScreen />
   }
 
   return (
