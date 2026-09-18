@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react'
 
 export function NetFlowSpinningIcon({ size = 96, className = "" }) {
+  const darkBlue = "#134287" // Bold rich dark blue
+
   return (
     <div
       style={{ width: `${size}px`, height: `${size}px` }}
@@ -10,58 +12,58 @@ export function NetFlowSpinningIcon({ size = 96, className = "" }) {
         viewBox="0 0 100 100"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
-        className="w-full h-full text-[#1c52a3]"
+        className="w-full h-full"
         style={{
-          animation: 'spin 3.5s linear infinite',
+          animation: 'spin 3.2s linear infinite',
           transformOrigin: 'center center'
         }}
       >
-        {/* 1. Diagonal Arrow: From Right Node to Top Node */}
+        {/* 1. Right Vertical Arrow: From Bottom-Right Node straight UP to Top-Right Node */}
         <path
-          d="M 68 39 L 51 26"
-          stroke="#1c52a3"
-          strokeWidth="3.2"
+          d="M 68 64 L 68 37"
+          stroke={darkBlue}
+          strokeWidth="4.8"
           strokeLinecap="round"
         />
-        {/* Arrowhead pointing Up-Left into Top Node */}
-        <path
-          d="M 46 22 L 56 22 L 52 30 Z"
-          fill="#1c52a3"
+        {/* Large Arrowhead pointing Up */}
+        <polygon
+          points="68,30 61,42 75,42"
+          fill={darkBlue}
         />
 
-        {/* 2. Left Curved Arc: From Top Node down to Bottom-Left Node */}
+        {/* 2. Top-Left Curving Arc: From Top-Right Node curving over to Bottom-Left Node */}
         <path
-          d="M 39 25 C 28 35, 27 50, 36 62"
-          stroke="#1c52a3"
-          strokeWidth="3.2"
+          d="M 58 24 C 42 22, 28 34, 27 52"
+          stroke={darkBlue}
+          strokeWidth="4.8"
           strokeLinecap="round"
         />
-        {/* Arrowhead pointing Down-Right towards Bottom-Left Node */}
-        <path
-          d="M 38 67 L 30 60 L 39 57 Z"
-          fill="#1c52a3"
+        {/* Large Arrowhead pointing Down-Left */}
+        <polygon
+          points="25,58 35,50 25,45"
+          fill={darkBlue}
         />
 
-        {/* 3. Bottom S-Curve Wave: From Bottom-Left Node to Right Node */}
+        {/* 3. Bottom Smooth Arc: From Bottom-Left Node curving over to Bottom-Right Node */}
         <path
-          d="M 48 70 C 56 70, 60 64, 69 51"
-          stroke="#1c52a3"
-          strokeWidth="3.2"
+          d="M 36 67 C 44 74, 54 75, 60 74"
+          stroke={darkBlue}
+          strokeWidth="4.8"
           strokeLinecap="round"
         />
-        {/* Arrowhead pointing Up-Right into Right Node */}
-        <path
-          d="M 73 46 L 73 56 L 65 52 Z"
-          fill="#1c52a3"
+        {/* Large Arrowhead pointing Right / Up-Right */}
+        <polygon
+          points="65,74 54,67 56,79"
+          fill={darkBlue}
         />
 
-        {/* 3 Circular Workflow Nodes */}
-        {/* Top Node */}
-        <circle cx="44" cy="20" r="7.5" fill="#1c52a3" />
-        {/* Right Node */}
-        <circle cx="77" cy="43" r="7.5" fill="#1c52a3" />
+        {/* 3 Bold Circular Workflow Nodes */}
+        {/* Top-Right Node */}
+        <circle cx="68" cy="27" r="9" fill={darkBlue} />
+        {/* Bottom-Right Node */}
+        <circle cx="68" cy="74" r="9" fill={darkBlue} />
         {/* Bottom-Left Node */}
-        <circle cx="42" cy="72" r="7.5" fill="#1c52a3" />
+        <circle cx="26" cy="60" r="9" fill={darkBlue} />
       </svg>
     </div>
   )
@@ -91,9 +93,9 @@ export default function WorkspaceSplashScreen({ onFinish, minDuration = 1400 }) 
 
   return (
     <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#f0f4f8] text-slate-800 select-none">
-      {/* Spinning 3-node NetFlow Logo */}
+      {/* Bold Spinning 3-node NetFlow Logo */}
       <div className="mb-7">
-        <NetFlowSpinningIcon size={96} />
+        <NetFlowSpinningIcon size={98} />
       </div>
 
       {/* Brand Title */}
@@ -119,7 +121,7 @@ export default function WorkspaceSplashScreen({ onFinish, minDuration = 1400 }) 
         </div>
         <div className="w-full h-[3px] bg-slate-200/90 rounded-full overflow-hidden">
           <div
-            className="h-full bg-[#1c52a3] rounded-full transition-all duration-100 ease-out"
+            className="h-full bg-[#134287] rounded-full transition-all duration-100 ease-out"
             style={{ width: `${progress}%` }}
           />
         </div>
