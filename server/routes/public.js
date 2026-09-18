@@ -6,6 +6,7 @@
 const express = require('express')
 const fs = require('fs')
 const multer = require('multer')
+const mongoose = require('mongoose')
 
 const Form = require('../models/Form')
 const FormResponse = require('../models/FormResponse')
@@ -16,8 +17,16 @@ const dms = require('../services/dmsClient')
 const { validateField } = require('../utils/validation')
 const { checkQuota, checkStorage } = require('../middleware/quota')
 const { writeBlockFor } = require('../middleware/licence')
+const {
+  prepareExtractionAttachment,
+  markExtractionConsumed,
+  releaseExtractionClaim
+} = require('../services/extractionProcessor')
+const { policyFor } = require('../utils/pdfAutoFillPolicy')
+
 const { meterSubmission, addStorage } = require('../utils/usageMeter')
 const { dirForOrg, safeFilename, urlFor } = require('../utils/fileStore')
+const s3Client = require('../services/s3Client')
 
 const router = express.Router()
 
@@ -115,12 +124,18 @@ router.get('/forms/:token', async (req, res, next) => {
   try {
     const form = await findPublicForm(req.params.token)
     if (!form) return sendError(res, 'This form is not available.', 'FORM_NOT_FOUND', 404)
+    const org = await tenantOf(form)
+    const pdfPolicy = policyFor(org, 'public')
     // Expose only what the renderer needs — never createdBy, department, etc.
     return sendSuccess(res, {
       form: {
         title: form.title,
         description: form.description || '',
-        fields: form.fields || []
+        fields: form.fields || [],
+        autoFill: {
+          enabled: pdfPolicy.enabled,
+          languageMode: pdfPolicy.languageMode
+        }
       }
     })
   } catch (err) {
@@ -137,7 +152,7 @@ router.post('/forms/:token/submit', rateLimit, async (req, res, next) => {
     const org = await tenantOf(form)
     if (await gateTenant(res, org, 'submissions')) return
 
-    const { formData, submitter } = req.body || {}
+    const { formData, submitter, extraction } = req.body || {}
     if (!formData || typeof formData !== 'object') {
       return sendError(res, 'formData object is required', 'MISSING_FORM_DATA', 400)
     }
@@ -161,9 +176,40 @@ router.post('/forms/:token/submit', rateLimit, async (req, res, next) => {
       if (err) return sendError(res, err, 'FIELD_INVALID', 400)
     }
 
+
+    const preparedExtraction = await prepareExtractionAttachment({
+      extraction,
+      formId: form._id,
+      org,
+      requesterId: null,
+      audience: 'public'
+    })
+    const attachmentRows = []
+    for (const field of form.fields || []) {
+      if (field.type !== 'file') continue
+      const value = formData[field.id]
+      if (value && typeof value === 'object' && (value.dmsDocId || value.url || value.s3Key)) {
+        attachmentRows.push({
+          kind: 'form_upload',
+          filename: value.name || field.label || 'file',
+          path: value.url || (value.s3Key ? '/api/s3/download?key=' + encodeURIComponent(value.s3Key) : ''),
+          mimetype: value.mime || '',
+          size: value.size || 0,
+          dmsDocId: value.dmsDocId ? String(value.dmsDocId) : null,
+          s3Key: value.s3Key ? String(value.s3Key) : null,
+          provisionalId: value.provisionalId ? String(value.provisionalId) : null
+        })
+      }
+    }
+    if (preparedExtraction) attachmentRows.push(preparedExtraction.attachment)
+
+    const reservedResponseId = preparedExtraction ? new mongoose.Types.ObjectId() : undefined
+    if (preparedExtraction) await markExtractionConsumed(preparedExtraction.job._id, reservedResponseId)
+
     const formResponse = await FormResponse.create({
       // Public path has no tenant context — inherit the org from the form.
       orgId: form.orgId,
+      ...(reservedResponseId ? { _id: reservedResponseId } : {}),
       formId: form._id,
       submittedBy: null,
       submittedByExternal: {
@@ -172,7 +218,13 @@ router.post('/forms/:token/submit', rateLimit, async (req, res, next) => {
       },
       source: 'public',
       formData,
-      status: 'submitted'
+      status: 'submitted',
+      attachments: attachmentRows
+    }).catch(async (error) => {
+      if (preparedExtraction) {
+        await releaseExtractionClaim(preparedExtraction.job._id, reservedResponseId).catch(() => {})
+      }
+      throw error
     })
 
     await meterSubmission(form.orgId)
@@ -244,18 +296,16 @@ router.post('/forms/:token/upload', rateLimit, async (req, res, next) => {
       }
       if (!req.file) return sendError(res, 'No file provided', 'NO_FILE', 400)
 
-      // Multer has already written the file, so an over-quota upload has to be
-      // deleted rather than merely refused — otherwise the disk fills with bytes
-      // the tenant was never allowed to store. No buffer here: an anonymous
-      // upload is never the thing unblocking an approval.
-      const room = await checkStorage(org, req.file.size)
-      if (!room.ok) {
-        fs.promises.unlink(req.file.path).catch(() => {})
-        return sendError(res, 'This form is not accepting attachments right now. Please contact the form owner.',
-          'LIMIT_REACHED', 403, { resource: room.extra?.resource || 'storage' })
-      }
+      // ── DMS path (quota tracked — NetFlow meters DMS storage too) ─────────
+      if (!s3Client.isEnabled(org) && dms.isConfiguredFor(org)) {
+        // Multer has already written the temp file; check quota before accepting.
+        const room = await checkStorage(org, req.file.size)
+        if (!room.ok) {
+          fs.promises.unlink(req.file.path).catch(() => {})
+          return sendError(res, 'This form is not accepting attachments right now. Please contact the form owner.',
+            'LIMIT_REACHED', 403, { resource: room.extra?.resource || 'storage' })
+        }
 
-      if (dms.isEnabled()) {
         const provisionalId = require('crypto').randomBytes(12).toString('hex')
         try {
           const doc = await dms.uploadFile({
@@ -283,6 +333,41 @@ router.post('/forms/:token/upload', rateLimit, async (req, res, next) => {
           await fs.promises.unlink(req.file.path).catch(() => {})
           return sendError(res, 'Document service failed to accept the file.', 'DMS_ERROR', 502)
         }
+      }
+
+      // ── S3 path (no quota tracking — org manages their own bucket) ─────────
+      if (s3Client.isEnabled(org)) {
+        const s3Key = `${form.orgId}/${req.file.filename}`
+        try {
+          const fileBuffer = await fs.promises.readFile(req.file.path)
+          await s3Client.uploadFile(org, s3Key, fileBuffer, req.file.mimetype)
+          await fs.promises.unlink(req.file.path).catch(() => {})
+
+          return sendSuccess(res, {
+            file: {
+              name: req.file.originalname,
+              s3Key,
+              mime: req.file.mimetype,
+              size: req.file.size
+            }
+          }, 201)
+        } catch (s3Err) {
+          await fs.promises.unlink(req.file.path).catch(() => {})
+          console.error('[s3] public upload failed:', s3Err.message)
+          return sendError(res, 'S3 upload failed. Please try again or contact the form owner.', 'S3_UPLOAD_FAILED', 502)
+        }
+      }
+
+      // ── Local disk path (quota tracked) ────────────────────────────────────
+      // Multer has already written the file, so an over-quota upload has to be
+      // deleted rather than merely refused — otherwise the disk fills with bytes
+      // the tenant was never allowed to store. No buffer here: an anonymous
+      // upload is never the thing unblocking an approval.
+      const room = await checkStorage(org, req.file.size)
+      if (!room.ok) {
+        fs.promises.unlink(req.file.path).catch(() => {})
+        return sendError(res, 'This form is not accepting attachments right now. Please contact the form owner.',
+          'LIMIT_REACHED', 403, { resource: room.extra?.resource || 'storage' })
       }
 
       await addStorage(form.orgId, req.file.size)

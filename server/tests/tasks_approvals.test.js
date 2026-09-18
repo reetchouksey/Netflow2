@@ -6,6 +6,7 @@
 const h = require('./lib/harness')
 const { runWithOrgId, Task, Form, FormResponse } = h
 const { escalateTask } = require('../jobs/escalationCron')
+const { triggerWorkflow } = require('../utils/workflowEngine')
 
 // Build + publish a workflow via API (builder token), returning its id.
 const publishWorkflow = async (token, title, nodes) => {
@@ -82,6 +83,37 @@ h.runSuite('tasks_approvals', async () => {
   const formTask = await mkTask({ title: 'Form-linked task', formResponseId: fr._id })
   const formDetail = await h.api('GET', `/tasks/${formTask._id}`, aTok)
   h.check('TSK-008', 'Task detail shows submitted form data', formDetail.body?.task?.formResponseId?.formData?.amount === 500, `got ${JSON.stringify(formDetail.body?.task?.formResponseId?.formData)}`)
+
+  // Task history keeps its display metadata even if the source form/response is
+  // removed later. This prevents UUID labels and raw file JSON in old requests.
+  const snapshotWf = await publishWorkflow(mgrTok, 'TSK Form Snapshot', [
+    { id: 'start', type: 'start', nextNode: 'approval' },
+    { id: 'approval', type: 'approval', config: { approverId: approverA._id }, nextNode: 'end' },
+    { id: 'end', type: 'end' }
+  ])
+  const snapshotExec = await runWithOrgId(org._id, () =>
+    triggerWorkflow(snapshotWf, fr._id, submitter._id)
+  )
+  const snapshotTask = await runWithOrgId(org._id, () =>
+    Task.findOne({ workflowExecutionId: snapshotExec._id, currentNode: 'approval' }).lean()
+  )
+  await runWithOrgId(org._id, async () => {
+    await FormResponse.deleteOne({ _id: fr._id })
+    await Form.deleteOne({ _id: form._id })
+  })
+  const snapshotDetail = await h.api('GET', '/tasks/' + snapshotTask._id, aTok)
+  const snapshotPayload = snapshotDetail.body?.task
+  h.check(
+    'TSK-008-SNAPSHOT',
+    'Task detail uses the real form metadata snapshot after source deletion',
+    snapshotDetail.status === 200 &&
+      snapshotPayload?.triggerFormData?.amount === 500 &&
+      snapshotPayload?.triggerFormTitle === 'TSK form' &&
+      snapshotPayload?.triggerFormFields?.[0]?.label === 'Amount',
+    'status ' + snapshotDetail.status +
+      ', title ' + snapshotPayload?.triggerFormTitle +
+      ', fields ' + JSON.stringify(snapshotPayload?.triggerFormFields)
+  )
 
   // TSK-011 approve without comment.
   const t11 = await mkTask({ title: 'Approve no comment' })

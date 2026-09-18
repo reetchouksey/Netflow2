@@ -45,6 +45,9 @@ h.runSuite('ui_ops', async () => {
   const browser = await u.launch()
   try {
     const mgr = await u.session(browser, { token: mgrTok, workspace: org.subdomain })
+    await mgr.context.addInitScript((userId) => {
+      localStorage.setItem(`fs.userGuide.completed.${userId}`, '1')
+    }, String(mgr.user?._id || mgr.user?.id || ''))
 
     // ── OPS-040 — the ops rail ───────────────────────────────────────────────
     await u.goto(mgr.page, '/dashboard')
@@ -71,11 +74,52 @@ h.runSuite('ui_ops', async () => {
 
     // ── OPS-042 — My Team, and the team tab on the inbox ─────────────────────
     await u.goto(mgr.page, '/team')
+    await mgr.page.getByText('UI Ops Report', { exact: true }).first().waitFor()
     const teamText = await mgr.page.locator('main').innerText().catch(() => '')
     h.check('OPS-042', 'My Team lists the people reporting to this leader',
       /UI Ops Report/.test(teamText), `body: ${teamText.slice(0, 200).replace(/\s+/g, ' ')}`)
     h.check('OPS-042', 'My Team does not list people outside the leader\'s branch',
       !/UI Ops Employee/.test(teamText), 'somebody else\'s report leaked into the roster')
+
+    const metricText = await mgr.page.locator('.nf-team-metrics').innerText()
+    h.check('OPS-042', 'My Team workload cards use the real team totals',
+      /Team members\s+1\b/.test(metricText) && /Open requests\s+2\b/.test(metricText),
+      `metrics: ${metricText.replace(/\s+/g, ' ')}`)
+
+    const tableText = await mgr.page.locator('.nf-team-table').innerText()
+    h.check('OPS-042', 'My Team list exposes every approved management column',
+      ['MEMBER', 'DEPARTMENT', 'PENDING APPROVALS', 'OPEN REQUESTS', 'OVERDUE', 'AVAILABILITY', 'ACTION']
+        .every((label) => tableText.includes(label)),
+      `table: ${tableText.slice(0, 240).replace(/\s+/g, ' ')}`)
+
+    await mgr.page.locator('.nf-team-table').getByRole('button', { name: 'View details' }).first().click()
+    const memberDialog = mgr.page.getByRole('dialog')
+    await memberDialog.waitFor()
+    const memberDetail = await memberDialog.innerText()
+    h.check('OPS-042', 'Team member details retain real identity and reporting data',
+      memberDetail.includes(report.email) && /Direct report/.test(memberDetail),
+      `dialog: ${memberDetail.replace(/\s+/g, ' ')}`)
+    await memberDialog.getByRole('button', { name: 'Close', exact: true }).click()
+
+    await mgr.page.getByRole('button', { name: 'Grid view' }).click()
+    h.check('OPS-042', 'My Team switches to the approved member-card view',
+      await mgr.page.locator('.nf-team-card').filter({ hasText: 'UI Ops Report' }).isVisible(),
+      'the real report did not render in the grid')
+    h.check('OPS-042', 'My Team remembers the selected view',
+      await mgr.page.evaluate(() => localStorage.getItem('netflow.team.view')) === 'grid',
+      'grid preference was not persisted')
+
+    await mgr.page.reload({ waitUntil: 'domcontentloaded' })
+    await mgr.page.locator('.nf-team-card').filter({ hasText: 'UI Ops Report' }).waitFor()
+    h.check('OPS-042', 'My Team restores the saved grid view after refresh',
+      await mgr.page.getByRole('button', { name: 'Grid view' }).getAttribute('aria-pressed') === 'true',
+      'grid view was not restored')
+
+    await mgr.page.setViewportSize({ width: 390, height: 844 })
+    const mobileFits = await mgr.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)
+    h.check('OPS-042', 'My Team cards remain contained at mobile width', mobileFits,
+      'the page overflowed horizontally at 390px')
+    await mgr.page.setViewportSize(u.VIEWPORT)
 
     await u.goto(mgr.page, '/tasks?scope=team')
     await mgr.page.waitForTimeout(1200)

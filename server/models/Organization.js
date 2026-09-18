@@ -36,13 +36,44 @@ const organizationSchema = new mongoose.Schema({
     externalUsers: { type: Boolean, default: false }
   },
 
-  // Optional per-tenant BaseLayer DMS service key (Administration → API Keys).
+  // Tenant-owned PDF auto-fill preferences. Plan entitlement and the global
+  // runtime flag are evaluated separately, so these preferences survive a plan
+  // downgrade or a temporary operations shutdown.
+  pdfAutoFill: {
+    enabled: { type: Boolean, default: true },
+    languageMode: {
+      type: String,
+      enum: ['english', 'english_hindi', 'hindi'],
+      default: 'english_hindi'
+    },
+    audiences: {
+      authenticated: { type: Boolean, default: true },
+      public: { type: Boolean, default: false }
+    },
+    // Used only for legacy/custom-plan tenants. Sellable plans derive their
+    // entitlement from Plan.features.pdfAutoFill.
+    entitlementOverride: { type: Boolean, default: null }
+  },
+
+  // Optional per-tenant API-compatible DMS service key.
   // When empty, server falls back to env DMS_API_KEY. Do not expose in public APIs.
   // All DMS config is set by the Platform Super Admin only — Org Admins get a
   // read-only status view (GET /api/organization/dms-status).
   integrations: {
+    // S3 Dedicated Storage (per tenant bypass of DMS)
+    s3: {
+      enabled:         { type: Boolean, default: false },
+      bucket:          { type: String, default: '' },
+      endpoint:        { type: String, default: '' },
+      region:          { type: String, default: 'auto' },
+      accessKeyId:     { type: String, default: '' },
+      secretAccessKey: { type: String, default: '' }
+    },
+
     // Org-level fallback key — used when a department has no key of its own.
     dmsApiKey:  { type: String, default: '' },
+    dmsName:    { type: String, default: '', maxlength: 80 },
+    dmsBaseUrl: { type: String, default: '' },
     dmsJwt:     { type: String, default: '' },
     dmsEnabled: { type: Boolean, default: false },
     // Root folder in DMS (e.g. "acme"). Falls back to org.subdomain when empty.
@@ -60,15 +91,7 @@ const organizationSchema = new mongoose.Schema({
       baseUrl:    { type: String, default: '' },     // optional: dept-specific DMS server URL
       folder:     { type: String, default: '' },     // optional folder override (default: orgSlug/dept)
       enabled:    { type: Boolean, default: true }
-    }],
-    
-    // S3 Dedicated Storage
-    s3Storage: { type: Boolean, default: false },
-    s3Bucket: { type: String, default: '' },
-    s3Region: { type: String, default: 'auto' },
-    s3Endpoint: { type: String, default: '' },
-    s3AccessKeyId: { type: String, default: '' },
-    s3SecretAccessKey: { type: String, default: '' }
+    }]
   },
 
   // Subscription tier. 'custom' is what an org becomes once any single limit is

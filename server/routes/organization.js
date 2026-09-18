@@ -19,7 +19,9 @@ const { writeAuditLog } = require('../utils/writeAuditLog')
 const { licenceState } = require('../utils/licensing')
 const { listFor } = require('../utils/departments')
 const { limitsForPlan } = require('../config/plans')
+const { policyFor, settingsFor, validateSettings } = require('../utils/pdfAutoFillPolicy')
 const dms = require('../services/dmsClient')
+const { fetchEndpoint } = require('../services/dmsEndpoint')
 
 const router = express.Router()
 
@@ -28,21 +30,32 @@ const MAX_NAME_LENGTH = 80
 
 router.use(protect, roleGuard('Admin'))
 
-const publicShape = (org) => ({
-  _id: org._id,
-  name: org.name,
-  subdomain: org.subdomain,
-  status: org.status,
-  billingEmail: org.billingEmail || '',
-  billingAnchorDay: org.billingAnchorDay || 1,
-  allowedDomains: org.allowedDomains || [],
-  features: {
-    externalUsers: Boolean(org.features?.externalUsers)
-  },
-  departments: listFor(org),
-  licence: licenceState(org),
-  createdAt: org.createdAt
-})
+const publicShape = (org) => {
+  const policy = policyFor(org)
+  return {
+    _id: org._id,
+    name: org.name,
+    subdomain: org.subdomain,
+    status: org.status,
+    billingEmail: org.billingEmail || '',
+    billingAnchorDay: org.billingAnchorDay || 1,
+    allowedDomains: org.allowedDomains || [],
+    features: {
+      externalUsers: Boolean(org.features?.externalUsers)
+    },
+    pdfAutoFill: {
+      entitled: policy.entitled,
+      operational: policy.operational,
+      effective: policy.enabled,
+      enabled: policy.configured,
+      languageMode: policy.languageMode,
+      audiences: policy.audiences
+    },
+    departments: listFor(org),
+    licence: licenceState(org),
+    createdAt: org.createdAt
+  }
+}
 
 const loadOrg = async (req, res) => {
   if (!req.orgId) {
@@ -63,10 +76,6 @@ router.post('/dms-login', async (req, res, next) => {
     const org = await loadOrg(req, res)
     if (!org) return undefined
 
-    if (!org.integrations?.dmsEnabled) {
-      return sendError(res, 'DMS is not enabled for this organization', 'FORBIDDEN', 403)
-    }
-
     const { email, password } = req.body
     if (!email || !password) {
       return sendError(res, 'Email and password required', 'BAD_REQUEST', 400)
@@ -78,34 +87,36 @@ router.post('/dms-login', async (req, res, next) => {
     }
 
     const base = rootUrl.replace(/\/api\/?$/, '')
-    const loginUrl = `${base}/api/auth/login`
+    const loginUrl = org.integrations?.dmsBaseUrl ? `${rootUrl}/auth/login` : `${base}/api/auth/login`
 
-    const response = await fetch(loginUrl, {
+    const response = await (org.integrations?.dmsBaseUrl ? fetchEndpoint : fetch)(loginUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({ email, password }),
+      signal: AbortSignal.timeout(10000),
+      redirect: 'error'
     })
 
     let data;
     try {
       data = await response.json()
     } catch (parseErr) {
-      return sendError(res, `BaseLayer returned an invalid response (Status ${response.status}). The service might be down.`, 'DMS_INVALID_RESPONSE', response.status || 502)
+      return sendError(res, `DMS returned an invalid response (Status ${response.status}). The service might be down.`, 'DMS_INVALID_RESPONSE', response.status || 502)
     }
 
     if (!response.ok) {
-      return sendError(res, data.message || 'BaseLayer Login Failed', 'DMS_LOGIN_FAILED', response.status)
+      return sendError(res, data.message || 'DMS Login Failed', 'DMS_LOGIN_FAILED', response.status)
     }
 
     if (!data.token) {
-      return sendError(res, 'No token received from BaseLayer', 'DMS_NO_TOKEN', 500)
+      return sendError(res, 'No token received from DMS', 'DMS_NO_TOKEN', 500)
     }
 
     org.integrations.dmsJwt = data.token
     await org.save()
 
-    writeAuditLog(req.user, 'update', 'Organization', org._id, 'BaseLayer DMS login successful')
-    return sendSuccess(res, { message: 'BaseLayer Login successful' })
+    writeAuditLog(req.user, 'update', 'Organization', org._id, 'DMS login successful')
+    return sendSuccess(res, { message: 'DMS Login successful' })
   } catch (err) {
     next(err)
   }
@@ -128,7 +139,7 @@ router.put('/', async (req, res, next) => {
     const org = await loadOrg(req, res)
     if (!org) return undefined
 
-    const { name, billingEmail } = req.body || {}
+    const { name, billingEmail, pdfAutoFill } = req.body || {}
     const changes = []
 
     if (name !== undefined) {
@@ -151,6 +162,26 @@ router.put('/', async (req, res, next) => {
       if (clean !== (org.billingEmail || '')) {
         changes.push(`billing email "${org.billingEmail || 'none'}" → "${clean || 'none'}"`)
         org.billingEmail = clean
+      }
+    }
+
+    if (pdfAutoFill !== undefined) {
+      const parsed = validateSettings(pdfAutoFill)
+      if (parsed.error) {
+        return sendError(res, parsed.error, 'INVALID_PDF_AUTO_FILL_SETTINGS', 400)
+      }
+      const before = settingsFor(org)
+      if (JSON.stringify(before) !== JSON.stringify(parsed.value)) {
+        org.pdfAutoFill.enabled = parsed.value.enabled
+        org.pdfAutoFill.languageMode = parsed.value.languageMode
+        org.pdfAutoFill.audiences.authenticated = parsed.value.audiences.authenticated
+        org.pdfAutoFill.audiences.public = parsed.value.audiences.public
+        changes.push(
+          'PDF auto-fill ' + (parsed.value.enabled ? 'enabled' : 'disabled') +
+          ', language=' + parsed.value.languageMode +
+          ', authenticated=' + parsed.value.audiences.authenticated +
+          ', public=' + parsed.value.audiences.public
+        )
       }
     }
 
@@ -224,7 +255,7 @@ router.get('/dms-status', async (req, res, next) => {
     const org = await loadOrg(req, res)
     if (!org) return undefined
 
-    const platformDmsEnabled = dms.isEnabled(org)
+    const platformDmsEnabled = dms.isEnabled()
     const orgDmsEnabled = Boolean(org.integrations?.dmsEnabled)
     const effectiveDmsEnabled = platformDmsEnabled || orgDmsEnabled
 

@@ -20,6 +20,7 @@ const HARNESS_SUITES = [
   'licensing.test.js',
   'licensing_quota.test.js',
   'licensing_usage.test.js',
+  'storage_usage.test.js',
   'permissions.test.js',
   'admin_users.test.js',
   'org_admin.test.js',
@@ -31,6 +32,7 @@ const HARNESS_SUITES = [
   'notifications.test.js',
   'analytics_audit.test.js',
   'platform_orgs.test.js',
+  'platform_dashboard.test.js',
   'edge_security.test.js',
   'hooks_inbound.test.js',
   // Browser suites (Playwright). They need the Vite dev server as well as the
@@ -46,7 +48,17 @@ const HARNESS_SUITES = [
   'ui_workflows.test.js',
   'ui_notifications.test.js',
   'ui_analytics.test.js',
+  'ui_platform_integrations.test.js',
   'ui_platform.test.js'
+]
+
+// Fast, self-contained suites that protect shared extraction/LLM utilities and
+// the document-to-form sanitizer. They do not need a running API server.
+const UNIT_SUITES = [
+  { file: 'pdf_autofill.test.js', tc: 'PDF-AUTOFILL-UNIT' },
+  { file: 'document_form_llm_first.test.js', tc: 'DOCUMENT-FORM-UNIT' },
+  { file: 'platform_integration_validation.test.js', tc: 'PLATFORM-INTEGRATION-UNIT' },
+  { file: 'llm_failover.test.js', tc: 'LLM-FAILOVER-UNIT' }
 ]
 
 // Legacy standalone scripts — exit 0 means the listed TC IDs passed.
@@ -108,6 +120,21 @@ const parseResultsLine = (out) => {
 const summary = { suites: [] }
 
 const run = () => {
+  for (const { file, tc } of UNIT_SUITES) {
+    const { code } = runNode(file)
+    const passed = code === 0
+    merge(tc, passed ? 'Pass' : 'Fail', passed
+      ? 'Verified by the self-contained unit suite.'
+      : `Unit suite exited ${code}.`)
+    summary.suites.push({
+      file,
+      pass: passed ? 1 : 0,
+      fail: passed ? 0 : 1,
+      other: 0,
+      code
+    })
+  }
+
   for (const file of HARNESS_SUITES) {
     let { code, out } = runNode(file)
     let parsed = parseResultsLine(out)

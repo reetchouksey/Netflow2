@@ -1,6 +1,7 @@
 // Helpers for refreshing DMS signed URLs and emitting workflow lifecycle events.
 
 const dms = require('../services/dmsClient')
+const s3 = require('../services/s3Client')
 
 const EVENT_TYPES = new Set([
   'workflow.submitted',
@@ -78,6 +79,29 @@ async function refreshFormDataUrls(formData, ctx) {
   return out
 }
 
+async function refreshResponseAttachments(attachments, ctx) {
+  if (!Array.isArray(attachments)) return []
+  return Promise.all(attachments.map(async (attachment) => {
+    if (attachment?.s3Key && s3.isEnabled(ctx?.org)) {
+      try {
+        const path = await s3.getPresignedDownloadUrl(ctx.org, attachment.s3Key)
+        return path ? { ...attachment, path } : attachment
+      } catch (error) {
+        console.warn('[s3] response attachment URL refresh failed', error.message)
+        return attachment
+      }
+    }
+    if (!attachment?.dmsDocId || !dms.isEnabled()) return attachment
+    try {
+      const path = await dms.signedUrl(attachment.dmsDocId, { mode: 'view', ...ctx })
+      return path ? { ...attachment, path } : attachment
+    } catch (error) {
+      console.warn('[dms] response attachment URL refresh failed', error.message)
+      return attachment
+    }
+  }))
+}
+
 async function refreshTaskAttachments(taskObj, ctx) {
   if (!taskObj || !dms.isEnabled()) return taskObj
   const attachments = Array.isArray(taskObj.attachments)
@@ -114,4 +138,5 @@ module.exports = {
   refreshTaskAttachments,
   emitWorkflowEvents,
   emitForTask,
+  refreshResponseAttachments,
 }

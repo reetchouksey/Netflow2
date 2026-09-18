@@ -14,6 +14,7 @@ const Workflow = require('../models/Workflow')
 const FormResponse = require('../models/FormResponse')
 const Notification = require('../models/Notification')
 const { protect } = require('../middleware/auth')
+const { requireCapability } = require('../middleware/capabilityGuard')
 const { sendSuccess, sendError } = require('../utils/apiResponse')
 const { createNotification } = require('../utils/createNotification')
 const { writeAuditLog } = require('../utils/writeAuditLog')
@@ -30,6 +31,7 @@ const {
   refreshTaskAttachments,
   refreshFormDataUrls,
   refreshFileObject,
+  refreshResponseAttachments,
   emitForTask,
 } = require('../utils/dmsAttachments')
 
@@ -361,6 +363,15 @@ router.get('/:id', protect, async (req, res, next) => {
       if (!task.formResponseId && exec?.variables?.formData && typeof exec.variables.formData === 'object') {
         task.triggerFormData = exec.variables.formData
       }
+      // Executions snapshot the source form's display metadata at submission
+      // time. Use that snapshot when the original form or response was later
+      // removed, without inventing labels for older executions that predate it.
+      if (Array.isArray(exec?.variables?.formFields)) {
+        task.triggerFormFields = exec.variables.formFields
+      }
+      if (typeof exec?.variables?.formTitle === 'string') {
+        task.triggerFormTitle = exec.variables.formTitle
+      }
       task.triggerSubmitter =
         (exec?.variables?.submitter && typeof exec.variables.submitter === 'object'
           ? exec.variables.submitter
@@ -395,6 +406,12 @@ router.get('/:id', protect, async (req, res, next) => {
           ...out.formResponseId,
           formData: await refreshFormDataUrls(out.formResponseId.formData, ctx),
         },
+      }
+    }
+    if (Array.isArray(out.formResponseId?.attachments)) {
+      out.formResponseId = {
+        ...out.formResponseId,
+        attachments: await refreshResponseAttachments(out.formResponseId.attachments, ctx)
       }
     }
     if (Array.isArray(out.priorDocuments) && out.priorDocuments.length) {
@@ -568,7 +585,7 @@ const notifyOtherApprovers = (task, actorId, actorName, verb, progressText) => {
 }
 
 // POST /api/tasks/:id/approve
-router.post('/:id/approve', protect, async (req, res, next) => {
+router.post('/:id/approve', protect, requireCapability('decide_tasks'), async (req, res, next) => {
   try {
     const { comment, signature } = req.body || {}
 
@@ -635,6 +652,22 @@ router.post('/:id/approve', protect, async (req, res, next) => {
     }
 
     task.status = 'approved'
+
+    // Finalize staging attachments (Two-Stage Upload Architecture)
+    try {
+      const attachments = task.attachments || []
+      const dms = require('../services/dmsClient')
+      for (const file of attachments) {
+         if (file.dmsDocId && file.dmsFolder === 'staging') {
+            await dms.postEvent(file.dmsDocId, {
+               type: 'finalized_from_staging',
+               detail: 'Task approved. File finalized to permanent archive.',
+               meta: { folder: req.user.department || 'archive' }
+            }, { org: req.organization }).catch(() => {})
+         }
+      }
+    } catch(e) { console.error('Failed to finalize files from staging', e) }
+
     await task.save()
 
     emitForTask(task, {
@@ -746,6 +779,22 @@ router.post('/:id/submit', protect, async (req, res, next) => {
       comment: comment || undefined
     })
     task.status = 'completed'
+
+    // Finalize staging attachments (Two-Stage Upload Architecture)
+    try {
+      const attachments = task.attachments || []
+      const dms = require('../services/dmsClient')
+      for (const file of attachments) {
+         if (file.dmsDocId && file.dmsFolder === 'staging') {
+            await dms.postEvent(file.dmsDocId, {
+               type: 'finalized_from_staging',
+               detail: 'Task completed. File finalized to permanent archive.',
+               meta: { folder: req.user.department || 'archive' }
+            }, { org: req.organization }).catch(() => {})
+         }
+      }
+    } catch(e) { console.error('Failed to finalize files from staging', e) }
+
     await task.save()
 
     emitForTask(task, {
@@ -789,7 +838,7 @@ router.post('/:id/submit', protect, async (req, res, next) => {
 // For Review-node tasks: the reviewer views the submission + accumulated
 // documents and chooses to forward (no changes) or send back for changes.
 // Advances the engine with outcome 'forward' | 'changes' (no approve/reject).
-router.post('/:id/review', protect, async (req, res, next) => {
+router.post('/:id/review', protect, requireCapability('decide_tasks'), async (req, res, next) => {
   try {
     const { outcome, comment } = req.body || {}
     const decision = outcome === 'changes' ? 'changes' : 'forward'
@@ -851,7 +900,7 @@ router.post('/:id/review', protect, async (req, res, next) => {
 })
 
 // POST /api/tasks/:id/reject
-router.post('/:id/reject', protect, async (req, res, next) => {
+router.post('/:id/reject', protect, requireCapability('decide_tasks'), async (req, res, next) => {
   try {
     const { comment, signature } = req.body || {}
     if (!comment || !String(comment).trim()) {
@@ -920,6 +969,24 @@ router.post('/:id/reject', protect, async (req, res, next) => {
     }
 
     task.status = 'rejected'
+    
+    // Rejected Vault: Document the move to the Rejected Vault
+    try {
+      const attachments = task.attachments || []
+      const dms = require('../services/dmsClient')
+      for (const file of attachments) {
+         if (file.dmsDocId) {
+            await dms.postEvent(file.dmsDocId, {
+               type: 'moved_to_rejected_vault',
+               detail: 'Task was rejected. File moved to Rejected Vault.',
+               meta: { folder: 'rejected' }
+            }, { org: req.organization }).catch(() => {})
+         }
+      }
+    } catch(e) {
+      console.error('Failed to update Rejected Vault', e)
+    }
+
     await task.save()
 
     emitForTask(task, {
@@ -971,7 +1038,7 @@ router.post('/:id/reject', protect, async (req, res, next) => {
 })
 
 // POST /api/tasks/:id/request-changes
-router.post('/:id/request-changes', protect, async (req, res, next) => {
+router.post('/:id/request-changes', protect, requireCapability('decide_tasks'), async (req, res, next) => {
   try {
     const { comment, signature } = req.body || {}
     if (!comment || !String(comment).trim()) {

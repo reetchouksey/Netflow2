@@ -19,6 +19,8 @@ const formSchema = new mongoose.Schema({
     placeholder: { type: String },
     required: { type: Boolean, default: false },
     options: [{ type: String }],
+    layout: { type: String, enum: ['vertical', 'horizontal'], default: 'vertical' },
+    includeTime: { type: Boolean, default: false },
     // Grid/table field: the columns the respondent fills (one value per column per row).
     columns: [{
       id: { type: String },
@@ -39,7 +41,9 @@ const formSchema = new mongoose.Schema({
       max: { type: Number },
       pattern: { type: String },
       patternLabel: { type: String }
-    }
+    },
+    referenceUser: { type: Boolean, default: false },
+    page: { type: Number, default: 1 }
   }],
   status: {
     type: String,
@@ -54,6 +58,10 @@ const formSchema = new mongoose.Schema({
   public: {
     enabled: { type: Boolean, default: false },
     token: { type: String, default: null, index: true }
+  },
+  // Optional PDF-assisted entry. Existing forms remain manual-only.
+  autoFill: {
+    enabled: { type: Boolean, default: false }
   }
 }, { timestamps: true })
 

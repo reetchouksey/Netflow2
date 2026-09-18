@@ -65,18 +65,19 @@ router.get('/:orgId/:filename', async (req, res, next) => {
       return sendError(res, 'File not found', 'FILE_NOT_FOUND', 404)
     }
 
+    // Attachments are user-supplied content: never let a browser run one inline
+    // in the app's origin, and do not let it sniff a type we did not declare.
     res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox")
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
-    res.setHeader('Access-Control-Allow-Origin', '*')
-    res.removeHeader('X-Frame-Options')
+    res.removeHeader('X-Frame-Options') // Allow embedding in our frontend iframe during split-screen preview
     // A capability URL is stable for the life of the file, so it can be cached —
     // privately, because the file itself is not public.
     res.setHeader('Cache-Control', 'private, max-age=3600')
 
     const download = String(req.query.download || '') === '1'
     if (download) {
-      const downloadName = req.query.name ? String(req.query.name).replace(/[\r\n]/g, '') : path.basename(target.abs)
-      return res.download(target.abs, downloadName)
+      return res.download(target.abs, path.basename(target.abs))
     }
     return res.sendFile(target.abs)
   } catch (err) {

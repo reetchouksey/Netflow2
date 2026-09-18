@@ -12,7 +12,7 @@ const express = require('express')
 const User = require('../models/User')
 const Task = require('../models/Task')
 const { protect } = require('../middleware/auth')
-const { roleGuard } = require('../middleware/roleGuard')
+const { requireCapability } = require('../middleware/capabilityGuard')
 const { sendSuccess } = require('../utils/apiResponse')
 const { reachOf, teamMemberIds, hasOrgWideReach } = require('../utils/team')
 // Same test the engine uses when it redirects a task, so the chip on this page
@@ -23,8 +23,6 @@ const router = express.Router()
 
 // Anyone whose remit includes other people. Employees and Viewers have no team,
 // and the nav never offers them the page.
-const TEAM_LEADS = ['Admin', 'CEO', 'VP', 'Manager', 'HR']
-
 // A workspace roster is not a report: past a few hundred people this page stops
 // being useful and the org chart is the right tool. Cap rather than paginate.
 const MAX_MEMBERS = 500
@@ -32,7 +30,7 @@ const MAX_MEMBERS = 500
 const OPEN_STATUSES = ['pending', 'escalated']
 
 // GET /api/team
-router.get('/', protect, roleGuard(...TEAM_LEADS), async (req, res, next) => {
+router.get('/', protect, requireCapability('decide_tasks'), async (req, res, next) => {
   try {
     const me = req.user._id
     const reach = reachOf(req.user)

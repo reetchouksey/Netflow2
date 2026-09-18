@@ -2,10 +2,11 @@
 // (multi-instance cloud); otherwise express-rate-limit's default memory store.
 
 const rateLimit = require('express-rate-limit')
+const { ipKeyGenerator } = rateLimit
 const { RedisStore } = require('rate-limit-redis')
 const { getRedis } = require('../utils/redis')
 
-const skipWhenDisabled = () => process.env.DISABLE_RATE_LIMIT === '1' || process.env.NODE_ENV !== 'production'
+const skipWhenDisabled = () => process.env.DISABLE_RATE_LIMIT === '1'
 
 const redisStore = (prefix) => {
   const redis = getRedis()
@@ -50,4 +51,23 @@ const hooksLimiter = rateLimit({
   }
 })
 
-module.exports = { authLimiter, hooksLimiter }
+const platformIntegrationLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  limit: Number(process.env.PLATFORM_INTEGRATION_TEST_RATE_LIMIT || 10),
+  skip: skipWhenDisabled,
+  store: redisStore('nf:rl:platform-integration:'),
+  keyGenerator: (req) => req.user?._id
+    ? `user:${String(req.user._id)}`
+    : ipKeyGenerator(req.ip),
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'Too many connection tests. Please wait a minute and try again.',
+      code: 'RATE_LIMITED'
+    })
+  }
+})
+
+module.exports = { authLimiter, hooksLimiter, platformIntegrationLimiter }

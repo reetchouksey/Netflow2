@@ -81,6 +81,8 @@ const session = async (browser, { token, workspace = null, permissions = [] } = 
       localStorage.setItem(seed.tokenKey, seed.token)
       localStorage.setItem(seed.userKey, JSON.stringify(seed.user))
       localStorage.setItem(seed.navKey, '1')
+      const userId = seed.user?._id || seed.user?.id
+      if (userId) localStorage.setItem(`fs.userGuide.completed.${userId}`, '1')
       if (seed.workspace) localStorage.setItem(seed.wsKey, seed.workspace)
       else localStorage.removeItem(seed.wsKey)
     } catch { /* storage unavailable */ }

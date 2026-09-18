@@ -82,6 +82,7 @@ const taskSchema = new mongoose.Schema({
 
 taskSchema.index({ assignedTo: 1, status: 1 })
 taskSchema.index({ dueDate: 1, status: 1, isEscalated: 1 })
+taskSchema.index({ orgId: 1, workflowId: 1, status: 1, dueDate: 1 })
 
 taskSchema.plugin(require('../tenancy/orgScopePlugin'))
 

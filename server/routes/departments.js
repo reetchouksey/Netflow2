@@ -16,7 +16,7 @@ const Organization = require('../models/Organization')
 const User = require('../models/User')
 const Workflow = require('../models/Workflow')
 const { protect } = require('../middleware/auth')
-const { roleGuard } = require('../middleware/roleGuard')
+const { requireCapability } = require('../middleware/capabilityGuard')
 const { sendSuccess, sendError } = require('../utils/apiResponse')
 const { writeAuditLog } = require('../utils/writeAuditLog')
 const {
@@ -32,7 +32,7 @@ router.use(protect)
 // safely delete or rename a team without knowing who it takes with it.
 const memberCounts = async (orgId) => {
   const rows = await User.aggregate([
-    { $match: { orgId, isActive: { $ne: false }, email: { $not: /@flowsphere\./i } } },
+    { $match: { orgId, isActive: { $ne: false } } },
     { $group: { _id: '$department', count: { $sum: 1 } } }
   ])
   return new Map(rows.map((r) => [String(r._id || ''), r.count]))
@@ -77,7 +77,7 @@ router.get('/', async (req, res, next) => {
 })
 
 // POST /api/departments
-router.post('/', roleGuard('Admin'), async (req, res, next) => {
+router.post('/', requireCapability('manage_users'), async (req, res, next) => {
   try {
     const org = await loadOrg(req, res)
     if (!org) return undefined
@@ -114,7 +114,7 @@ router.post('/', roleGuard('Admin'), async (req, res, next) => {
 })
 
 // PUT /api/departments/:name
-router.put('/:name', roleGuard('Admin'), async (req, res, next) => {
+router.put('/:name', requireCapability('manage_users'), async (req, res, next) => {
   try {
     const org = await loadOrg(req, res)
     if (!org) return undefined
@@ -163,7 +163,7 @@ router.put('/:name', roleGuard('Admin'), async (req, res, next) => {
 })
 
 // DELETE /api/departments/:name
-router.delete('/:name', roleGuard('Admin'), async (req, res, next) => {
+router.delete('/:name', requireCapability('manage_users'), async (req, res, next) => {
   try {
     const org = await loadOrg(req, res)
     if (!org) return undefined
@@ -176,9 +176,18 @@ router.delete('/:name', roleGuard('Admin'), async (req, res, next) => {
       return sendError(res, 'A workspace needs at least one department', 'LAST_DEPARTMENT', 400)
     }
 
-    // Users belonging to this department will now have an invalid/missing department reference,
-    // but the system will allow the deletion anyway based on the recent requirement.
+    // Deleting out from under people would leave users on a department that no
+    // dropdown offers; move them first.
     const members = await User.countDocuments({ department: name, isActive: { $ne: false } })
+    if (members > 0) {
+      return sendError(
+        res,
+        `${members} active ${members === 1 ? 'person is' : 'people are'} still in "${name}". Move them to another department first.`,
+        'DEPARTMENT_IN_USE',
+        400,
+        { members }
+      )
+    }
 
     org.departments = current.filter((d) => d !== name)
     await org.save()

@@ -10,17 +10,17 @@ h.runSuite('permissions', async () => {
 
   const employee = await h.createUser(org, { name: 'Perm Employee', email: h.emailIn(org, 'perm-emp'), roleName: 'Employee', department: 'IT' })
   const empFinance = await h.createUser(org, { name: 'Perm Finance', email: h.emailIn(org, 'perm-fin'), roleName: 'Employee', department: 'Finance' })
-  const manager = await h.createUser(org, { name: 'Perm Manager', email: h.emailIn(org, 'perm-mgr'), roleName: 'Manager' })
-  const hr = await h.createUser(org, { name: 'Perm HR', email: h.emailIn(org, 'perm-hr'), roleName: 'HR' })
-  const vp = await h.createUser(org, { name: 'Perm VP', email: h.emailIn(org, 'perm-vp'), roleName: 'VP' })
-  const ceo = await h.createUser(org, { name: 'Perm CEO', email: h.emailIn(org, 'perm-ceo'), roleName: 'CEO' })
+  const manager = await h.createUser(org, { name: 'Perm Manager', email: h.emailIn(org, 'perm-mgr'), roleName: 'Manager', canBuild: false })
+  const hr = await h.createUser(org, { name: 'Perm HR', email: h.emailIn(org, 'perm-hr'), roleName: 'HR', canBuild: false })
+  const vp = await h.createUser(org, { name: 'Perm VP', email: h.emailIn(org, 'perm-vp'), roleName: 'VP', canBuild: false })
+  const ceo = await h.createUser(org, { name: 'Perm CEO', email: h.emailIn(org, 'perm-ceo'), roleName: 'CEO', canBuild: false })
 
-  const empTok = await h.getToken({ email: employee.email })
-  const empFinTok = await h.getToken({ email: empFinance.email })
-  const mgrTok = await h.getToken({ email: manager.email })
-  const hrTok = await h.getToken({ email: hr.email })
-  const vpTok = await h.getToken({ email: vp.email })
-  const ceoTok = await h.getToken({ email: ceo.email })
+  const empTok = await h.getToken({ email: employee.email, subdomain: org.subdomain })
+  const empFinTok = await h.getToken({ email: empFinance.email, subdomain: org.subdomain })
+  const mgrTok = await h.getToken({ email: manager.email, subdomain: org.subdomain })
+  const hrTok = await h.getToken({ email: hr.email, subdomain: org.subdomain })
+  const vpTok = await h.getToken({ email: vp.email, subdomain: org.subdomain })
+  const ceoTok = await h.getToken({ email: ceo.email, subdomain: org.subdomain })
 
   // Frontend-only nav / client route redirects.
   // Sidebar visibility and the client-side route guards are asserted in
@@ -59,11 +59,49 @@ h.runSuite('permissions', async () => {
   const mgrWf = await h.api('POST', '/workflows', mgrTok, { title: 'Mgr WF', nodes: [] })
   h.check('PERM-012', 'Manager blocked from creating form + workflow (403)', mgrForm.status === 403 && mgrWf.status === 403, `form ${mgrForm.status}, wf ${mgrWf.status}`)
 
+  const adminWithoutBuilder = await h.createUser(org, { name: 'Perm Admin No Builder', email: h.emailIn(org, 'perm-admin-no-builder'), roleName: 'Admin', canBuild: false })
+  const adminWithoutBuilderTok = await h.getToken({ email: adminWithoutBuilder.email, subdomain: org.subdomain })
+  const adminWithoutBuilderForm = await h.api('POST', '/forms', adminWithoutBuilderTok, { title: 'Admin Without Builder Form', fields: [] })
+  const adminWithoutBuilderWorkflow = await h.api('POST', '/workflows', adminWithoutBuilderTok, { title: 'Admin Without Builder Workflow', nodes: [] })
+  h.check('PERM-012', 'Admin wildcard permission does not replace a Builder seat',
+    adminWithoutBuilderForm.status === 403 && adminWithoutBuilderWorkflow.status === 403,
+    `form ${adminWithoutBuilderForm.status}, workflow ${adminWithoutBuilderWorkflow.status}`)
+
   const admin = await h.createUser(org, { name: 'Perm Admin', email: h.emailIn(org, 'perm-admin'), roleName: 'Admin' })
-  const adminTok = await h.getToken({ email: admin.email })
+  const adminTok = await h.getToken({ email: admin.email, subdomain: org.subdomain })
   const adminForm = await h.api('POST', '/forms', adminTok, { title: 'Admin Form', fields: [] })
   const adminWf = await h.api('POST', '/workflows', adminTok, { title: 'Admin WF', nodes: [] })
   h.check('PERM-012', 'Org Admin can create form + workflow (201)', adminForm.status === 201 && adminWf.status === 201, `form ${adminForm.status}, wf ${adminWf.status}`)
+
+  // Per-user Builder is additive: the same Manager token gains build access,
+  // keeps its Manager role, and still receives no user-admin power.
+  const grantBuilder = await h.api('PUT', `/users/${manager._id}`, adminTok, { canBuild: true })
+  const managerMeWithBuilder = await h.api('GET', '/auth/me', mgrTok)
+  const builderForm = await h.api('POST', '/forms', mgrTok, { title: 'Manager Builder Form', fields: [] })
+  const builderWorkflow = await h.api('POST', '/workflows', mgrTok, { title: 'Manager Builder Workflow', nodes: [] })
+  const builderAdminAttempt = await h.api('POST', '/users', mgrTok, {
+    name: 'Not allowed', email: h.emailIn(org, 'not-allowed'), department: 'IT', roleId: manager.role
+  })
+  h.check('PERM-012', 'Builder grant immediately gives the same Manager token Forms and Workflows access',
+    grantBuilder.status === 200 && managerMeWithBuilder.body?.user?.canBuild === true &&
+      builderForm.status === 201 && builderWorkflow.status === 201,
+    `grant ${grantBuilder.status}, me=${managerMeWithBuilder.body?.user?.canBuild}, form ${builderForm.status}, workflow ${builderWorkflow.status}`)
+  h.check('PERM-012', 'Manager + Builder preserves the Manager role and does not gain Users administration',
+    managerMeWithBuilder.body?.user?.role?.name === 'Manager' && builderAdminAttempt.status === 403,
+    `role ${managerMeWithBuilder.body?.user?.role?.name}, users ${builderAdminAttempt.status}`)
+
+  const revokeBuilder = await h.api('PUT', `/users/${manager._id}`, adminTok, { canBuild: false })
+  const managerMeAfterRevoke = await h.api('GET', '/auth/me', mgrTok)
+  const revokedForm = await h.api('POST', '/forms', mgrTok, { title: 'Revoked Manager Form', fields: [] })
+  const builderAudit = await h.api('GET', '/audit-logs?limit=50', adminTok)
+  const auditActions = new Set((builderAudit.body?.logs || []).map((entry) => entry.action))
+  h.check('PERM-012', 'Builder revoke immediately blocks the same token without changing its role',
+    revokeBuilder.status === 200 && managerMeAfterRevoke.body?.user?.canBuild === false &&
+      managerMeAfterRevoke.body?.user?.role?.name === 'Manager' && revokedForm.status === 403,
+    `revoke ${revokeBuilder.status}, role ${managerMeAfterRevoke.body?.user?.role?.name}, form ${revokedForm.status}`)
+  h.check('PERM-012', 'Builder grant and revoke write dedicated audit events',
+    auditActions.has('builder_access_granted') && auditActions.has('builder_access_revoked'),
+    `actions ${[...auditActions].join(', ')}`)
 
   // PERM-013 — HR / VP / CEO are ops leaders: reports yes, builder no.
   const hrWf = await h.api('POST', '/workflows', hrTok, { title: 'HR WF', nodes: [] })
@@ -103,4 +141,100 @@ h.runSuite('permissions', async () => {
   const itSees = (itList.body?.forms || []).some((f) => String(f._id) === String(deptForm._id))
   const finSees = (finList.body?.forms || []).some((f) => String(f._id) === String(deptForm._id))
   h.check('PERM-015', 'Dept-scoped form hidden from other dept, shown to owning dept', !itSees && finSees, `IT sees=${itSees}, Finance sees=${finSees}`)
+
+  const grantEmployeeBuilder = await h.api('PUT', `/users/${empFinance._id}`, adminTok, { canBuild: true })
+  const employeeBuilderMe = await h.api('GET', '/auth/me', empFinTok)
+  const employeeBuilderForm = await h.api('POST', '/forms', empFinTok, { title: 'Employee Builder Form', fields: [] })
+  const employeeBuilderWorkflow = await h.api('POST', '/workflows', empFinTok, { title: 'Employee Builder Workflow', nodes: [] })
+  const employeeAdminAttempt = await h.api('POST', '/users', empFinTok, {
+    name: 'Still not allowed', email: h.emailIn(org, 'still-not-allowed'), department: 'IT', roleId: employee.role
+  })
+  h.check('PERM-011', 'Employee + Builder can build but retains Employee permissions',
+    grantEmployeeBuilder.status === 200 && employeeBuilderMe.body?.user?.role?.name === 'Employee' &&
+      employeeBuilderForm.status === 201 && employeeBuilderWorkflow.status === 201 && employeeAdminAttempt.status === 403,
+    `grant ${grantEmployeeBuilder.status}, role ${employeeBuilderMe.body?.user?.role?.name}, form ${employeeBuilderForm.status}, workflow ${employeeBuilderWorkflow.status}, users ${employeeAdminAttempt.status}`)
+  await h.api('PUT', `/users/${empFinance._id}`, adminTok, { canBuild: false })
+
+  // Dynamic role access is persisted and enforced without issuing a new token.
+  const summary = await h.api('GET', '/roles/summary', adminTok)
+  const summaryRoles = summary.body?.roles || []
+  const adminRole = summaryRoles.find((role) => role.name === 'Admin')
+  const ceoRole = summaryRoles.find((role) => role.name === 'CEO')
+  const managerRole = summaryRoles.find((role) => role.name === 'Manager')
+  const employeeRole = summaryRoles.find((role) => role.name === 'Employee')
+  const capabilityKeys = (summary.body?.capabilities || []).map((capability) => capability.key)
+
+  h.check('RBAC-001', 'Role matrix exposes only the four independent permissions',
+    JSON.stringify(capabilityKeys) === JSON.stringify(['decide_tasks', 'manage_users', 'view_audit', 'view_analytics']),
+    `capabilities ${capabilityKeys.join(', ')}`)
+
+  const protectedAdminEdit = await h.api('PUT', `/roles/${adminRole?._id}`, adminTok, {
+    name: 'Admin', description: 'Changed', capabilities: []
+  })
+  const protectedCeoDelete = await h.api('DELETE', `/roles/${ceoRole?._id}`, adminTok)
+  h.check('RBAC-001', 'Admin and CEO reject edit/delete at the API',
+    protectedAdminEdit.status === 403 && protectedCeoDelete.status === 403,
+    `admin edit ${protectedAdminEdit.status}, CEO delete ${protectedCeoDelete.status}`)
+
+  const rejectedBuilderCapabilities = await h.api('PUT', `/roles/${managerRole?._id}`, adminTok, {
+    name: 'Manager',
+    description: managerRole?.description || '',
+    capabilities: ['manage_forms', 'build_flows', 'decide_tasks', 'view_analytics']
+  })
+  const rejectedBuilderRoleCreate = await h.api('POST', '/roles', adminTok, {
+    name: 'Legacy Designer',
+    description: 'Must not restore role-based Builder access',
+    capabilities: ['design']
+  })
+  await runWithOrgId(org._id, () => h.Role.updateOne(
+    { _id: managerRole?._id },
+    { $addToSet: { permissions: { $each: ['forms:manage', 'workflows:manage'] } } }
+  ))
+  const staleRoleForms = await h.api('GET', '/forms', mgrTok)
+  const staleRoleWorkflows = await h.api('GET', '/workflows', mgrTok)
+  const staleRoleSeesDraftForm = (staleRoleForms.body?.forms || []).some((form) => String(form._id) === String(adminForm.body?.form?._id))
+  const staleRoleSeesDraftWorkflow = (staleRoleWorkflows.body?.workflows || []).some((workflow) => String(workflow._id) === String(adminWf.body?.workflow?._id))
+  const updateManagerPolicy = await h.api('PUT', `/roles/${managerRole?._id}`, adminTok, {
+    name: 'Manager',
+    description: managerRole?.description || '',
+    capabilities: ['decide_tasks', 'view_analytics']
+  })
+  const cleanedManagerRole = await runWithOrgId(org._id, () => h.Role.findById(managerRole?._id).lean())
+  const deprecatedStoredPermissions = ['manage_forms', 'build_flows', 'forms:manage', 'workflows:manage', 'design']
+    .filter((permission) => (cleanedManagerRole?.permissions || []).includes(permission))
+  const roleOnlyForm = await h.api('POST', '/forms', mgrTok, { title: 'Role only form', fields: [] })
+  const grantManagerBuilderAgain = await h.api('PUT', `/users/${manager._id}`, adminTok, { canBuild: true })
+  const managerGrantedForm = await h.api('POST', '/forms', mgrTok, { title: 'Manager granted form', fields: [] })
+  const managerGrantedWorkflow = await h.api('POST', '/workflows', mgrTok, { title: 'Manager granted workflow', nodes: [] })
+  h.check('RBAC-002', 'Deprecated Builder capabilities are rejected by role management',
+    rejectedBuilderCapabilities.status === 400 && rejectedBuilderRoleCreate.status === 400 &&
+      /managed per user/i.test(rejectedBuilderCapabilities.body?.error || '') &&
+      /managed per user/i.test(rejectedBuilderRoleCreate.body?.error || ''),
+    `update ${rejectedBuilderCapabilities.status}, create ${rejectedBuilderRoleCreate.status}`)
+  h.check('RBAC-002', 'Stored legacy Builder permissions no longer expose management catalogues',
+    staleRoleForms.status === 200 && staleRoleWorkflows.status === 200 &&
+      !staleRoleSeesDraftForm && !staleRoleSeesDraftWorkflow,
+    `forms ${staleRoleForms.status}/draft=${staleRoleSeesDraftForm}, workflows ${staleRoleWorkflows.status}/draft=${staleRoleSeesDraftWorkflow}`)
+  h.check('RBAC-002', 'Independent role permissions do not grant Builder access',
+    updateManagerPolicy.status === 200 && deprecatedStoredPermissions.length === 0 &&
+      roleOnlyForm.status === 403 && grantManagerBuilderAgain.status === 200 &&
+      managerGrantedForm.status === 201 && managerGrantedWorkflow.status === 201,
+    `edit ${updateManagerPolicy.status}, deprecated ${deprecatedStoredPermissions.join(',') || 'none'}, role-only ${roleOnlyForm.status}, builder ${grantManagerBuilderAgain.status}, form ${managerGrantedForm.status}, workflow ${managerGrantedWorkflow.status}`)
+
+  const created = await h.api('POST', '/roles', adminTok, {
+    name: 'Workflow Coordinator',
+    description: 'Form oversight, task decisions, and reporting',
+    capabilities: ['decide_tasks', 'view_analytics']
+  })
+  const createdRole = created.body?.role
+  const assigned = await h.api('POST', `/users/${employee._id}/assign-role`, adminTok, { roleId: createdRole?._id })
+  const blockedDelete = await h.api('DELETE', `/roles/${createdRole?._id}`, adminTok)
+  h.check('RBAC-003', 'Assigned roles cannot be deleted',
+    created.status === 201 && assigned.status === 200 && blockedDelete.status === 409,
+    `create ${created.status}, assign ${assigned.status}, delete ${blockedDelete.status}`)
+
+  await h.api('POST', `/users/${employee._id}/assign-role`, adminTok, { roleId: employeeRole?._id })
+  const deleted = await h.api('DELETE', `/roles/${createdRole?._id}`, adminTok)
+  h.check('RBAC-004', 'An unassigned non-protected role can be deleted',
+    deleted.status === 200, `got ${deleted.status}`)
 })

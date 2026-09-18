@@ -6,7 +6,7 @@ const express = require('express')
 
 const AuditLog = require('../models/AuditLog')
 const { protect } = require('../middleware/auth')
-const { roleGuard } = require('../middleware/roleGuard')
+const { requireCapability } = require('../middleware/capabilityGuard')
 const { sendSuccess } = require('../utils/apiResponse')
 
 const router = express.Router()
@@ -44,10 +44,13 @@ const STATUS_BUCKETS = {
   alerts: ALERT_ACTIONS
 }
 
-function buildListQuery({ search, action, status, department, from, to }) {
+function buildListQuery({ search, action, actions, status, department, from, to }) {
   const query = {}
   if (action) {
     query.action = action
+  } else if (actions) {
+    const actionList = String(actions).split(',').map((value) => value.trim()).filter(Boolean).slice(0, 50)
+    if (actionList.length) query.action = { $in: actionList }
   } else if (status && STATUS_BUCKETS[status]) {
     query.action = { $in: STATUS_BUCKETS[status] }
   }
@@ -91,16 +94,16 @@ async function summariseActions(baseQuery) {
 router.get(
   '/',
   protect,
-  roleGuard('Admin', 'CEO', 'Manager', 'HR', 'VP'),
+  requireCapability('view_audit'),
   async (req, res, next) => {
     try {
-      const { search, action, status, department, from, to } = req.query
+      const { search, action, actions, status, department, from, to } = req.query
       const page = Math.max(1, parseInt(req.query.page) || 1)
       const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 10))
 
-      const query = buildListQuery({ search, action, status, department, from, to })
+      const query = buildListQuery({ search, action, actions, status, department, from, to })
       // Status cards ignore action/status drill-down so totals stay comparable.
-      const summaryQuery = buildListQuery({ search, department, from, to })
+      const summaryQuery = buildListQuery({ search, actions, department, from, to })
 
       const [total, logs, summary] = await Promise.all([
         AuditLog.countDocuments(query),

@@ -7,7 +7,7 @@ const express = require('express')
 const User = require('../models/User')
 const Role = require('../models/Role')
 const { protect } = require('../middleware/auth')
-const { roleGuard } = require('../middleware/roleGuard')
+const { requireCapability } = require('../middleware/capabilityGuard')
 const { sendSuccess, sendError } = require('../utils/apiResponse')
 const { writeAuditLog } = require('../utils/writeAuditLog')
 const { sendWelcomeEmail } = require('../utils/emailService')
@@ -16,6 +16,7 @@ const { checkEmailDomain } = require('../utils/domainPolicy')
 const { listFor: departmentsFor, canonical: canonicalDepartment } = require('../utils/departments')
 const { requireQuota, checkQuota, remainingFor, respond } = require('../middleware/quota')
 const { releaseFor } = require('../utils/fileGc')
+const { hasCapability } = require('../utils/roleCapabilities')
 
 const router = express.Router()
 
@@ -37,11 +38,11 @@ const sameId = (a, b) => String(a) === String(b)
 // they do NOT need is the personnel record — seats, MFA state, reporting lines,
 // last sign-in — so everyone but the Admin reads a directory instead.
 const DIRECTORY_FIELDS = 'name email department role isActive'
-const isPeopleAdmin = (user) => user?.role?.name === 'Admin'
+const isPeopleAdmin = (user) => hasCapability(user, 'manage_users')
 
 // Applies the right projection for the caller to a User query.
 const scopeToCaller = (query, user) => (isPeopleAdmin(user)
-  ? query.select('-password').populate('role').populate('managerId', 'name email department')
+  ? query.select('-password').populate('role')
   : query.select(DIRECTORY_FIELDS).populate('role', 'name'))
 
 // Departments are per-tenant (utils/departments), so "is this a real one?" is a
@@ -79,17 +80,10 @@ router.get('/', protect, async (req, res, next) => {
     if (department) query.department = department
     if (isActive !== undefined) query.isActive = isActive === 'true'
 
-    const superAdminRole = await Role.findOne({ name: 'SuperAdmin' }).select('_id').lean()
-
     if (role) {
       const roleDoc = await Role.findOne({ name: role }).lean()
-      if (roleDoc && (!superAdminRole || String(roleDoc._id) !== String(superAdminRole._id))) {
-        query.role = roleDoc._id
-      } else {
-        query.role = null
-      }
-    } else if (superAdminRole) {
-      query.role = { $ne: superAdminRole._id }
+      if (roleDoc) query.role = roleDoc._id
+      else query.role = null
     }
 
     if (search) {
@@ -156,69 +150,6 @@ router.get('/me/profile', protect, async (req, res, next) => {
   }
 })
 
-// PUT /api/users/me/profile
-// Update current user's profile details (name, email, designation, phone, photo / avatar).
-router.put('/me/profile', protect, async (req, res, next) => {
-  try {
-    const { name, email, designation, phone, photo, avatar } = req.body || {}
-    const updates = {}
-    if (name !== undefined) updates.name = String(name).trim()
-    if (designation !== undefined) updates.designation = String(designation).trim()
-    if (phone !== undefined) updates.phone = String(phone).trim()
-    if (email !== undefined && String(email).trim()) {
-      const normEmail = String(email).trim().toLowerCase()
-      if (!EMAIL_RE.test(normEmail)) {
-        return sendError(res, 'Please provide a valid email address', 'INVALID_EMAIL', 400)
-      }
-      const existing = await User.findOne({
-        email: normEmail,
-        orgId: req.user.orgId,
-        _id: { $ne: req.user._id }
-      })
-      if (existing) {
-        return sendError(res, 'This email address is already in use', 'EMAIL_IN_USE', 400)
-      }
-      updates.email = normEmail
-    }
-    if (photo !== undefined) {
-      updates.photo = photo
-      updates.avatar = photo
-    } else if (avatar !== undefined) {
-      updates.photo = avatar
-      updates.avatar = avatar
-    }
-
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
-      { $set: updates },
-      { new: true, runValidators: true }
-    )
-      .select('-password')
-      .populate('role')
-      .populate({
-        path: 'managerId',
-        select: 'name email department',
-        populate: { path: 'role', select: 'name' }
-      })
-      .populate({
-        path: 'hrId',
-        select: 'name email department',
-        populate: { path: 'role', select: 'name' }
-      })
-      .populate({
-        path: 'outOfOffice.delegateId',
-        select: 'name email department'
-      })
-      .lean()
-
-    if (!user) return sendError(res, 'User not found', 'USER_NOT_FOUND', 404)
-
-    return sendSuccess(res, { user })
-  } catch (err) {
-    next(err)
-  }
-})
-
 // PUT /api/users/me/out-of-office
 // Self-service Out-of-Office. While enabled (and within the optional date
 // window), new approval / review / submit tasks that would be assigned to this
@@ -253,7 +184,7 @@ router.put('/me/out-of-office', protect, async (req, res, next) => {
     const user = await User.findByIdAndUpdate(
       req.user._id,
       { outOfOffice },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     )
       .select('-password')
       .populate('role')
@@ -291,7 +222,7 @@ router.put('/me/notification-prefs', protect, async (req, res, next) => {
     const user = await User.findByIdAndUpdate(
       req.user._id,
       { notificationPrefs },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     )
       .select('-password')
       .lean()
@@ -333,9 +264,9 @@ router.get('/:id', protect, async (req, res, next) => {
 })
 
 // POST /api/users
-router.post('/', protect, roleGuard('Admin'), requireQuota('users'), async (req, res, next) => {
+router.post('/', protect, requireCapability('manage_users'), requireQuota('users'), async (req, res, next) => {
   try {
-    const { name, email, department, roleId, managerId, hrId, employeeId } = req.body
+    const { name, email, department, roleId, managerId, hrId } = req.body
     if (!name || !email || !department || !roleId) {
       return sendError(res, 'name, email, department and roleId are required', 'MISSING_FIELDS', 400)
     }
@@ -380,7 +311,6 @@ router.post('/', protect, roleGuard('Admin'), requireQuota('users'), async (req,
       password: tempPassword,
       department: deptName,
       role: roleId,
-      employeeId: employeeId ? String(employeeId).trim() : undefined,
       canBuild,
       managerId: managerId || undefined,
       hrId: hrId || undefined,
@@ -398,8 +328,30 @@ router.post('/', protect, roleGuard('Admin'), requireQuota('users'), async (req,
       department: user.department,
       ipAddress: req.ip,
       detail: `${req.user.name} invited ${user.name} (${user.email})${policy.external ? ' — EXTERNAL user (domain not on the org allowlist)' : ''}`,
-      metadata: { newUserId: user._id, role: user.role?.name, external: Boolean(policy.external) }
+      metadata: {
+        newUserId: user._id,
+        role: user.role?.name,
+        canBuild,
+        external: Boolean(policy.external)
+      }
     })
+
+    if (canBuild) {
+      writeAuditLog({
+        action: 'builder_access_granted',
+        performedBy: req.user._id,
+        targetEntity: `User: ${user.name}`,
+        department: user.department,
+        ipAddress: req.ip,
+        detail: `${req.user.name} granted Builder access to ${user.name}`,
+        metadata: {
+          userId: String(user._id),
+          before: { canBuild: false },
+          after: { canBuild: true },
+          role: user.role?.name
+        }
+      })
+    }
 
     return sendSuccess(res, {
       user: user.toJSON(),
@@ -418,7 +370,7 @@ router.post('/', protect, roleGuard('Admin'), requireQuota('users'), async (req,
 // the same batch). Duplicate emails (in DB or within the file) are skipped.
 const MAX_IMPORT_ROWS = 1000
 
-router.post('/import', protect, roleGuard('Admin'), async (req, res, next) => {
+router.post('/import', protect, requireCapability('manage_users'), async (req, res, next) => {
   try {
     const rows = Array.isArray(req.body?.users) ? req.body.users : null
     if (!rows) return sendError(res, 'users array is required', 'MISSING_USERS', 400)
@@ -589,10 +541,9 @@ router.post('/import', protect, roleGuard('Admin'), async (req, res, next) => {
 })
 
 // PUT /api/users/:id
-router.put('/:id', protect, roleGuard('Admin'), async (req, res, next) => {
+router.put('/:id', protect, requireCapability('manage_users'), async (req, res, next) => {
   try {
     const { password, _id, role, name, email, ...rest } = req.body
-    console.log('PUT /api/users/:id payload:', req.body)
     const updates = { ...rest }
 
     const target = await User.findById(req.params.id).select('name email isProtected isActive canBuild countsTowardSeats avatar').lean()
@@ -683,10 +634,6 @@ router.put('/:id', protect, roleGuard('Admin'), async (req, res, next) => {
       }
     }
 
-    if ('employeeId' in updates) {
-      updates.employeeId = updates.employeeId ? String(updates.employeeId).trim() : null
-    }
-
     // Snapshot identity (already loaded above) so we can record what changed.
     const before = (updates.name !== undefined || updates.email !== undefined) ? target : null
 
@@ -694,10 +641,9 @@ router.put('/:id', protect, roleGuard('Admin'), async (req, res, next) => {
     // deactivation) so the affected user's old tokens stop working immediately.
     const revokeSessions = updates.role !== undefined || updates.isActive === false
     const mutation = revokeSessions ? { ...updates, $inc: { tokenVersion: 1 } } : updates
-    require('fs').appendFileSync('users_debug.log', 'PUT MUTATION: ' + JSON.stringify(mutation) + '\n');
 
     const user = await User.findByIdAndUpdate(req.params.id, mutation, {
-      new: true,
+      returnDocument: 'after',
       runValidators: true
     }).select('-password').populate('role')
 
@@ -722,6 +668,24 @@ router.put('/:id', protect, roleGuard('Admin'), async (req, res, next) => {
           metadata: { userId: String(user._id) }
         })
       }
+    }
+
+    if (updates.canBuild !== undefined && updates.canBuild !== (target.canBuild === true)) {
+      const granted = updates.canBuild === true
+      writeAuditLog({
+        action: granted ? 'builder_access_granted' : 'builder_access_revoked',
+        performedBy: req.user._id,
+        targetEntity: `User: ${user.name}`,
+        department: user.department,
+        ipAddress: req.ip,
+        detail: `${req.user.name} ${granted ? 'granted Builder access to' : 'revoked Builder access from'} ${user.name}`,
+        metadata: {
+          userId: String(user._id),
+          before: { canBuild: target.canBuild === true },
+          after: { canBuild: granted },
+          role: user.role?.name
+        }
+      })
     }
 
     // A replaced avatar leaves the old image orphaned on disk and still counted.
@@ -757,7 +721,7 @@ router.put('/:id', protect, roleGuard('Admin'), async (req, res, next) => {
 })
 
 // DELETE /api/users/:id  (soft delete: isActive = false)
-router.delete('/:id', protect, roleGuard('Admin'), async (req, res, next) => {
+router.delete('/:id', protect, requireCapability('manage_users'), async (req, res, next) => {
   try {
     if (sameId(req.params.id, req.user._id)) {
       return sendError(res, 'You cannot deactivate your own account', 'CANNOT_DEACTIVATE_SELF', 400)
@@ -771,7 +735,7 @@ router.delete('/:id', protect, roleGuard('Admin'), async (req, res, next) => {
     const user = await User.findByIdAndUpdate(
       req.params.id,
       { isActive: false, $inc: { tokenVersion: 1 } },
-      { new: true }
+      { returnDocument: 'after' }
     ).select('-password').populate('role')
 
     if (!user) return sendError(res, 'User not found', 'USER_NOT_FOUND', 404)
@@ -785,7 +749,7 @@ router.delete('/:id', protect, roleGuard('Admin'), async (req, res, next) => {
 // DELETE /api/users/:id/permanent  (HARD delete: removes the user from the DB)
 // Detaches the user from anyone who reports to them / has them as HR partner so
 // the org chart and approval routing never point at a deleted account.
-router.delete('/:id/permanent', protect, roleGuard('Admin'), async (req, res, next) => {
+router.delete('/:id/permanent', protect, requireCapability('manage_users'), async (req, res, next) => {
   try {
     if (sameId(req.params.id, req.user._id)) {
       return sendError(res, 'You cannot delete your own account', 'CANNOT_DELETE_SELF', 400)
@@ -829,7 +793,7 @@ router.delete('/:id/permanent', protect, roleGuard('Admin'), async (req, res, ne
 })
 
 // POST /api/users/:id/assign-role
-router.post('/:id/assign-role', protect, roleGuard('Admin'), async (req, res, next) => {
+router.post('/:id/assign-role', protect, requireCapability('manage_users'), async (req, res, next) => {
   try {
     const { roleId } = req.body
     if (!roleId) return sendError(res, 'roleId is required', 'MISSING_ROLE', 400)

@@ -63,7 +63,7 @@ h.runSuite('workspace', async () => {
   h.check('WS-001', 'An employee cannot read the workspace summary',
     empSummary.status === 403, `status ${empSummary.status}`)
 
-  const openRoutes = ['/analytics/completion-time', '/analytics/approval-rate', '/analytics/activity']
+  const openRoutes = ['/analytics/completion-time', '/analytics/approval-rate', '/analytics/activity', '/analytics/workflow-control-tower']
   const openStatuses = []
   for (const route of openRoutes) {
     const r = await h.api('GET', route, empTok)
@@ -213,9 +213,9 @@ h.runSuite('workspace', async () => {
   // so an employee's row must say submit and nothing else.
   const summary = await h.api('GET', '/roles/summary', adminTok)
   const empRow = (summary.body?.roles || []).find((r) => r.name === 'Employee')
-  h.check('WS-025', 'The matrix shows an employee submitting and nothing more',
+  h.check('WS-025', 'The matrix gives Employee no independent role capabilities',
     summary.status === 200 && empRow?.shell === 'workspace'
-      && JSON.stringify(empRow?.capabilities) === JSON.stringify(['submit']),
+      && JSON.stringify(empRow?.capabilities) === JSON.stringify([]),
     `shell ${empRow?.shell}, capabilities ${JSON.stringify(empRow?.capabilities)}`)
 
   // ── across workspaces ──────────────────────────────────────────────────────

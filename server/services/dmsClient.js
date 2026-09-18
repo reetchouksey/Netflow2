@@ -1,20 +1,39 @@
-// BaseLayer DMS client — NetFlow → DMS document pipeline.
+// API-compatible DMS client — NetFlow → DMS document pipeline.
 // When DMS_ENABLED !== 'true', every method no-ops (returns null) so local
 // /uploads behaviour stays unchanged for pure local development.
 
 const fs = require('fs')
 const path = require('path')
+const { normalizeEndpoint, fetchEndpoint } = require('./dmsEndpoint')
 
-const isEnabled = (org) => {
-  const hasUrl = !!baseUrl() || !!(org?.integrations?.departmentDms?.some(d => d.baseUrl));
-  if (!hasUrl) return false;
-
-  if (String(process.env.DMS_ENABLED || '').toLowerCase() === 'true') return true
-  if (org && (org.integrations?.dmsEnabled === true || org.dmsEnabled === true)) return true
-  return false
-}
+const isEnabled = () => String(process.env.DMS_ENABLED || '').toLowerCase() === 'true'
 
 const baseUrl = () => String(process.env.DMS_API_URL || '').replace(/\/$/, '')
+
+const boundedMs = (value, fallback, min, max) => {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.min(Math.max(parsed, min), max)
+}
+
+// DMS ingestion may synchronously classify and file a document before returning.
+// Ten seconds was too short for real PDFs and produced false failures even though
+// the DMS had already stored the file. Keep the values configurable for providers
+// with different latency profiles while retaining bounded production defaults.
+const uploadTimeoutMs = () => boundedMs(process.env.DMS_UPLOAD_TIMEOUT_MS, 60000, 1000, 180000)
+const uploadRecoveryWindowMs = () => boundedMs(process.env.DMS_UPLOAD_RECOVERY_WINDOW_MS, 15000, 0, 60000)
+const uploadRecoveryIntervalMs = () => boundedMs(process.env.DMS_UPLOAD_RECOVERY_INTERVAL_MS, 1000, 100, 5000)
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const isConfiguredFor = (org, department = null) => {
+  if (!isEnabled()) return false
+  if (org?.integrations?.dmsBaseUrl && org.integrations.dmsEnabled !== true) return false
+  const root = resolveBaseUrl(org, department)
+  if (!root) return false
+  const key = resolveApiKey(org, department)
+  const token = resolveJwt(org, department)
+  return Boolean(key || token)
+}
 
 // Finds the per-department DMS config entry for a given department name.
 // Returns null when no entry exists or the department is disabled.
@@ -37,16 +56,18 @@ const resolveApiKey = (org, department) => {
     const deptCfg = resolveDeptConfig(org, department)
     if (deptCfg?.apiKey && String(deptCfg.apiKey).trim()) return String(deptCfg.apiKey).trim()
   }
+  // A different department server must supply its own credential.
+  if (department && resolveDeptConfig(org, department)?.baseUrl && resolveBaseUrl(org, department) !== resolveBaseUrl(org)) return ''
   // 2. Org-level key
   const fromOrg = org?.integrations?.dmsApiKey || org?.dmsApiKey
   if (fromOrg && String(fromOrg).trim()) return String(fromOrg).trim()
-  // 3. Platform env key
-  return String(process.env.DMS_API_KEY || '').trim()
+  // Explicit tenant endpoints never inherit platform credentials.
+  return org?.integrations?.dmsBaseUrl ? '' : String(process.env.DMS_API_KEY || '').trim()
 }
 
 // Resolves the DMS base URL for a given org + department.
 // A department may point to a completely different DMS server.
-// Priority: department baseUrl → global DMS_API_URL env var.
+// Priority: department baseUrl → organization endpoint → legacy platform default.
 const resolveBaseUrl = (org, department) => {
   if (department) {
     const deptCfg = resolveDeptConfig(org, department)
@@ -54,7 +75,23 @@ const resolveBaseUrl = (org, department) => {
       return String(deptCfg.baseUrl).trim().replace(/\/$/, '')
     }
   }
-  return baseUrl()
+  return String(org?.integrations?.dmsBaseUrl || '').trim().replace(/\/+$/, '') || baseUrl()
+}
+
+const resolveJwt = (org, department) => {
+  if (department && resolveBaseUrl(org, department) !== resolveBaseUrl(org)) return ''
+  return String(org?.integrations?.dmsJwt || '').trim() || (org?.integrations?.dmsBaseUrl ? '' : String(process.env.DMS_JWT || '').trim())
+}
+
+// Do not silently redirect an existing connection's document IDs to another server.
+const assertEndpointChange = (org, nextEndpoint) => {
+  const next = normalizeEndpoint(nextEndpoint)
+  const current = resolveBaseUrl(org)
+  const hasCredentials = Boolean(resolveApiKey(org) || resolveJwt(org))
+  if (current && hasCredentials && (next || baseUrl()) !== current) {
+    throw new DmsError('This organization already has a DMS connection. Endpoint changes require a separate document migration.', { code: 'DMS_ENDPOINT_MIGRATION_REQUIRED', status: 409 })
+  }
+  return next
 }
 
 // Builds the DMS folder path: "<orgSlug>/<department>"
@@ -116,12 +153,13 @@ async function dmsFetch(pathname, {
   formData = false,
   quiet = false,
 } = {}) {
-  if (!isEnabled(org)) return null
+  if (!isEnabled()) return null
 
   const root = rootUrl || (org ? resolveBaseUrl(org) : baseUrl())
   if (!root) throw new DmsError('DMS_API_URL is not configured', { code: 'DMS_MISCONFIGURED' })
-  const key = apiKey || (org ? resolveApiKey(org) : resolveApiKey())
-  const tokenToUse = jwtToken || org?.integrations?.dmsJwt || process.env.DMS_JWT
+  const sameConnection = !org || root === resolveBaseUrl(org)
+  const key = apiKey !== undefined ? apiKey : (sameConnection ? resolveApiKey(org) : '')
+  const tokenToUse = jwtToken !== undefined ? jwtToken : (sameConnection ? resolveJwt(org) : '')
 
   if (!key && !tokenToUse) {
     throw new DmsError('DMS authentication not configured', { status: 401, code: 'DMS_UNAUTHORIZED' })
@@ -136,7 +174,7 @@ async function dmsFetch(pathname, {
 
   const started = Date.now()
   const res = await withTimeout(timeoutMs, (signal) =>
-    fetch(url, { method, headers: hdrs, body, signal })
+    (org?.integrations?.dmsBaseUrl || root !== baseUrl() ? fetchEndpoint : fetch)(url, { method, headers: hdrs, body, signal, redirect: 'error' })
   )
   const json = await parseJsonSafe(res)
   const ms = Date.now() - started
@@ -162,20 +200,159 @@ async function dmsFetch(pathname, {
  * @param {object} [opts.org] - for per-org API key
  */
 async function ping({ org } = {}) {
-  if (!isEnabled(org)) return false
-  try {
-    const key = resolveApiKey(org)
-    if (!key && !process.env.DMS_JWT && !org?.integrations?.dmsJwt) return false
+  if (!isEnabled()) return false
+  if (org?.integrations?.dmsBaseUrl) {
     try {
-      await dmsFetch('/health', { apiKey: key, org, timeoutMs: 3000, quiet: true })
+      await testConnection({ baseUrl: org.integrations.dmsBaseUrl, apiKey: resolveApiKey(org), jwtToken: resolveJwt(org), orgSlug: org.integrations.dmsOrgSlug, timeoutMs: 3000 })
       return true
-    } catch {
-      // If org has valid dmsEnabled & dmsApiKey, report connected: true
-      return Boolean(org && (org.integrations?.dmsEnabled || org.dmsEnabled) && key)
-    }
+    } catch { return false }
+  }
+  try {
+    await dmsFetch('/health', { apiKey: resolveApiKey(org), org, timeoutMs: 3000, quiet: true })
+    return true
   } catch (err) {
+    require('fs').appendFileSync('ping-error.log', new Date().toISOString() + ' - Ping failed: ' + (err.stack || err.message || err) + '\n');
+    console.error('DMS Ping Failed:', err.message || err);
     return false
   }
+}
+
+// Builds the exact effective configuration used by the pre-save connection
+// check. Keeping this next to the runtime resolver prevents receipts from being
+// issued for a different API key or base URL than the request actually tested.
+const connectionConfig = ({ apiKey, jwtToken, orgSlug, baseUrl: endpoint } = {}) => {
+  const custom = normalizeEndpoint(endpoint)
+  return {
+    apiKey: String(apiKey || '').trim() || (custom ? '' : String(process.env.DMS_API_KEY || '').trim()),
+    jwtToken: String(jwtToken || '').trim() || (custom ? '' : String(process.env.DMS_JWT || '').trim()),
+    rootUrl: custom || baseUrl(),
+    orgSlug: String(orgSlug || '').toLowerCase().trim().replace(/[^a-z0-9-]/g, '-')
+  }
+}
+
+// Unlike ping(), this calls an authenticated, read-only endpoint so a healthy
+// DMS with an invalid tenant credential cannot be reported as connected.
+async function testConnection({ apiKey, jwtToken, orgSlug, baseUrl: endpoint, timeoutMs = 10000 } = {}) {
+  if (!isEnabled()) {
+    throw new DmsError('DMS is disabled on this server', { status: 503, code: 'DMS_DISABLED' })
+  }
+
+  const effective = connectionConfig({ apiKey, jwtToken, orgSlug, baseUrl: endpoint })
+  if (!effective.rootUrl) {
+    throw new DmsError('DMS API URL is not configured', { status: 503, code: 'DMS_MISCONFIGURED' })
+  }
+  if (!effective.apiKey && !effective.jwtToken) {
+    throw new DmsError('DMS authentication is not configured', { status: 401, code: 'DMS_UNAUTHORIZED' })
+  }
+
+  const org = {
+    subdomain: effective.orgSlug || 'connection-test',
+    integrations: {
+      dmsEnabled: true,
+      dmsBaseUrl: normalizeEndpoint(endpoint),
+      dmsApiKey: effective.apiKey,
+      dmsJwt: effective.jwtToken,
+      dmsOrgSlug: effective.orgSlug
+    }
+  }
+
+  const response = await dmsFetch('/documents?limit=1&offset=0', {
+    apiKey: effective.apiKey,
+    jwtToken: effective.jwtToken,
+    rootUrl: effective.rootUrl,
+    org,
+    timeoutMs,
+    quiet: true
+  })
+
+  const documents = response?.documents ?? response?.data?.documents ?? response?.items
+  if (!Array.isArray(documents)) {
+    throw new DmsError('DMS does not implement the expected document-list API.', { status: 422, code: 'DMS_INCOMPATIBLE_API' })
+  }
+
+  return {
+    checks: [
+      { key: 'configuration', status: 'passed' },
+      { key: 'authentication', status: 'passed' },
+      { key: 'readAccess', status: 'passed' }
+    ]
+  }
+}
+
+const externalRefQuery = ({ taskId, formResponseId, workflowId, id } = {}) => {
+  const usp = new URLSearchParams({ app: 'netflow' })
+  if (taskId) usp.set('taskId', String(taskId))
+  if (formResponseId) usp.set('formResponseId', String(formResponseId))
+  if (workflowId) usp.set('workflowId', String(workflowId))
+  if (id) usp.set('id', String(id))
+  return [...usp.keys()].length > 1 ? usp : null
+}
+
+const unpackDocument = (json) => {
+  if (!json || typeof json !== 'object') return null
+  return json.document || json.data?.document || json.data || json
+}
+
+const documentId = (doc, json = {}) => {
+  const duplicate = json?.duplicateOf
+  return doc?.id || doc?._id || doc?.dmsDocId ||
+    (typeof duplicate === 'string' ? duplicate : duplicate?.id || duplicate?._id || duplicate?.dmsDocId) ||
+    null
+}
+
+async function findByRefOnConnection(ref, {
+  org,
+  user,
+  apiKey,
+  rootUrl,
+  timeoutMs = 5000,
+  quiet = false
+} = {}) {
+  const usp = externalRefQuery(ref)
+  if (!usp) return null
+
+  try {
+    const json = await dmsFetch(`/documents/by-external-ref?${usp}`, {
+      apiKey: apiKey || resolveApiKey(org),
+      rootUrl,
+      org,
+      user,
+      timeoutMs,
+      quiet
+    })
+    return unpackDocument(json)
+  } catch (error) {
+    if (error.status === 404) return null
+    throw error
+  }
+}
+
+async function recoverTimedOutUpload(ref, options = {}) {
+  if (!externalRefQuery(ref)) return null
+  const windowMs = boundedMs(options.recoveryWindowMs, uploadRecoveryWindowMs(), 0, 60000)
+  const intervalMs = boundedMs(options.recoveryIntervalMs, uploadRecoveryIntervalMs(), 10, 5000)
+  const deadline = Date.now() + windowMs
+
+  do {
+    try {
+      const doc = await findByRefOnConnection(ref, {
+        ...options,
+        timeoutMs: Math.min(5000, Math.max(1000, windowMs || 1000)),
+        quiet: true
+      })
+      if (documentId(doc)) return doc
+    } catch (error) {
+      // Authentication/configuration failures are definitive. A transient read
+      // failure remains subordinate to the original upload timeout.
+      if (['DMS_UNAUTHORIZED', 'DMS_MISCONFIGURED', 'DMS_DISABLED'].includes(error.code)) throw error
+    }
+
+    const remaining = deadline - Date.now()
+    if (remaining <= 0) break
+    await wait(Math.min(intervalMs, remaining))
+  } while (Date.now() <= deadline)
+
+  return null
 }
 
 /**
@@ -189,8 +366,20 @@ async function ping({ org } = {}) {
  * @param {string} [opts.department] - user's department (e.g. 'hr', 'finance')
  * @param {string} [opts.orgSubdomain] - org subdomain used as DMS folder root
  */
-async function uploadFile({ filePath, filename, mime, user, ref = {}, org, department, orgSubdomain } = {}) {
-  if (!isEnabled(org)) return null
+async function uploadFile({
+  filePath,
+  filename,
+  mime,
+  user,
+  ref = {},
+  org,
+  department,
+  orgSubdomain,
+  timeoutMs,
+  recoveryWindowMs,
+  recoveryIntervalMs
+} = {}) {
+  if (!isEnabled()) return null
 
   // Resolve department-specific DMS credentials first, then fall back to org/env.
   const deptApiKey  = resolveApiKey(org, department)
@@ -204,7 +393,7 @@ async function uploadFile({ filePath, filename, mime, user, ref = {}, org, depar
   // file in, e.g. "acme/hr". The folder is also embedded in sourceRef so the
   // DMS side can enforce the same layout independently.
   const dmsOrgSlug = org?.integrations?.dmsOrgSlug || orgSubdomain || null
-  const dmsFolder = buildDmsFolder(dmsOrgSlug, department)
+  const dmsFolder = resolveDeptConfig(org, department)?.folder || buildDmsFolder(dmsOrgSlug, department)
 
   fd.append('sourceRef', JSON.stringify({
     app: 'netflow',
@@ -219,26 +408,44 @@ async function uploadFile({ filePath, filename, mime, user, ref = {}, org, depar
   // Some DMS implementations route by a top-level "folder" field.
   if (dmsFolder) fd.append('folder', dmsFolder)
 
-  const json = await dmsFetch('/documents/upload', {
-    method: 'POST',
-    body: fd,
-    formData: true,
-    apiKey: deptApiKey,       // department-specific or org fallback
-    org,
-    rootUrl: deptRootUrl,     // department-specific server or global URL
-    user,
-    timeoutMs: 10000,
-  })
+  let json
+  let recoveredAfterTimeout = false
+  try {
+    json = await dmsFetch('/documents/upload', {
+      method: 'POST',
+      body: fd,
+      formData: true,
+      apiKey: deptApiKey,       // department-specific or org fallback
+      org,
+      rootUrl: deptRootUrl,     // department-specific server or global URL
+      user,
+      timeoutMs: boundedMs(timeoutMs, uploadTimeoutMs(), 10, 180000),
+    })
+  } catch (error) {
+    if (error.code !== 'DMS_TIMEOUT') throw error
+    const recovered = await recoverTimedOutUpload(ref, {
+      org,
+      user,
+      apiKey: deptApiKey,
+      rootUrl: deptRootUrl,
+      recoveryWindowMs,
+      recoveryIntervalMs
+    })
+    if (!recovered) throw error
+    recoveredAfterTimeout = true
+    json = { document: recovered }
+    console.warn('[dms] upload response timed out; recovered stored document by source reference')
+  }
 
-  const doc = json.document || json.data?.document || json
-  const id = doc.id || doc._id || doc.dmsDocId
+  const doc = unpackDocument(json)
+  const id = documentId(doc, json)
   if (!id) {
     throw new DmsError('DMS upload returned no document id', { code: 'DMS_EMPTY', body: json })
   }
 
   let viewUrl = null
   try {
-    viewUrl = await signedUrl(id, { mode: 'view', org, user })
+    viewUrl = await signedUrl(id, { mode: 'view', org, user, department })
   } catch {
     viewUrl = null
   }
@@ -250,20 +457,23 @@ async function uploadFile({ filePath, filename, mime, user, ref = {}, org, depar
     size: doc.size != null ? Number(doc.size) : buf.length,
     type: doc.type || null,
     channel: doc.channel || null,
-    externalRef: doc.externalRef || null,
+    externalRef: doc.externalRef || doc.sourceRef || null,
     folder: doc.folder || dmsFolder || null,  // ← department-based folder path
     url: viewUrl,
-    duplicateOf: json.duplicateOf || null,
+    duplicateOf: json.duplicateOf || doc.duplicateOf || null,
     extraction: json.extraction || null,
+    recoveredAfterTimeout,
   }
 }
 
-async function signedUrl(dmsDocId, { mode = 'view', org, user } = {}) {
-  if (!isEnabled(org) || !dmsDocId) return null
+async function signedUrl(dmsDocId, { mode = 'view', org, user, department } = {}) {
+  if (!isEnabled() || !dmsDocId) return null
 
   const q = mode === 'download' ? 'mode=download' : 'mode=view'
   const json = await dmsFetch(`/documents/${encodeURIComponent(dmsDocId)}/url?${q}`, {
-    apiKey: resolveApiKey(org),
+    apiKey: resolveApiKey(org, department),
+    rootUrl: resolveBaseUrl(org, department),
+    jwtToken: resolveJwt(org, department),
     org,
     user,
     timeoutMs: 5000,
@@ -271,15 +481,28 @@ async function signedUrl(dmsDocId, { mode = 'view', org, user } = {}) {
 
   const url = json.url || json.data?.url || null
   const signed = json.signed !== false
-  if (url && signed) return String(url)
+  if (url && signed) {
+    if (org?.integrations?.dmsBaseUrl || resolveBaseUrl(org, department) !== baseUrl()) {
+      let target
+      try { target = new URL(String(url), resolveBaseUrl(org, department) + '/') } catch {
+        throw new DmsError('DMS returned an invalid document URL', { code: 'DMS_INVALID_ENDPOINT', status: 422 })
+      }
+      if (target.username || target.password) {
+        throw new DmsError('DMS document URL must not contain credentials', { code: 'DMS_INVALID_ENDPOINT', status: 422 })
+      }
+      normalizeEndpoint(target.origin + target.pathname)
+      return target.href
+    }
+    return String(url)
+  }
 
-  const root = org ? resolveBaseUrl(org) : baseUrl()
+  const root = resolveBaseUrl(org, department)
   const suffix = mode === 'download' ? '?download=1' : ''
   return `${root}/documents/${encodeURIComponent(dmsDocId)}/file${suffix}`
 }
 
 async function getDoc(dmsDocId, { org, user } = {}) {
-  if (!isEnabled(org) || !dmsDocId) return null
+  if (!isEnabled() || !dmsDocId) return null
   return dmsFetch(`/documents/${encodeURIComponent(dmsDocId)}`, {
     apiKey: resolveApiKey(org),
     org,
@@ -288,29 +511,12 @@ async function getDoc(dmsDocId, { org, user } = {}) {
 }
 
 async function findByRef({ taskId, formResponseId, workflowId, id } = {}, { org, user } = {}) {
-  if (!isEnabled(org)) return null
-  const usp = new URLSearchParams({ app: 'netflow' })
-  if (taskId) usp.set('taskId', String(taskId))
-  if (formResponseId) usp.set('formResponseId', String(formResponseId))
-  if (workflowId) usp.set('workflowId', String(workflowId))
-  if (id) usp.set('id', String(id))
-  if ([...usp.keys()].length <= 1) return null
-
-  try {
-    const json = await dmsFetch(`/documents/by-external-ref?${usp}`, {
-      apiKey: resolveApiKey(org),
-      org,
-      user,
-    })
-    return json.document || json.data?.document || json || null
-  } catch (err) {
-    if (err.status === 404) return null
-    throw err
-  }
+  if (!isEnabled()) return null
+  return findByRefOnConnection({ taskId, formResponseId, workflowId, id }, { org, user })
 }
 
 async function postEvent(dmsDocId, { type, actor, detail, meta } = {}, { org } = {}) {
-  if (!isEnabled(org) || !dmsDocId || !type) return null
+  if (!isEnabled() || !dmsDocId || !type) return null
 
   const actorPayload = actor && typeof actor === 'object'
     ? {
@@ -398,7 +604,7 @@ const parseUsagePayload = (json) => {
  * @returns {{ documents: object[], total: number|null }}
  */
 async function listDocuments({ org, user, limit = 100, offset = 0, page } = {}) {
-  if (!isEnabled(org)) return null
+  if (!isEnabled()) return null
   const usp = new URLSearchParams()
   usp.set('limit', String(Math.min(Math.max(Number(limit) || 100, 1), 200)))
   if (page != null) usp.set('page', String(page))
@@ -416,14 +622,14 @@ async function listDocuments({ org, user, limit = 100, offset = 0, page } = {}) 
 }
 
 /**
- * Real storage used in BaseLayer DMS for the API key's organization.
+ * Real storage used in the connected DMS for the API key's organization.
  * Prefers GET /usage|/stats when the key is accepted; otherwise sums document.size.
  */
 async function getStorageUsage({ org, user } = {}) {
-  if (!isEnabled(org)) return null
+  if (!isEnabled()) return null
 
   // DMS /usage + /stats currently require a user JWT, not X-Api-Key. Opt in if
-  // BaseLayer later opens them to service keys (avoids two failed round-trips).
+  // the configured server exposes them to service keys (avoids two failed round-trips).
   if (String(process.env.DMS_USAGE_ENDPOINT || '').toLowerCase() === 'true') {
     const key = resolveApiKey(org)
     for (const path of ['/usage', '/stats']) {
@@ -495,10 +701,10 @@ async function getStorageUsage({ org, user } = {}) {
 }
 
 /**
- * Fetch the real folder tree from BaseLayer DMS using DMS_JWT if available.
+ * Fetch the real folder tree from the connected DMS using DMS_JWT if available.
  */
 async function getFoldersTree({ org, user } = {}) {
-  if (!isEnabled(org)) return null
+  if (!isEnabled()) return null
 
   try {
     // The /folders endpoint requires the JWT token for authentication
@@ -521,7 +727,7 @@ async function getFoldersTree({ org, user } = {}) {
 }
 
 async function deleteDoc(dmsDocId, { org, user } = {}) {
-  if (!isEnabled(org) || !dmsDocId) return null
+  if (!isEnabled() || !dmsDocId) return null
   return dmsFetch(`/documents/${encodeURIComponent(dmsDocId)}`, {
     method: 'DELETE',
     apiKey: resolveApiKey(org),
@@ -533,11 +739,17 @@ async function deleteDoc(dmsDocId, { org, user } = {}) {
 
 module.exports = {
   isEnabled,
+  isConfiguredFor,
   resolveApiKey,
   resolveBaseUrl,
+  resolveJwt,
+  assertEndpointChange,
+  normalizeEndpoint,
   resolveDeptConfig,
   buildDmsFolder,
   ping,
+  connectionConfig,
+  testConnection,
   uploadFile,
   signedUrl,
   getDoc,

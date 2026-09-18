@@ -139,16 +139,16 @@ h.runSuite('org_admin', async () => {
     summary.status === 200 && roles.length > 0 && Array.isArray(summary.body?.capabilities) && adminRow?.members >= 1,
     `status ${summary.status}, roles ${roles.length}, admin members ${adminRow?.members}`)
 
-  h.check('OADMIN-016', 'Only the Admin role is marked as able to design',
-    adminRow?.capabilities.includes('design') &&
-    !managerRow?.capabilities.includes('design') &&
-    !employeeRow?.capabilities.includes('design'),
-    `admin ${adminRow?.capabilities}, manager ${managerRow?.capabilities}`)
+  const capabilityKeys = (summary.body?.capabilities || []).map((capability) => capability.key)
+  h.check('OADMIN-016', 'Role matrix contains only independent permissions',
+    JSON.stringify(capabilityKeys) === JSON.stringify(['decide_tasks', 'manage_users', 'view_audit', 'view_analytics']) &&
+    !capabilityKeys.includes('manage_forms') && !capabilityKeys.includes('build_flows'),
+    `capabilities ${capabilityKeys.join(', ')}`)
 
-  h.check('OADMIN-017', 'Leaders approve, employees submit',
-    managerRow?.capabilities.includes('approve') &&
-    !employeeRow?.capabilities.includes('approve') &&
-    employeeRow?.capabilities.includes('submit'),
+  h.check('OADMIN-017', 'Leaders decide tasks while baseline form submission stays outside the role matrix',
+    adminRow?.capabilities.includes('manage_users') &&
+    managerRow?.capabilities.includes('decide_tasks') &&
+    !employeeRow?.capabilities.includes('decide_tasks') && employeeRow?.capabilities.length === 0,
     `manager ${managerRow?.capabilities}, employee ${employeeRow?.capabilities}`)
 
   h.check('OADMIN-018', 'SuperAdmin is absent from a workspace role list',
@@ -201,23 +201,51 @@ h.runSuite('org_admin', async () => {
     saved.body?.organization?.billingEmail === 'billing@qa.test',
     `status ${saved.status}, name ${saved.body?.organization?.name}, email ${saved.body?.organization?.billingEmail}`)
 
+  const pdfSaved = await h.api('PUT', '/organization', adminTok, {
+    pdfAutoFill: {
+      enabled: true,
+      languageMode: 'english',
+      audiences: { authenticated: true, public: true }
+    }
+  })
+  h.check('OADMIN-022b', 'Tenant Admin controls PDF auto-fill language and audiences',
+    pdfSaved.status === 200 &&
+    pdfSaved.body?.organization?.pdfAutoFill?.languageMode === 'english' &&
+    pdfSaved.body?.organization?.pdfAutoFill?.audiences?.public === true,
+    `status ${pdfSaved.status}, policy ${JSON.stringify(pdfSaved.body?.organization?.pdfAutoFill)}`)
+
+  const invalidPdfPolicy = await h.api('PUT', '/organization', adminTok, {
+    pdfAutoFill: {
+      enabled: true,
+      languageMode: 'english_hindi',
+      audiences: { authenticated: false, public: false }
+    }
+  })
+  h.check('OADMIN-022c', 'Enabled PDF auto-fill requires at least one audience',
+    invalidPdfPolicy.status === 400 &&
+    invalidPdfPolicy.body?.code === 'INVALID_PDF_AUTO_FILL_SETTINGS',
+    `status ${invalidPdfPolicy.status}, code ${invalidPdfPolicy.body?.code}`)
+
   const badEmail = await h.api('PUT', '/organization', adminTok, { billingEmail: 'not-an-email' })
   h.check('OADMIN-023', 'An invalid billing email is refused',
     badEmail.status === 400 && badEmail.body?.code === 'INVALID_BILLING_EMAIL',
     `status ${badEmail.status}, code ${badEmail.body?.code}`)
 
   // OADMIN-024 the platform-controlled fields stay platform-controlled.
+  const beforeTamper = await h.Organization.findById(org._id).lean()
   const tamper = await h.api('PUT', '/organization', adminTok, {
     subdomain: 'stolen-subdomain',
     plan: 'enterprise',
     limits: { maxUsers: 99999 },
-    features: { externalUsers: true }
+    features: { externalUsers: true },
+    pdfAutoFillEntitlementOverride: false
   })
   const afterTamper = await h.Organization.findById(org._id).lean()
   h.check('OADMIN-024', 'Plan, limits, subdomain and features ignore a tenant write',
     tamper.status === 200 &&
     afterTamper.subdomain === org.subdomain &&
     afterTamper.plan === org.plan &&
+    afterTamper.pdfAutoFill?.entitlementOverride === beforeTamper.pdfAutoFill?.entitlementOverride &&
     Number(afterTamper.limits?.maxUsers || 0) === Number(org.limits?.maxUsers || 0),
     `subdomain ${afterTamper.subdomain}, plan ${afterTamper.plan}, maxUsers ${afterTamper.limits?.maxUsers}`)
 

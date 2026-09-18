@@ -14,11 +14,11 @@ const connectDB = require('./config/db')
 const errorHandler = require('./middleware/errorHandler')
 
 if (String(process.env.DMS_ENABLED || '').toLowerCase() !== 'true') {
-  console.warn('[dms] DMS_ENABLED is not true — uploads stay on local disk. Set DMS_ENABLED=true + DMS_API_URL + DMS_API_KEY to use BaseLayer DMS.')
+  console.warn('[dms] DMS service disabled. Set DMS_ENABLED=true to allow configured DMS connections (S3 remains independent).')
 } else if (!process.env.DMS_API_URL || !process.env.DMS_API_KEY) {
-  console.warn('[dms] DMS_ENABLED=true but DMS_API_URL or DMS_API_KEY is missing — uploads will fail until configured.')
+  console.warn('[dms] DMS service enabled. Configure each organization endpoint and API key; no legacy platform default is configured.')
 } else {
-  console.log('[dms] BaseLayer DMS integration enabled →', String(process.env.DMS_API_URL).replace(/\/$/, ''))
+  console.log('[dms] DMS integration enabled →', String(process.env.DMS_API_URL).replace(/\/$/, ''))
 }
 
 const app = express()
@@ -53,14 +53,13 @@ connectDB().then(async () => {
   startLicenceCron()
   const { startUsageCron } = require('./jobs/usageCron')
   startUsageCron()
+  const { startExtractionProcessor } = require('./services/extractionProcessor')
+  startExtractionProcessor()
+  const { startFormGenerationProcessor } = require('./services/formGenerationProcessor')
+  startFormGenerationProcessor()
 })
 
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' },
-  crossOriginEmbedderPolicy: false,
-  frameguard: false,
-  contentSecurityPolicy: false,
-}))
+app.use(helmet())
 const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
   .split(',')
   .map(s => s.trim())
@@ -101,10 +100,10 @@ app.use('/api/files', require('./routes/files'))
 if (process.env.SERVE_LEGACY_UPLOADS !== '0') {
   app.use(
     '/uploads',
+    helmet.crossOriginResourcePolicy({ policy: 'cross-origin' }),
+    // Flat files only. Without this, /uploads/<orgId>/<file> would walk straight
+    // into the per-org directories and undo the access control above.
     (req, res, next) => {
-      res.setHeader('Access-Control-Allow-Origin', '*')
-      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
-      res.removeHeader('X-Frame-Options')
       const rel = String(req.path || '').replace(/^\/+/, '')
       if (!rel || rel.includes('/')) {
         return res.status(404).json({ success: false, error: 'File not found', code: 'FILE_NOT_FOUND' })
@@ -125,7 +124,8 @@ app.get('/api/health', (req, res) => {
     service: 'flowsphere-server',
     env: process.env.NODE_ENV || 'development',
     uptime: process.uptime(),
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    sourceCodeUrl: process.env.SOURCE_CODE_URL || null
   })
 })
 
@@ -136,10 +136,15 @@ app.use('/api/roles', require('./routes/roles'))
 // Routes — Shell 2 (an Org Admin configuring their own tenant)
 app.use('/api/departments', require('./routes/departments'))
 app.use('/api/organization', require('./routes/organization'))
+const extractionRoutes = require('./routes/formExtractions')
+app.use('/api/forms/:formId/extractions', extractionRoutes.authenticatedRouter())
+app.use('/api/public/forms/:token/extractions', extractionRoutes.publicRouter())
+app.use('/api/forms/document-drafts', require('./routes/formGeneration'))
+
 app.use('/api/forms', require('./routes/forms'))
 app.use('/api/uploads', require('./routes/uploads'))
-app.use('/api/s3', require('./routes/s3'))
 app.use('/api/dms', require('./routes/dms'))
+app.use('/api/s3', require('./routes/s3'))
 
 // Public (unauthenticated) form links — collect data from non-users.
 app.use('/api/public', require('./routes/public'))
@@ -156,6 +161,7 @@ app.use('/api/team', require('./routes/team'))
 // Routes — M3
 app.use('/api/tasks', require('./routes/tasks'))
 app.use('/api/notifications', require('./routes/notifications'))
+app.use('/api/broadcasts', require('./routes/broadcasts'))
 app.use('/api/audit-logs', require('./routes/auditLogs'))
 app.use('/api/analytics', require('./routes/analytics'))
 

@@ -9,6 +9,7 @@ const Task = require('../models/Task')
 const User = require('../models/User')
 const Role = require('../models/Role')
 const Organization = require('../models/Organization')
+const Form = require('../models/Form')
 
 const { getOrgId } = require('../tenancy/tenantContext')
 const { listFor: departmentsFor } = require('./departments')
@@ -57,7 +58,7 @@ const resolveDepartmentManager = async (token) => {
 const findFirstUserByRoleName = async (roleName) => {
   const roleId = await findRoleIdByName(roleName)
   if (!roleId) return null
-  const u = await User.findOne({ role: roleId, isActive: true }).sort({ createdAt: 1 }).lean()
+  const u = await User.findOne({ role: roleId, isActive: true }).lean()
   return u?._id || null
 }
 
@@ -97,11 +98,47 @@ const redirectIfOutOfOffice = async (assignedTo) => {
   return { assignedTo, reason: null }
 }
 
+// Find a reference user from the submitted form data
+const resolveFormAutoApprover = async (execution) => {
+  let formData = execution?.variables?.formData || null
+  let formFields = execution?.variables?.formFields || null
+
+  if (execution?.formResponseId) {
+    const FormResponse = require('../models/FormResponse')
+    const formResponse = await FormResponse.findById(execution.formResponseId).lean()
+    if (!formResponse) return { userId: null, reason: null }
+    formData = formData || formResponse.formData
+    if (!formFields) {
+      const form = await Form.findById(formResponse.formId).select('fields').lean()
+      formFields = form?.fields || null
+    }
+  } else if (!formFields && execution?.variables?.formId) {
+    const form = await Form.findById(execution.variables.formId).select('fields').lean()
+    formFields = form?.fields || null
+  }
+
+  if (!formData || !Array.isArray(formFields)) return { userId: null, reason: null }
+
+  // Find the first field marked as referenceUser
+  const refField = formFields.find(f => f.referenceUser)
+  if (!refField) return { userId: null, reason: null }
+
+  const userName = formData[refField.id]
+  if (!userName) return { userId: null, reason: null }
+
+  // Lookup the user by exact name
+  const user = await User.findOne({ name: userName, isActive: true }).lean()
+  if (user) {
+    return { userId: user._id, reason: `Auto-routed to ${user.name} — selected in the form field "${refField.label}".` }
+  }
+  return { userId: null, reason: `${userName} was selected in the form but is not an active user.` }
+}
+
 // Resolve a semantic approver token using submitter context. Returns a User _id
 // or null if the token is not recognised / no matching user exists. Tokens are
 // case- and whitespace-insensitive ("Direct manager", "direct_manager", and
 // "DIRECT MANAGER" all resolve identically).
-const resolveSemanticApprover = async (rawToken, submitter) => {
+const resolveSemanticApprover = async (rawToken, submitter, execution) => {
   const token = normaliseToken(rawToken)
   if (!token) return null
 
@@ -126,48 +163,24 @@ const resolveSemanticApprover = async (rawToken, submitter) => {
   return null
 }
 
-// Auto-detect the submitter and resolve THEIR OWN direct manager from the org
-// chart. Verifies the manager is active; if the manager is missing or inactive,
-// escalates UP the submitter's own chain (skip-level manager -> assigned HR
-// partner -> an administrator) so a request is never silently handed to an
-// unrelated manager. Returns { userId, reason }.
+// Resolve only the submitter's explicitly assigned direct manager. A missing or
+// inactive manager is intentionally unresolved: the approval preview blocks the
+// form submission and tells the user that an administrator must assign one.
+// Direct-manager steps must never silently escalate to HR, a skip-level manager,
+// or an administrator. Returns { userId, reason }.
 const resolveDirectManager = async (submitter) => {
   if (!submitter) return { userId: null, reason: null }
   const who = submitter.name || 'the submitter'
 
-  // 1) The submitter's own direct manager — must still be active.
+  // The submitter's own direct manager must still be active.
   if (submitter.managerId) {
     const mgr = await User.findOne({ _id: submitter.managerId, isActive: true }).select('name').lean()
     if (mgr) {
       return { userId: mgr._id, reason: `Auto-routed to ${mgr.name} — ${who}'s direct manager.` }
     }
-    // 1a) Direct manager deactivated/removed -> climb to the skip-level manager
-    //     (the manager's own manager), staying on the submitter's reporting line.
-    const formerMgr = await User.findById(submitter.managerId).select('managerId').lean()
-    if (formerMgr?.managerId) {
-      const skip = await User.findOne({ _id: formerMgr.managerId, isActive: true }).select('name').lean()
-      if (skip) {
-        return { userId: skip._id, reason: `${who}'s direct manager is inactive; escalated to skip-level manager ${skip.name}.` }
-      }
-    }
   }
 
-  // 2) No usable manager -> the submitter's assigned HR partner.
-  if (submitter.hrId) {
-    const hr = await User.findOne({ _id: submitter.hrId, isActive: true }).select('name').lean()
-    if (hr) {
-      return { userId: hr._id, reason: `${who} has no active manager; routed to their HR partner ${hr.name}.` }
-    }
-  }
-
-  // 3) Last resort -> an administrator (never an unrelated peer manager).
-  const adminId = await findFirstUserByRoleName('Admin')
-  if (adminId) {
-    const admin = await User.findById(adminId).select('name').lean()
-    return { userId: adminId, reason: `${who} has no manager or HR on their chain; escalated to ${admin?.name || 'an administrator'}.` }
-  }
-
-  return { userId: null, reason: null }
+  return { userId: null, reason: `${who} has no active direct manager assigned.` }
 }
 
 // Auto-detect the submitter's ASSIGNED HR partner (User.hrId) and route to
@@ -218,6 +231,18 @@ const readConditionField = (field, variables) => {
     return variables[field]
   }
   return (variables?.formData || {})[field]
+}
+
+const evaluateCondition = (operator, fieldValue, conditionValue) => {
+  switch (operator) {
+    case 'eq': return String(fieldValue) === String(conditionValue)
+    case 'gt': return Number(fieldValue) > Number(conditionValue)
+    case 'lt': return Number(fieldValue) < Number(conditionValue)
+    case 'gte': return Number(fieldValue) >= Number(conditionValue)
+    case 'lte': return Number(fieldValue) <= Number(conditionValue)
+    case 'contains': return String(fieldValue ?? '').includes(conditionValue)
+    default: return false
+  }
 }
 
 const updateNodeLog = async (execution, nodeId, status, output = {}) => {
@@ -343,9 +368,10 @@ const failExecution = async (execution, reason) => {
 // ceo / <dept>_manager) -> plain role-name lookup scoped to the submitter's
 // department. Shared by the approval + submit handlers.
 // Returns { assignedTo, routingReason, routingSla }.
-const resolveAssignee = async (execution, node, workflow) => {
+const resolveAssignee = async (execution, node, workflow, { audit = true } = {}) => {
   let assignedTo = node.config?.approverId || null
   const submitter = execution.variables?.submitter || null
+  const roleToken = normaliseToken(node.config?.approverRole)
   let routingReason = null
   let routingSla = null
 
@@ -353,33 +379,41 @@ const resolveAssignee = async (execution, node, workflow) => {
   // These need submitter context, which is why we resolve them first.
   // "direct_manager" auto-detects the submitter and routes to their OWN manager,
   // "hr_partner" to their OWN assigned HR partner — never an unrelated person —
-  // each with an active-check + escalation up that submitter's chain.
+  // Direct-manager routing stops when that assignment is missing or inactive;
+  // HR-partner routing retains its separate fallback policy.
   if (!assignedTo && node.config?.approverRole) {
-    const token = normaliseToken(node.config.approverRole)
-    if (token === 'direct_manager' || token === 'hr_partner') {
-      const routed = token === 'direct_manager'
-        ? await resolveDirectManager(submitter)
-        : await resolveHrPartner(submitter)
+    const token = roleToken
+    if (token === 'direct_manager' || token === 'hr_partner' || token === 'form_auto') {
+      let routed = { userId: null, reason: null }
+      if (token === 'direct_manager') {
+        routed = await resolveDirectManager(submitter)
+      } else if (token === 'hr_partner') {
+        routed = await resolveHrPartner(submitter)
+      } else if (token === 'form_auto') {
+        routed = await resolveFormAutoApprover(execution)
+      }
       if (routed.userId) {
         assignedTo = routed.userId
         routingReason = routed.reason
-        writeAuditLog({
-          action: 'approver_inferred',
-          performedBy: execution.triggeredBy,
-          targetEntity: `${workflow.title} — ${node.id}`,
-          department: execution.variables?.department,
-          detail: routed.reason
-        })
+        if (audit) {
+          writeAuditLog({
+            action: 'approver_inferred',
+            performedBy: execution.triggeredBy,
+            targetEntity: `${workflow.title} — ${node.id}`,
+            department: execution.variables?.department,
+            detail: routed.reason
+          })
+        }
       }
     } else {
-      assignedTo = await resolveSemanticApprover(node.config.approverRole, submitter)
+      assignedTo = await resolveSemanticApprover(node.config.approverRole, submitter, execution)
     }
   }
 
   // Pass 2: plain role-name lookup (existing behaviour). Scoped to the
   // submitter's department when one is known, with a relax-and-retry fallback.
   // Resolves custom roles like "Warehouse Manager" / "Accounts Officer".
-  if (!assignedTo && node.config?.approverRole) {
+  if (!assignedTo && node.config?.approverRole && roleToken !== 'direct_manager') {
     const roleId = await findRoleIdByName(node.config.approverRole)
     if (roleId) {
       const query = { role: roleId, isActive: true }
@@ -403,13 +437,15 @@ const resolveAssignee = async (execution, node, workflow) => {
     if (ooo.reason) {
       assignedTo = ooo.assignedTo
       routingReason = [routingReason, ooo.reason].filter(Boolean).join(' ')
-      writeAuditLog({
-        action: 'approver_inferred',
-        performedBy: execution.triggeredBy,
-        targetEntity: `Workflow: ${workflow.title}`,
-        detail: ooo.reason,
-        metadata: { nodeId: node.id, redirectedTo: String(assignedTo), reason: 'out_of_office' }
-      })
+      if (audit) {
+        writeAuditLog({
+          action: 'approver_inferred',
+          performedBy: execution.triggeredBy,
+          targetEntity: `Workflow: ${workflow.title}`,
+          detail: ooo.reason,
+          metadata: { nodeId: node.id, redirectedTo: String(assignedTo), reason: 'out_of_office' }
+        })
+      }
     }
   }
 
@@ -478,9 +514,7 @@ const handleApprovalNode = async (execution, node, workflow) => {
 // The stage passes as soon as `requiredApprovals` (N of M) approve; it fails once
 // enough reject that N approvals become impossible. Uses Task.parallelApprovers /
 // parallelApprovals; the N-of-M tallying lives in routes/tasks.js.
-const handleMultiApprovalNode = async (execution, node, workflow) => {
-  const rawIds = Array.isArray(node.config?.approverIds) ? node.config.approverIds : []
-
+const resolveMultiApprovers = async (rawIds = []) => {
   // Resolve each configured person: must be active; apply Out-of-Office
   // redirect; dedupe (two entries can resolve to the same person).
   const seen = new Set()
@@ -495,6 +529,12 @@ const handleMultiApprovalNode = async (execution, node, workflow) => {
     seen.add(key)
     approvers.push(assignedTo)
   }
+  return approvers
+}
+
+const handleMultiApprovalNode = async (execution, node, workflow) => {
+  const rawIds = Array.isArray(node.config?.approverIds) ? node.config.approverIds : []
+  const approvers = await resolveMultiApprovers(rawIds)
 
   if (approvers.length === 0) {
     return await failExecution(
@@ -696,16 +736,7 @@ const handleConditionNode = async (execution, node, workflow) => {
   // submitted the form.
   const fieldValue = readConditionField(conditionField, execution.variables)
 
-  let conditionMet = false
-  switch (conditionOperator) {
-    case 'eq':  conditionMet = String(fieldValue) === String(conditionValue); break
-    case 'gt':  conditionMet = Number(fieldValue) > Number(conditionValue); break
-    case 'lt':  conditionMet = Number(fieldValue) < Number(conditionValue); break
-    case 'gte': conditionMet = Number(fieldValue) >= Number(conditionValue); break
-    case 'lte': conditionMet = Number(fieldValue) <= Number(conditionValue); break
-    case 'contains': conditionMet = String(fieldValue ?? '').includes(conditionValue); break
-    default:    conditionMet = false
-  }
+  const conditionMet = evaluateCondition(conditionOperator, fieldValue, conditionValue)
 
   const nextNodeId = conditionMet ? truePath : falsePath
   await updateNodeLog(execution, node.id, 'completed', { conditionMet, nextNodeId })
@@ -952,11 +983,6 @@ const processNode = async (execution, nodeId, workflow) => {
     return await failExecution(execution, `Node ${nodeId} not found in workflow`)
   }
 
-  // Normalize legacy node.next to node.nextNode
-  if (node.next !== undefined && node.nextNode === undefined) {
-    node.nextNode = node.next
-  }
-
   execution.currentNodeId = nodeId
   execution.executionLog.push({
     nodeId: node.id,
@@ -1013,18 +1039,269 @@ const processNode = async (execution, nodeId, workflow) => {
   }
 }
 
+// Read-only preview used by the form filler. It walks the same success path and
+// resolves people with the same helpers as a real execution, but creates no
+// execution, task, notification, or audit event.
+const previewPerson = async (userId) => {
+  if (!userId) return null
+  const user = await User.findById(userId)
+    .select('name department role')
+    .populate('role', 'name')
+    .lean()
+  if (!user) return null
+  return {
+    name: user.name || 'Assigned approver',
+    role: user.role?.name || null,
+    department: user.department || null,
+  }
+}
+
+const approverRoleLabel = (value) => String(value || '')
+  .trim()
+  .replace(/_/g, ' ')
+  .replace(/\b\w/g, (letter) => letter.toUpperCase())
+
+const previewApprovalRoute = async ({ workflow, form, formData = {}, submitter }) => {
+  const submitterId = submitter?._id || submitter?.id
+  const submitterDoc = submitterId
+    ? await User.findById(submitterId).populate('role', 'name').lean()
+    : null
+
+  const variables = {
+    formData: formData && typeof formData === 'object' ? formData : {},
+    formFields: Array.isArray(form?.fields) ? form.fields : [],
+    formId: form?._id || null,
+    lastApprovalOutcome: 'approved',
+  }
+  if (submitterDoc) {
+    variables.submitter = {
+      id: submitterDoc._id,
+      name: submitterDoc.name,
+      email: submitterDoc.email,
+      role: submitterDoc.role?.name || null,
+      department: submitterDoc.department || null,
+      managerId: submitterDoc.managerId || null,
+      hrId: submitterDoc.hrId || null,
+    }
+    if (submitterDoc.department) variables.department = submitterDoc.department
+  }
+
+  const execution = {
+    formResponseId: null,
+    triggeredBy: submitterId || null,
+    variables,
+  }
+  const nodes = Array.isArray(workflow?.nodes) ? workflow.nodes : []
+  const nodeById = new Map(nodes.map((node) => [node.id, node]))
+  const fieldById = new Map((form?.fields || []).map((field) => [field.id, field]))
+  const start = nodes.find((node) => node.type === 'start')
+  const stages = []
+  const requiredInputs = []
+  const issues = []
+  const seen = new Set()
+  let confirmation = 'confirmed'
+  let message = ''
+  let nodeId = start?.nextNode || null
+  let approvalsRequired = 0
+  let approvalStages = 0
+  let reviewStages = 0
+  let hops = 0
+
+  if (!start) {
+    confirmation = 'invalid'
+    message = 'The linked workflow has no start step.'
+  }
+
+  while (nodeId && confirmation === 'confirmed' && hops < MAX_HOPS_PER_WALK) {
+    hops += 1
+    if (seen.has(nodeId)) {
+      confirmation = 'runtime_only'
+      message = 'The remaining route depends on a workflow loop and will be confirmed while it runs.'
+      break
+    }
+    seen.add(nodeId)
+
+    const node = nodeById.get(nodeId)
+    if (!node) {
+      confirmation = 'invalid'
+      message = 'The linked workflow contains an unavailable step.'
+      break
+    }
+    const config = node.config || {}
+
+    if (node.type === 'end') break
+
+    if (node.type === 'condition') {
+      const conditionField = config.conditionField
+      const formField = fieldById.get(conditionField)
+      const isSubmitterField = String(conditionField || '').startsWith('submitter.')
+      const hasRuntimeValue = Object.prototype.hasOwnProperty.call(variables, conditionField)
+      const fieldValue = readConditionField(conditionField, variables)
+      const isEmpty = fieldValue === undefined || fieldValue === null || fieldValue === ''
+
+      if (formField && isEmpty) {
+        confirmation = 'needs_input'
+        requiredInputs.push({
+          fieldId: formField.id,
+          label: formField.label || formField.id,
+        })
+        message = `Complete ${formField.label || formField.id} to confirm the remaining approval route.`
+        break
+      }
+
+      if (!formField && !isSubmitterField && !hasRuntimeValue) {
+        confirmation = 'runtime_only'
+        message = 'The remaining route depends on data created during the workflow.'
+        break
+      }
+
+      if (isSubmitterField && isEmpty) {
+        confirmation = 'runtime_only'
+        message = 'The remaining route depends on submitter information that is not configured.'
+        break
+      }
+
+      const conditionMet = evaluateCondition(
+        config.conditionOperator,
+        fieldValue,
+        config.conditionValue
+      )
+      nodeId = conditionMet ? config.truePath : config.falsePath
+      if (!nodeId) {
+        confirmation = 'invalid'
+        message = 'A conditional approval path has not been configured.'
+      }
+      continue
+    }
+
+    if (node.type === 'approval' || node.type === 'review') {
+      const resolved = await resolveAssignee(execution, node, workflow, { audit: false })
+      const person = await previewPerson(resolved.assignedTo)
+      const configuredRole = approverRoleLabel(config.approverRole)
+      const kind = node.type === 'review' ? 'review' : 'approval'
+      const title = node.label || (kind === 'review' ? 'Review' : 'Approval')
+      const routingToken = normaliseToken(config.approverRole)
+      stages.push({
+        nodeId: node.id,
+        kind,
+        title,
+        approver: person,
+        configuredRole: configuredRole || null,
+        department: person?.department || workflow.department || null,
+        slaHours: Number(resolved.routingSla || config.slaHours) || 48,
+        status: person ? 'resolved' : 'unconfigured',
+        routingReason: resolved.routingReason || null,
+      })
+      if (!person) {
+        const issueCode = routingToken === 'direct_manager' && !config.approverId
+          ? 'manager_unassigned'
+          : 'approver_unconfigured'
+        const issueMessage = issueCode === 'manager_unassigned'
+          ? `${submitterDoc?.name || 'This requester'} has no active direct manager assigned. Ask a workspace administrator to assign a manager before submitting.`
+          : `${title} has no active approver configured. Ask a workspace administrator to assign one.`
+        issues.push({
+          code: issueCode,
+          severity: 'error',
+          nodeId: node.id,
+          title,
+          message: issueMessage,
+        })
+      }
+      if (kind === 'approval') {
+        approvalStages += 1
+        approvalsRequired += 1
+      } else {
+        reviewStages += 1
+      }
+      nodeId = kind === 'review'
+        ? (config.forwardPath || node.nextNode)
+        : node.nextNode
+      continue
+    }
+
+    if (node.type === 'multiApproval') {
+      const approverIds = await resolveMultiApprovers(
+        Array.isArray(config.approverIds) ? config.approverIds : []
+      )
+      const people = await Promise.all(approverIds.map(previewPerson))
+      const approvers = people.filter(Boolean)
+      const total = approvers.length
+      const configuredRequired = Math.max(Number(config.requiredApprovals) || 1, 1)
+      const required = total > 0 ? Math.min(configuredRequired, total) : 0
+      stages.push({
+        nodeId: node.id,
+        kind: 'multiApproval',
+        title: node.label || 'Committee approval',
+        approvers,
+        configuredRole: null,
+        department: workflow.department || null,
+        slaHours: Number(config.slaHours) || 48,
+        status: total > 0 ? 'resolved' : 'unconfigured',
+        quorum: { required, total },
+      })
+      if (total === 0) {
+        issues.push({
+          code: 'approver_unconfigured',
+          severity: 'error',
+          nodeId: node.id,
+          title: node.label || 'Committee approval',
+          message: `${node.label || 'Committee approval'} has no active approvers configured. Ask a workspace administrator to assign them.`,
+        })
+      }
+      approvalStages += 1
+      approvalsRequired += required
+      nodeId = node.nextNode
+      continue
+    }
+
+    nodeId = node.nextNode
+  }
+
+  if (hops >= MAX_HOPS_PER_WALK && nodeId) {
+    confirmation = 'runtime_only'
+    message = 'The remaining route will be confirmed while the workflow runs.'
+  }
+
+  if (confirmation === 'invalid') {
+    issues.push({
+      code: 'route_invalid',
+      severity: 'error',
+      nodeId: null,
+      title: 'Approval route is incomplete',
+      message: message || 'The linked workflow must be corrected before this request can be submitted.',
+    })
+  }
+
+  return {
+    linked: true,
+    workflowTitle: workflow.title || 'Linked workflow',
+    automatic: workflow.triggerOn !== 'Manual trigger only',
+    confirmation,
+    message,
+    requiredInputs,
+    issues,
+    canSubmit: !issues.some((issue) => issue.severity === 'error'),
+    stages,
+    summary: {
+      approvalStages,
+      approvalsRequired,
+      reviewStages,
+    },
+  }
+}
+
 // Called by routes/forms.js POST /:id/submit and routes/workflows.js POST /:id/execute.
 const triggerWorkflow = async (workflowId, formResponseId, userId, extraVariables = {}) => {
   const Workflow = require('../models/Workflow')
   const FormResponse = require('../models/FormResponse')
 
-  const workflow = await Workflow.findById(workflowId).lean()
+  const workflow = await Workflow.findById(workflowId)
   if (!workflow) throw new Error('Workflow not found')
   if (workflow.status !== 'published') {
     throw new Error(`Workflow status is "${workflow.status}", cannot trigger`)
   }
 
-  const startNode = workflow.nodes.find(n => n.type === 'start' || n.type === 'trigger')
+  const startNode = workflow.nodes.find(n => n.type === 'start')
   if (!startNode) throw new Error('Workflow has no start node')
 
   const variables = { ...extraVariables }
@@ -1053,6 +1330,20 @@ const triggerWorkflow = async (workflowId, formResponseId, userId, extraVariable
     const formResponse = await FormResponse.findById(formResponseId).lean()
     if (formResponse) {
       variables.formData = formResponse.formData
+
+      // Keep a durable display snapshot with the execution. Form responses and
+      // form definitions can be removed later, but task history must remain
+      // understandable for audit and approval review. WorkflowExecution.variables
+      // is intentionally Mixed, so this is additive and needs no migration.
+      if (formResponse.formId && !Array.isArray(variables.formFields)) {
+        const sourceForm = await Form.findById(formResponse.formId)
+          .select('title fields')
+          .lean()
+        if (sourceForm) {
+          variables.formTitle = sourceForm.title || null
+          variables.formFields = Array.isArray(sourceForm.fields) ? sourceForm.fields : []
+        }
+      }
     }
   }
 
@@ -1101,7 +1392,7 @@ const triggerWorkflow = async (workflowId, formResponseId, userId, extraVariable
 
   // Walk the graph. Will resolve when the engine pauses (approval node)
   // or completes / fails. Await so the caller knows the kick-off succeeded.
-  await processNode(execution, startNode.nextNode || startNode.next, workflow)
+  await processNode(execution, startNode.nextNode, workflow)
 
   return execution
 }
@@ -1121,7 +1412,7 @@ const advanceWorkflow = async (taskId, outcome = 'approved') => {
   const execution = await WorkflowExecution.findById(task.workflowExecutionId)
   if (!execution) throw new Error('Execution not found')
 
-  const workflow = await Workflow.findById(execution.workflowId).lean()
+  const workflow = await Workflow.findById(execution.workflowId)
   if (!workflow) throw new Error('Workflow not found')
 
   const currentNode = workflow.nodes.find(n => n.id === task.currentNode)
@@ -1192,16 +1483,15 @@ const advanceWorkflow = async (taskId, outcome = 'approved') => {
   // downstream to handle it. If the next node is a condition, we let it
   // branch (so the designer can build "approve goes here / reject goes there"
   // flows). Otherwise rejection ends the execution like before.
-  const actualNextNodeId = currentNode.nextNode || currentNode.next
-  const nextNode = actualNextNodeId
-    ? workflow.nodes.find(n => n.id === actualNextNodeId)
+  const nextNode = currentNode.nextNode
+    ? workflow.nodes.find(n => n.id === currentNode.nextNode)
     : null
 
   if (outcome === 'rejected' && (!nextNode || nextNode.type !== 'condition')) {
     return await failExecution(execution, `Rejected at node ${task.currentNode}`)
   }
 
-  return await processNode(execution, actualNextNodeId, workflow)
+  return await processNode(execution, currentNode.nextNode, workflow)
 }
 
-module.exports = { triggerWorkflow, advanceWorkflow, processNode, isUserOOO }
+module.exports = { triggerWorkflow, advanceWorkflow, processNode, previewApprovalRoute, isUserOOO }

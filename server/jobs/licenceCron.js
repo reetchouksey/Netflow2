@@ -30,7 +30,10 @@ const DAY = 86400000
 const REMINDER_DAYS = [30, 14, 7, 1]
 
 const recipientsFor = async (org) => {
-  const adminRole = await Role.findOne({ name: 'Admin' }).select('_id').lean()
+  const adminRole = await Role.findOne({ orgId: org._id, nameKey: 'admin' })
+    .setOptions({ skipOrgScope: true })
+    .select('_id')
+    .lean()
   const admins = adminRole
     ? await User.find({ orgId: org._id, role: adminRole._id, isActive: true })
       .select('_id email')

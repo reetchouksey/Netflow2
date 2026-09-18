@@ -96,8 +96,8 @@ h.runSuite('licensing_quota', async () => {
     const mgrTok = await h.getToken({ email: mgr.email })
 
     const opsBlocked = await h.api('POST', '/forms', mgrTok, { title: 'Q Ops No Build', fields: [] })
-    h.check('LICQ-004', 'Ops leaders (Manager) cannot design forms — Org Admin only',
-      opsBlocked.status === 403 && limitBody(opsBlocked).code === 'FORBIDDEN',
+    h.check('LICQ-004', 'A Manager without Builder access cannot design forms',
+      opsBlocked.status === 403 && limitBody(opsBlocked).code === 'BUILDER_SEAT_REQUIRED',
       `${opsBlocked.status} ${limitBody(opsBlocked).code}`)
 
     const noSeat = await h.api('POST', '/forms', designerTok, { title: 'Q No Seat', fields: [] })
@@ -522,10 +522,9 @@ h.runSuite('licensing_quota', async () => {
   }
 
   // ── LICQ-030 the kill switch ──────────────────────────────────────────────
-  // LICENSING_ENFORCE=0 has to make every gate a no-op while still storing and
-  // displaying the numbers — it is the rollback plan if enforcement misfires in
-  // production. Asserted in-process, since the flag is read by the server at
-  // request time and this suite cannot restart it.
+  // LICENSING_ENFORCE=0 disables numeric quota and expiry checks, but never the
+  // Builder authorization boundary. Asserted in-process because the flag is read
+  // at request time and this suite cannot restart the server.
   {
     const { checkQuota, checkStorage, requireCanBuild } = require('../middleware/quota')
     const { writeBlockFor } = require('../middleware/licence')
@@ -556,10 +555,14 @@ h.runSuite('licensing_quota', async () => {
       const licence = writeBlockFor(org)
       let seatDenied = false
       requireCanBuild({ user: { canBuild: false, role: { name: 'Manager' } }, organization: org },
-        { }, () => { seatDenied = false })
-      h.check('LICQ-030', 'With enforcement off, nothing is refused',
-        quota === null && storage.ok === true && licence === null && seatDenied === false,
-        `quota=${quota} storage=${storage.ok} licence=${licence}`)
+        {
+          status() { seatDenied = true; return this },
+          json() { return this }
+        },
+        () => { seatDenied = false })
+      h.check('LICQ-030', 'With enforcement off, quotas are bypassed but Builder access remains protected',
+        quota === null && storage.ok === true && licence === null && seatDenied === true,
+        `quota=${quota} storage=${storage.ok} licence=${licence} builderDenied=${seatDenied}`)
     } finally {
       if (saved === undefined) delete process.env.LICENSING_ENFORCE
       else process.env.LICENSING_ENFORCE = saved

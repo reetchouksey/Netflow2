@@ -64,7 +64,7 @@ const escalateTask = async (task, startedAt) => {
         }
       }
     },
-    { new: true }
+    { returnDocument: 'after' }
   )
 
   if (!updated) return false // Another loop already escalated this one

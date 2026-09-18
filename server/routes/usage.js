@@ -23,6 +23,11 @@ const { usageSnapshot, licenceState } = require('../utils/licensing')
 const { countsFor } = require('../utils/usage')
 const { ensurePeriod } = require('../utils/usageMeter')
 const { enforcementEnabled } = require('../middleware/quota')
+const {
+  readDmsStorageUsage,
+  withStorageUsage,
+  persistStorageUsage,
+} = require('../services/storageUsage')
 
 const router = express.Router()
 
@@ -61,6 +66,13 @@ router.get('/', roleGuard('Admin'), async (req, res, next) => {
     if (!org) return sendError(res, 'Workspace not found', 'ORG_NOT_FOUND', 404)
 
     const counts = await countsFor(org._id)
+    const dmsStorage = await readDmsStorageUsage({ org, user: req.user })
+    if (dmsStorage.configured && dmsStorage.available) {
+      await persistStorageUsage(org, dmsStorage)
+    }
+    const effectiveOrg = dmsStorage.configured && dmsStorage.available
+      ? withStorageUsage(org, dmsStorage)
+      : org
     
     // Calculate last 7 days submissions trend
     const sevenDaysAgo = new Date()
@@ -93,8 +105,15 @@ router.get('/', roleGuard('Admin'), async (req, res, next) => {
       })
     }
 
+    const usage = usageSnapshot(effectiveOrg, counts)
+    usage.resources.storage = {
+      ...usage.resources.storage,
+      source: dmsStorage.configured ? dmsStorage.source : 'netflow',
+      available: !dmsStorage.configured || dmsStorage.available,
+    }
+
     return sendSuccess(res, {
-      usage: usageSnapshot(org, counts),
+      usage,
       trend: trend,
       enforced: enforcementEnabled()
     })

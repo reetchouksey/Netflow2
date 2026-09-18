@@ -91,6 +91,7 @@ const workflowSchema = new mongoose.Schema({
   orgId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', index: true },
   title: { type: String, required: true },
   description: { type: String },
+  tags: [{ type: String }],
   nodes: [nodeSchema],
   edges: [{
     id: String,
@@ -114,11 +115,10 @@ const workflowSchema = new mongoose.Schema({
     whoCanSubmit: { type: String, default: 'All employees' },
     departments: [{ type: String }],
     allowedInitiators: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-    // Visibility = who can SEE/open the linked form & workflow:
-    //   'company' (everyone) | 'roles' (roles) | 'departments' (listed depts) | 'people' (visibleTo).
+    // Visibility = who can SEE/open the linked form (independent of whoCanSubmit):
+    //   'company' (everyone) | 'departments' (listed depts) | 'people' (visibleTo).
     visibility: { type: String, default: 'company' },
-    visibleTo: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-    roles: [{ type: String }]
+    visibleTo: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
   },
   // Trigger + submission behaviour set on the workflow's settings page.
   //   triggerOn: 'Every form submission' (auto-fire) | 'Manual trigger only' (only /execute)
@@ -133,6 +133,8 @@ const workflowSchema = new mongoose.Schema({
     token: { type: String, index: true, sparse: true },
     // HMAC signing secret for X-NetFlow-Signature (sha256=<hex> over raw body).
     secret: { type: String },
+    // If false, any POST to the webhook URL will be accepted without signature verification.
+    requireSignature: { type: Boolean, default: true },
     // POST here when a webhook-started run completes / fails / is rejected.
     callbackUrl: { type: String, default: '' },
     // Optional schema for inbound payloads (validated when non-empty).
@@ -148,6 +150,7 @@ const workflowSchema = new mongoose.Schema({
     autoPdf: { type: Boolean, default: false }
   },
   department: { type: String },
+  tags: [{ type: String }],
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   version: { type: Number, default: 1 },
   previousVersionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Workflow' }

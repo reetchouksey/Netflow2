@@ -183,25 +183,23 @@ const requireQuota = (resource) => async (req, res, next) => {
   }
 }
 
-// The builder-seat gate for routes that design forms and workflows.
-//
-// Roles still decide who is *eligible* to build (roleGuard on each route); this
-// decides who currently *holds a seat*. The two are separate because plans sell a
-// number of builders while roles are a global catalogue shared by every tenant —
-// counting "users whose role happens to be Manager" would mean a tenant could
-// exceed a 1-builder plan just by promoting someone.
+// The per-user Builder gate for routes that design forms and workflows. This
+// access is additive to the person's role, so it never grants people, billing,
+// settings, or audit powers. Unlike numeric quotas, this access check remains
+// authoritative when LICENSING_ENFORCE is disabled.
 //
 // Existing builders were granted the flag by scripts/migrateLicensing.js, and the
 // Super Admin is exempt because they administer the platform rather than build in
 // a tenant.
+const hasBuilderAccess = (user) =>
+  user?.role?.name === 'SuperAdmin' || user?.canBuild === true
+
 const requireCanBuild = (req, res, next) => {
-  if (!enforcementEnabled()) return next()
-  if (req.user?.role?.name === 'SuperAdmin' || req.user?.role?.name === 'Admin') return next()
-  if (req.user?.canBuild === true) return next()
+  if (hasBuilderAccess(req.user)) return next()
 
   return sendError(
     res,
-    'You do not hold a builder seat. Ask an administrator to enable "Can build" for your account in Admin → Users.',
+    'Builder access is not enabled for your account. Ask an administrator to enable "Builder seat" in Admin → Users.',
     'BUILDER_SEAT_REQUIRED',
     403,
     { resource: 'builders', plan: req.organization?.plan || 'custom', planLabel: planLabelOf(req.organization) }
@@ -214,6 +212,7 @@ module.exports = {
   remainingFor,
   requireQuota,
   requireCanBuild,
+  hasBuilderAccess,
   respond,
   enforcementEnabled,
   planLabelOf,

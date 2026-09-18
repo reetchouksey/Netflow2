@@ -39,7 +39,7 @@ const QA_EMAIL_DOMAIN = 'qa.test'
 const DEFAULT_PASSWORD = 'QaTest@12345'
 
 const TENANT_MODELS = [
-  User, Form, FormDraft, FormResponse, Workflow,
+  Role, User, Form, FormDraft, FormResponse, Workflow,
   WorkflowExecution, Task, Notification, AuditLog,
   WebhookIdempotency, WebhookDeliveryLog, IntegrationDeadLetter
 ]

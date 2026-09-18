@@ -11,6 +11,9 @@ const TCS = ['ADM-001', 'ADM-007', 'ADM-011', 'ADM-014', 'ADM-015', 'ADM-023']
 
 // Dialogs all render through components/Modal, which sets role="dialog".
 const DIALOG = '[role="dialog"]'
+const skipProductTour = ({ page, user }) => page.addInitScript((userId) => {
+  localStorage.setItem(`fs.userGuide.completed.${userId}`, '1')
+}, String(user?._id || user?.id || ''))
 
 h.runSuite('ui_admin', async () => {
   if (!(await u.frontendUp())) return u.skipAll(TCS, u.unavailableReason())
@@ -40,13 +43,15 @@ h.runSuite('ui_admin', async () => {
     // ── ADM-001 — the panel is Admin-only ───────────────────────────────────
     {
       const emp = await u.session(browser, { token: empTok, workspace: org.subdomain })
+      await skipProductTour(emp)
       await u.goto(emp.page, '/admin')
-      const blocked = await emp.page.locator('text=Admins only').first().isVisible().catch(() => false)
-      h.check('ADM-001', 'Non-admin opening /admin gets the "Admins only" gate',
+      const blocked = await emp.page.getByText(/Admins only|You do not have access to that page/i).first().isVisible().catch(() => false)
+      h.check('ADM-001', 'Non-admin opening /admin gets an access gate',
         blocked, `saw: ${(await emp.page.locator('body').innerText()).slice(0, 120).replace(/\s+/g, ' ')}`)
       await emp.context.close()
 
       const adm = await u.session(browser, { token: adminTok, workspace: org.subdomain })
+      await skipProductTour(adm)
       await u.goto(adm.page, '/admin')
       const hasTable = await adm.page.locator('table').first().isVisible().catch(() => false)
       const gated = await adm.page.locator('text=Admins only').first().isVisible().catch(() => false)
@@ -57,12 +62,14 @@ h.runSuite('ui_admin', async () => {
 
     // ── the create / import / edit dialogs ──────────────────────────────────
     {
-      const { context, page } = await u.session(browser, { token: adminTok, workspace: org.subdomain })
+      const session = await u.session(browser, { token: adminTok, workspace: org.subdomain })
+      await skipProductTour(session)
+      const { context, page } = session
       await u.goto(page, '/admin')
       await page.waitForSelector('table', { timeout: 20000 })
 
       // ADM-007 — create dialog opens with every field.
-      await page.getByRole('button', { name: '+ New user' }).click()
+      await page.getByRole('button', { name: /^invite user$/i }).click()
       await page.waitForSelector(DIALOG, { timeout: 10000 })
       const fields = ['#cu-name', '#cu-email', '#cu-role', '#cu-department', '#cu-manager', '#cu-password']
       const absent = []
@@ -80,7 +87,7 @@ h.runSuite('ui_admin', async () => {
       await page.getByRole('button', { name: /^create user$/i }).click()
       await page.waitForTimeout(800)
       const stillOpen = await u.isVisible(page, DIALOG)
-      const emailError = await page.locator(`${DIALOG} >> text=/valid email/i`).first().isVisible().catch(() => false)
+      const emailError = await page.getByText(/valid email/i).first().isVisible().catch(() => false)
       const after011 = await countUsers()
       h.check('ADM-011', 'Create-user rejects a malformed email with a validation error',
         emailError && stillOpen, `error=${emailError} dialogOpen=${stillOpen}`)
@@ -100,7 +107,7 @@ h.runSuite('ui_admin', async () => {
         after014 === before014, `user count ${before014} → ${after014}`)
 
       // ADM-023 — import dialog opens with a file picker.
-      await page.getByRole('button', { name: /^import users$/i }).click()
+      await page.getByRole('button', { name: /^import csv$/i }).click()
       await page.waitForSelector(DIALOG, { timeout: 10000 })
       const importTitle = await page.locator(`${DIALOG} h2`).first().innerText().catch(() => '')
       const filePicker = (await page.locator(`${DIALOG} input[type="file"]`).count()) > 0
@@ -111,9 +118,10 @@ h.runSuite('ui_admin', async () => {
       await page.waitForTimeout(400)
 
       // ADM-015 — the edit dialog arrives pre-filled.
-      await page.fill('input[placeholder*="Search by name"]', 'Zoya Prefill')
+      await page.getByRole('searchbox', { name: 'Search users', exact: true }).fill('Zoya Prefill')
       await page.waitForTimeout(600)
-      await page.getByRole('button', { name: /^edit$/i }).first().click()
+      await page.getByRole('button', { name: 'More actions for Zoya Prefill', exact: true }).click()
+      await page.getByRole('menuitem', { name: 'Edit user', exact: true }).click()
       await page.waitForSelector(DIALOG, { timeout: 10000 })
       const prefill = {
         name: await page.inputValue('#eu-name'),

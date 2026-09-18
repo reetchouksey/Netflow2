@@ -41,7 +41,7 @@ h.runSuite('profile', async () => {
 
   // PRF-005 change password with correct current password.
   const t1 = await h.getToken({ email: pw1.email })
-  const newPw = 'NewPass@999'
+  const newPw = 'CedarRiver@999'
   const chg = await h.api('POST', '/auth/change-password', t1, { currentPassword: h.DEFAULT_PASSWORD, newPassword: newPw })
   const loginNew = await h.getToken({ email: pw1.email, password: newPw })
   const loginOld = await h.api('POST', '/auth/login', null, { email: pw1.email, password: h.DEFAULT_PASSWORD })
@@ -49,7 +49,7 @@ h.runSuite('profile', async () => {
 
   // PRF-006 wrong current password.
   const t2 = await h.getToken({ email: pw2.email })
-  const wrong = await h.api('POST', '/auth/change-password', t2, { currentPassword: 'totally-wrong', newPassword: 'Another@999' })
+  const wrong = await h.api('POST', '/auth/change-password', t2, { currentPassword: 'totally-wrong', newPassword: 'AnotherRiver@999' })
   h.check('PRF-006', 'Wrong current password rejected (INVALID_CURRENT_PASSWORD)', wrong.status === 401 && wrong.body?.code === 'INVALID_CURRENT_PASSWORD', `status ${wrong.status}, code ${wrong.body?.code}`)
 
   // PRF-007 weak new password.

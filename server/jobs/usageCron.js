@@ -19,16 +19,25 @@ const { measureOrg } = require('../utils/fileStore')
 const { ensurePeriod } = require('../utils/usageMeter')
 const { evaluateWarnings } = require('../utils/usageWarnings')
 const { MB } = require('../utils/licensing')
+const { readDmsStorageUsage } = require('../services/storageUsage')
 
 // Reconciles one tenant. Returns what changed, for the log.
-const reconcileOrg = async (org) => {
+const reconcileOrg = async (org, { readRemoteStorage = readDmsStorageUsage } = {}) => {
   const changes = []
 
-  const actual = measureOrg(org._id)
+  const remote = await readRemoteStorage({ org })
+  const remoteUnavailable = remote.configured && !remote.available
+  const actual = remoteUnavailable
+    ? null
+    : remote.configured
+    ? { bytes: remote.usedBytes, files: remote.documentCount ?? Number(org.usage?.fileCount || 0) }
+    : measureOrg(org._id)
   const storedBytes = Number(org.usage?.storageBytes || 0)
   const storedFiles = Number(org.usage?.fileCount || 0)
 
-  if (actual.bytes !== storedBytes || actual.files !== storedFiles) {
+  if (remoteUnavailable) {
+    changes.push('DMS storage unavailable; kept last known usage')
+  } else if (actual.bytes !== storedBytes || actual.files !== storedFiles) {
     const limitBytes = Number(org.limits?.maxStorageMb || 0) * MB
     await Organization.updateOne({ _id: org._id }, {
       $set: {

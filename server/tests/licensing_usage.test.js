@@ -319,7 +319,7 @@ h.runSuite('licensing_usage', async () => {
     }
   }
 
-  // ── LICU-014 reconciliation rolls a window nobody touched ────────────────
+  // LICU-014 - reconciliation rolls a window nobody touched.
   {
     const org = await h.createOrg('u-idle', {
       plan: 'basic',

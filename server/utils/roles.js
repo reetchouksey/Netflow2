@@ -1,12 +1,12 @@
 // Shared role sets for route guards — keep in sync with frontend/src/utils/permissions.js
 // Shells: platform (SuperAdmin) | orgAdmin (Admin) | ops (leaders) | workspace (Employee)
 
-const DESIGNER_ROLES = ['Admin']
+const ADMIN_ROLES = ['Admin']
 const OPS_ROLES = ['Admin', 'CEO', 'Manager', 'HR', 'VP']
 const SUBMITTER_ROLES = ['Admin', 'CEO', 'Manager', 'HR', 'VP', 'Employee']
-const REPORT_ROLES = ['Admin', 'CEO', 'Manager', 'HR', 'VP']
+const AUDIT_ROLES = ['Admin', 'CEO']
+const ANALYTICS_ROLES = ['Admin', 'CEO', 'Manager', 'HR', 'VP']
 
-const isDesigner = (user) => DESIGNER_ROLES.includes(user?.role?.name) || Boolean(user?.canBuild)
 const isOps = (user) => OPS_ROLES.includes(user?.role?.name)
 
 const shellFor = (roleName) => {
@@ -16,47 +16,32 @@ const shellFor = (roleName) => {
   return 'workspace'
 }
 
-// The capability matrix the Roles & Permissions page renders. Built from the
-// very lists the route guards use above, so the page cannot drift away from
-// what the API actually enforces — if a guard changes, the matrix changes with
-// it. `note` explains a condition the role list alone cannot express.
+// Compatibility metadata for older callers. Builder access is deliberately
+// absent because User.canBuild, not the person's role, is authoritative.
 const CAPABILITIES = [
   {
-    key: 'design',
-    label: 'Design forms & workflows',
-    description: 'Create, edit and publish the templates everyone else uses.',
-    roles: DESIGNER_ROLES,
-    note: 'Also needs a builder seat'
-  },
-  {
-    key: 'approve',
-    label: 'Approve requests',
+    key: 'decide_tasks',
+    label: 'Decide tasks',
     description: 'Act on approval, review and submission tasks assigned to them.',
     roles: OPS_ROLES
   },
   {
-    key: 'submit',
-    label: 'Submit forms',
-    description: 'Fill in a form and start a request.',
-    roles: SUBMITTER_ROLES
-  },
-  {
-    key: 'reports',
-    label: 'Reports & audit log',
-    description: 'Analytics, SLA breaches, department KPIs and the audit trail.',
-    roles: REPORT_ROLES
-  },
-  {
-    key: 'users',
+    key: 'manage_users',
     label: 'Manage users',
-    description: 'Invite, edit, deactivate people and change their roles.',
-    roles: DESIGNER_ROLES
+    description: 'Invite, edit, deactivate people and manage workspace access.',
+    roles: ADMIN_ROLES
   },
   {
-    key: 'organization',
-    label: 'Organization settings',
-    description: 'Workspace name, billing contact and the department list.',
-    roles: DESIGNER_ROLES
+    key: 'view_audit',
+    label: 'View audit',
+    description: 'Read the workspace audit trail.',
+    roles: AUDIT_ROLES
+  },
+  {
+    key: 'view_analytics',
+    label: 'View analytics',
+    description: 'View operational reports, KPIs and SLA analytics.',
+    roles: ANALYTICS_ROLES
   }
 ]
 
@@ -65,13 +50,13 @@ const CAPABILITIES = [
 const ROLE_ORDER = ['Admin', 'CEO', 'VP', 'Manager', 'HR', 'Employee']
 
 module.exports = {
-  DESIGNER_ROLES,
+  ADMIN_ROLES,
   OPS_ROLES,
   SUBMITTER_ROLES,
-  REPORT_ROLES,
+  AUDIT_ROLES,
+  ANALYTICS_ROLES,
   CAPABILITIES,
   ROLE_ORDER,
   shellFor,
-  isDesigner,
   isOps
 }

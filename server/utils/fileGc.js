@@ -21,6 +21,9 @@ const fs = require('fs')
 
 const { resolveStored, removeStored, dirForOrg, UPLOAD_ROOT } = require('./fileStore')
 const { releaseStorage } = require('./usageMeter')
+const Organization = require('../models/Organization')
+const dms = require('../services/dmsClient')
+const s3 = require('../services/s3Client')
 
 // Matches the capability URLs produced by fileStore.urlFor. Legacy flat
 // "/uploads/<name>" links are deliberately ignored: they live outside any org
@@ -102,7 +105,40 @@ const releaseFor = async (orgId, { responses = [], tasks = [], executions = [], 
   tasks.forEach((t) => urlsOfTask(t).forEach((ref) => refs.add(ref)))
   executions.forEach((e) => urlsOfExecution(e).forEach((ref) => refs.add(ref)))
   users.forEach((u) => urlsOfUser(u).forEach((ref) => refs.add(ref)))
-  return releaseRefs(orgId, refs)
+  const local = await releaseRefs(orgId, refs)
+
+  // Auto-fill source PDFs stored in DMS/S3 are owned by the FormResponse too.
+  // Limit remote deletion to this explicit kind so legacy DMS metering rules for
+  // ordinary uploads remain unchanged.
+  const remote = new Map()
+  for (const response of responses) {
+    for (const attachment of response?.attachments || []) {
+      if (attachment?.kind !== 'auto_fill_source') continue
+      const key = attachment.dmsDocId ? 'dms:' + attachment.dmsDocId : attachment.s3Key ? 's3:' + attachment.s3Key : null
+      if (key) remote.set(key, attachment)
+    }
+  }
+
+  if (!remote.size) return local
+  const org = await Organization.findById(orgId).lean()
+  if (!org) return local
+  let remoteBytes = 0
+  let remoteFiles = 0
+  for (const attachment of remote.values()) {
+    try {
+      if (attachment.dmsDocId) {
+        await dms.deleteDoc(attachment.dmsDocId, { org })
+        remoteBytes += Number(attachment.size || 0)
+        remoteFiles += 1
+      } else if (attachment.s3Key) {
+        await s3.deleteFile(org, attachment.s3Key)
+      }
+    } catch (error) {
+      console.warn('[file-gc] remote auto-fill source delete failed:', error.message)
+    }
+  }
+  if (remoteFiles) await releaseStorage(orgId, remoteBytes, { files: remoteFiles })
+  return { bytes: local.bytes + remoteBytes, files: local.files + remoteFiles }
 }
 
 // Whole-tenant cleanup for a deleted organization: the directory goes, and with

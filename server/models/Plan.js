@@ -27,6 +27,11 @@ const planSchema = new mongoose.Schema({
     maxStorageMb: { type: Number, default: 0 },
     maxFiles: { type: Number, default: 0 }
   },
+  features: {
+    // All sellable plans include PDF auto-fill by default. Platform admins can
+    // turn the entitlement off for a plan without discarding tenant settings.
+    pdfAutoFill: { type: Boolean, default: true }
+  },
   isCustom: { 
     type: Boolean, 
     default: false 

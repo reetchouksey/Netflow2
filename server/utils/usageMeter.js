@@ -68,7 +68,7 @@ const meterSubmission = async (orgId) => {
   const updated = await Organization.findByIdAndUpdate(
     orgId,
     { $inc: { 'usage.submissions.count': 1 } },
-    { new: true, select: 'name plan limits usage billingEmail' }
+    { returnDocument: 'after', select: 'name plan limits usage billingEmail' }
   ).lean()
   if (updated) considerWarnings(updated)
   return updated?.usage?.submissions || null
@@ -87,7 +87,7 @@ const addStorage = async (orgId, bytes, { files = 1, bufferBytes = 0 } = {}) => 
   const updated = await Organization.findByIdAndUpdate(
     orgId,
     { $inc: inc },
-    { new: true, select: 'name plan limits usage billingEmail storageExtension' }
+    { returnDocument: 'after', select: 'name plan limits usage billingEmail storageExtension' }
   ).lean()
   if (updated) considerWarnings(updated)
   return updated?.usage || null

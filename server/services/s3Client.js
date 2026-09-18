@@ -1,7 +1,8 @@
+const crypto = require('node:crypto')
 const { S3Client, ListObjectsV2Command, DeleteObjectCommand, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3')
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner')
 
-const getClient = (org) => {
+const getClient = (org, { maxAttempts } = {}) => {
   const s3 = org?.integrations?.s3
   if (!s3 || !s3.enabled) return null
   if (!s3.bucket || !s3.accessKeyId || !s3.secretAccessKey) return null
@@ -17,8 +18,102 @@ const getClient = (org) => {
   if (s3.endpoint) {
     config.endpoint = s3.endpoint
   }
+  if (maxAttempts) config.maxAttempts = maxAttempts
 
   return new S3Client(config)
+}
+
+class S3ConnectionError extends Error {
+  constructor(message, { code = 'S3_UNREACHABLE', status = 502 } = {}) {
+    super(message)
+    this.name = 'S3ConnectionError'
+    this.code = code
+    this.status = status
+  }
+}
+
+const connectionConfig = (config = {}) => ({
+  bucket: String(config.bucket || '').trim(),
+  endpoint: String(config.endpoint || '').trim(),
+  region: String(config.region || 'auto').trim() || 'auto',
+  accessKeyId: String(config.accessKeyId || '').trim(),
+  secretAccessKey: String(config.secretAccessKey || '').trim()
+})
+
+const mapConnectionError = (error, phase) => {
+  if (error instanceof S3ConnectionError) return error
+  const providerCode = String(error?.name || error?.Code || error?.code || '')
+  if (['InvalidAccessKeyId', 'SignatureDoesNotMatch', 'CredentialsProviderError', 'InvalidToken', 'ExpiredToken'].includes(providerCode)) {
+    return new S3ConnectionError('S3 credentials were rejected', { code: 'S3_AUTH_FAILED', status: 422 })
+  }
+  if (['NoSuchBucket', 'NotFound', 'NoSuchKey'].includes(providerCode)) {
+    return new S3ConnectionError('The S3 bucket could not be found', { code: 'S3_BUCKET_NOT_FOUND', status: 422 })
+  }
+  if (phase === 'write') {
+    return new S3ConnectionError('NetFlow cannot write to this S3 bucket', { code: 'S3_WRITE_FAILED', status: 422 })
+  }
+  if (phase === 'delete') {
+    return new S3ConnectionError('NetFlow cannot delete its S3 connection-test object', { code: 'S3_DELETE_FAILED', status: 422 })
+  }
+  return new S3ConnectionError('The S3 service could not be reached', { code: 'S3_UNREACHABLE', status: 502 })
+}
+
+const sendBeforeDeadline = async (client, command, deadline, phase) => {
+  const remaining = deadline - Date.now()
+  if (remaining <= 0) {
+    throw new S3ConnectionError('The S3 connection test timed out', { code: 'INTEGRATION_TEST_TIMEOUT', status: 504 })
+  }
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), remaining)
+  try {
+    return await client.send(command, { abortSignal: controller.signal })
+  } catch (error) {
+    if (controller.signal.aborted || error?.name === 'AbortError') {
+      throw new S3ConnectionError('The S3 connection test timed out', { code: 'INTEGRATION_TEST_TIMEOUT', status: 504 })
+    }
+    throw mapConnectionError(error, phase)
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+// A real write/delete probe proves the permissions NetFlow needs at runtime.
+// The optional client is only for isolated service tests; production always
+// constructs the SDK client from the submitted configuration.
+const testConnection = async (config, { timeoutMs = 10000, client } = {}) => {
+  const effective = connectionConfig(config)
+  const missing = ['bucket', 'accessKeyId', 'secretAccessKey'].filter((key) => !effective[key])
+  if (missing.length) {
+    throw new S3ConnectionError(`Missing required S3 fields: ${missing.join(', ')}`, {
+      code: 'INVALID_INTEGRATION_CONFIG',
+      status: 400
+    })
+  }
+
+  const org = { integrations: { s3: { enabled: true, ...effective } } }
+  const s3Client = client || getClient(org, { maxAttempts: 1 })
+  const probeKey = `.netflow-connection-test/${crypto.randomUUID()}`
+  const deadline = Date.now() + timeoutMs
+
+  await sendBeforeDeadline(s3Client, new PutObjectCommand({
+    Bucket: effective.bucket,
+    Key: probeKey,
+    Body: Buffer.alloc(0),
+    ContentType: 'application/octet-stream'
+  }), deadline, 'write')
+
+  await sendBeforeDeadline(s3Client, new DeleteObjectCommand({
+    Bucket: effective.bucket,
+    Key: probeKey
+  }), deadline, 'delete')
+
+  return {
+    checks: [
+      { key: 'configuration', status: 'passed' },
+      { key: 'writeAccess', status: 'passed' },
+      { key: 'deleteAccess', status: 'passed' }
+    ]
+  }
 }
 
 const listFolder = async (org, prefix = '') => {
@@ -119,6 +214,9 @@ const isEnabled = (org) => {
 
 module.exports = {
   getClient,
+  connectionConfig,
+  testConnection,
+  S3ConnectionError,
   isEnabled,
   listFolder,
   getPresignedUploadUrl,

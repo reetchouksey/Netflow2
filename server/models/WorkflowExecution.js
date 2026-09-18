@@ -41,6 +41,8 @@ const workflowExecutionSchema = new mongoose.Schema({
   variables: { type: mongoose.Schema.Types.Mixed, default: {} }
 }, { timestamps: true })
 
+workflowExecutionSchema.index({ orgId: 1, workflowId: 1, status: 1, createdAt: -1 })
+
 workflowExecutionSchema.plugin(require('../tenancy/orgScopePlugin'))
 
 module.exports = mongoose.model('WorkflowExecution', workflowExecutionSchema)

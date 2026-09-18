@@ -9,7 +9,7 @@ const h = require('./lib/harness')
 const u = require('./lib/uiHarness')
 const { Organization, User } = h
 
-const TCS = ['PLAT-001', 'PLAT-002', 'PLAT-008', 'PLAT-014', 'PLAT-023', 'PLAT-024', 'PLAT-030']
+const TCS = ['PLAT-001', 'PLAT-002', 'PLAT-008', 'PLAT-014', 'PLAT-023', 'PLAT-024', 'PLAT-030', 'PLAT-031', 'PDASH-013', 'PDASH-014']
 
 // The platform shell owns exactly these destinations — anything workspace-side
 // (forms, workflows, requests, reports, user admin) belongs to a tenant.
@@ -20,15 +20,10 @@ const SA_EMAIL = (process.env.SUPERADMIN_EMAIL || 'superadmin@netflow.app').toLo
 const SA_PASS = process.env.SUPERADMIN_PASSWORD || 'Super@12345'
 
 const openDeleteDialog = async (page, orgName) => {
-  // Grid view (default): delete lives in the card's ⋯ menu.
-  const card = page.locator('article', { hasText: orgName }).first()
-  if (await card.count()) {
-    await card.getByRole('button', { name: /more actions/i }).click()
-    await page.getByRole('menuitem', { name: /delete organization/i }).click()
-  } else {
-    const row = page.locator('tr', { hasText: orgName }).first()
-    await row.getByRole('button', { name: /^delete$/i }).click()
-  }
+  // Both the desktop row and responsive card expose destructive actions in the portal menu.
+  const record = page.locator('tr:visible, article:visible', { hasText: orgName }).first()
+  await record.getByRole('button', { name: /more actions/i }).click()
+  await page.getByRole('menuitem', { name: /delete permanently/i }).click()
   await page.waitForSelector(`text=Delete ${orgName}?`, { timeout: 10000 })
 }
 
@@ -49,7 +44,6 @@ h.runSuite('ui_platform', async () => {
 
   // Created through the UI below, then deleted through the UI again.
   const newOrgName = `QA UI Plat ${Date.now().toString(36)}`
-  const newOrgSub = `${h.QA_SUB_PREFIX}uiplat-${Date.now().toString(36)}`
   const newOrgAdmin = `uiplat-admin-${Date.now().toString(36)}@${h.QA_EMAIL_DOMAIN}`
   let createdOrgId = null
   const findCreated = () => Organization.findOne({ name: newOrgName })
@@ -64,10 +58,38 @@ h.runSuite('ui_platform', async () => {
       const saLinks = await u.sidebarLinks(sa.page)
       h.check('PLAT-001', 'A Super Admin sees the Platform item in the sidebar',
         u.hasLink(saLinks, '/platform'), `sidebar: ${u.linkHrefs(saLinks)}`)
+      await sa.page.getByRole('heading', { name: /platform overview/i }).waitFor({ timeout: 10000 })
+      h.check('PDASH-013', 'Real-data dashboard renders enterprise analytics and history controls',
+        (await sa.page.getByRole('heading', { name: 'Organization growth', exact: true }).count()) === 1 &&
+        (await sa.page.getByRole('heading', { name: 'Total Resource utilization', exact: true }).count()) === 1 &&
+        (await sa.page.getByRole('heading', { name: 'Organization analytics', exact: true }).count()) === 1 &&
+        (await sa.page.getByRole('heading', { name: 'Action required', exact: true }).count()) === 1 &&
+        (await sa.page.getByRole('group', { name: 'Organization history range' }).count()) === 1)
+
+      h.check('PDASH-014', 'Dashboard exposes the system-health action',
+        (await sa.page.getByRole('link', { name: /open system health/i }).getAttribute('href')) === '/health')
+      await u.goto(sa.page, '/platform?new=1')
+      const createName = sa.page.getByPlaceholder('Acme Corp')
+      await createName.waitFor({ timeout: 10000 })
+      h.check('PDASH-014', 'Organization creation deep link remains available',
+        (await createName.count()) === 1)
+      await sa.page.keyboard.press('Escape')
 
       const landedSa = await u.goto(sa.page, '/platform')
       h.check('PLAT-002', 'A Super Admin can open /platform',
         landedSa === '/platform', `landed on ${landedSa}`)
+
+      await sa.page.getByRole('heading', { name: 'Organizations', exact: true }).waitFor({ timeout: 10000 })
+      const firstOrganizationRow = sa.page.locator('tbody tr').first()
+      const usageHealthText = await firstOrganizationRow.locator('td').nth(3).innerText()
+      h.check('PLAT-004', 'Usage health uses its own vocabulary instead of workspace status',
+        ['Within limit', 'High usage', 'Critical', 'Over limit'].some((label) => usageHealthText.includes(label)) &&
+          !usageHealthText.includes('Suspended'),
+        `usage cell: ${usageHealthText}`)
+      h.check('PLAT-004', 'Organizations page exposes risk-focused real-data controls',
+        (await sa.page.getByText('Healthy', { exact: true }).count()) === 1 &&
+          (await sa.page.getByRole('combobox', { name: /filter by health/i }).count()) === 1 &&
+          (await sa.page.getByRole('combobox', { name: /sort organizations/i }).count()) === 1)
 
       // ── PLAT-030 — the platform shell never shows or opens workspace pages ──
       await u.goto(sa.page, '/dashboard')
@@ -96,8 +118,8 @@ h.runSuite('ui_platform', async () => {
         (await orgResult.count()) > 0, `no result for ${org.subdomain}`)
 
       if (await orgResult.count()) {
-        await orgResult.click()
-        await sa.page.waitForTimeout(800)
+        await searchBox.press('Enter')
+        await sa.page.waitForFunction(() => location.pathname === '/platform' && location.search.startsWith('?q='), null, { timeout: 10000 })
         const landedSearch = await sa.page.evaluate(() => location.pathname + location.search)
         h.check('PLAT-030', 'Choosing a tenant opens the organizations list filtered to it',
           landedSearch.startsWith('/platform?q='), `landed on ${landedSearch}`)
@@ -125,38 +147,85 @@ h.runSuite('ui_platform', async () => {
         token: saTok,
         permissions: ['clipboard-read', 'clipboard-write']
       })
+      await page.route('**/api/platform/integrations/test', async (route) => {
+        const testedAt = new Date()
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            integration: 'dms',
+            status: 'connected',
+            testedAt: testedAt.toISOString(),
+            expiresAt: new Date(testedAt.getTime() + 600000).toISOString(),
+            verificationReceipt: 'ui-test-receipt'
+          })
+        })
+      })
       await u.goto(page, '/platform')
-      await page.getByRole('button', { name: /new organization/i }).click()
+      await page.getByRole('button', { name: /create organization/i }).click()
       await page.waitForSelector('[role="dialog"]', { timeout: 10000 })
 
-      const dialog = page.locator('[role="dialog"]').first()
+      const dialog = page.getByRole('dialog', { name: /new organization/i })
       const body = await dialog.innerText()
-      const fields = ['Name', 'Subdomain', 'Allowed email domains', 'First org admin', 'Admin email']
+      const fields = ['Name', 'Allowed email domains', 'First org admin', 'Admin email']
       const missing = fields.filter((f) => !body.includes(f))
       h.check('PLAT-008', 'The new-organization dialog opens with every field it needs',
         (await dialog.count()) > 0 && missing.length === 0, `missing: ${missing.join(', ')}`)
       h.check('PLAT-008', 'The dialog offers to create rather than save an existing org',
         /Create organization/.test(body), 'no "Create organization" action in the dialog')
 
-      await dialog.locator('input[placeholder="Acme Corp"]').fill(newOrgName)
-      await dialog.locator('input[placeholder="acme"]').fill(newOrgSub)
-      await dialog.locator('input[placeholder="admin@acme.com"]').fill(newOrgAdmin)
-      // Wait on the request, not on modal text: the form itself mentions the
-      // temporary password, so a text match would resolve before submitting.
-      await Promise.all([
-        page.waitForResponse(
-          (r) => /\/api\/platform\/orgs$/.test(r.url()) && r.request().method() === 'POST',
-          { timeout: 30000 }
-        ),
-        dialog.getByRole('button', { name: /create organization/i }).click()
-      ])
-      await page.waitForSelector('text=Organization created', { timeout: 20000 })
+      const dmsCard = dialog.getByText('Document Management Systems', { exact: true })
+        .locator('xpath=ancestor::div[contains(@class,"rounded-lg")][1]')
+      const createButton = dialog.getByRole('button', { name: /create organization/i })
+      await dialog.getByRole('switch', { name: /enable dms integration/i })
+        .evaluate((element) => element.click())
+      const dmsTestButton = dmsCard.getByRole('button', { name: /test dms connection/i })
+      const blockedBeforeTest = await createButton.isDisabled()
+      await dmsTestButton.evaluate((element) => element.click())
+      await dmsCard.getByText('Connected', { exact: true }).waitFor({ timeout: 5000 })
+      const enabledAfterTest = !(await createButton.isDisabled())
+      await dmsCard.locator('input').nth(1).fill('changed-slug')
+      await dmsCard.getByText('Needs retest', { exact: true }).waitFor({ timeout: 5000 })
+      const blockedAfterChange = await createButton.isDisabled()
+      h.check('PLAT-031', 'Connection test gates creation and changes require a retest',
+        blockedBeforeTest && enabledAfterTest && blockedAfterChange)
+      await dialog.getByRole('button', { name: /^cancel$/i })
+        .evaluate((element) => element.click())
+      await dialog.waitFor({ state: 'detached', timeout: 10000 })
+      await u.goto(page, '/platform?new=1')
+      const creationDialog = page.getByRole('dialog', { name: /new organization/i })
+
+      await creationDialog.locator('input[placeholder="Acme Corp"]').fill(newOrgName)
+      await creationDialog.locator('input[placeholder="admin@acme.com"]').fill(newOrgAdmin)
+      await page.waitForTimeout(250)
+      await creationDialog.getByRole('button', { name: /create organization/i })
+        .evaluate((element) => element.click())
+      const createdDialog = page.getByRole('dialog', { name: /organization created/i })
+      const createdVisible = await createdDialog.waitFor({ timeout: 10000 }).then(() => true).catch(() => false)
+      if (!createdVisible) {
+        const snapshot = await creationDialog.evaluate((element) => ({
+          name: element.querySelector('input[placeholder="Acme Corp"]')?.value,
+          email: element.querySelector('input[placeholder="admin@acme.com"]')?.value,
+          formValid: element.querySelector('form')?.checkValidity(),
+          emailValidation: element.querySelector('input[placeholder="admin@acme.com"]')?.validationMessage,
+          submitDisabled: [...element.querySelectorAll('button')]
+            .find((button) => button.textContent?.trim() === 'Create organization')?.disabled,
+          text: element.innerText.replace(/\s+/g, ' ').slice(-900)
+        }))
+        const notices = await page.locator('[role="alert"], [role="status"]').allInnerTexts()
+        throw new Error(`Organization creation did not complete: ${JSON.stringify({ ...snapshot, notices })}`)
+      }
       const created = await Organization.findOne({ name: newOrgName })
         .setOptions({ skipOrgScope: true }).lean()
       createdOrgId = created?._id || null
+      const expectedSubdomainPrefix = newOrgName.toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 48)
       h.check('PLAT-008', 'Submitting the dialog actually creates the tenant',
-        !!created && created.subdomain === newOrgSub,
-        `db org: ${created ? `${created.name} @ ${created.subdomain}` : 'not found'} (sent ${newOrgSub})`)
+        !!created && created.subdomain.startsWith(`${expectedSubdomainPrefix}-`),
+        `db org: ${created ? `${created.name} @ ${created.subdomain}` : 'not found'}`)
 
       const shown = await page.locator('p.font-mono').first().innerText()
       await page.getByRole('button', { name: /^copy$/i }).nth(1).click()
@@ -174,7 +243,8 @@ h.runSuite('ui_platform', async () => {
     {
       const { context, page } = await u.session(browser, { token: saTok })
       await u.goto(page, '/platform')
-      await page.waitForSelector(`text=${newOrgName}`, { timeout: 20000 })
+      await page.getByRole('searchbox', { name: /search organizations/i }).fill(newOrgName)
+      await page.locator('tr:visible, article:visible', { hasText: newOrgName }).first().waitFor({ timeout: 20000 })
 
       // PLAT-024 — cancel leaves everything alone.
       await openDeleteDialog(page, newOrgName)

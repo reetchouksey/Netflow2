@@ -96,7 +96,10 @@ const copyFor = ({ resource, threshold, used, limit, planLabel, isBuffer }) => {
 // Org Admins, plus the billing contact if one is configured. Billing rarely has a
 // login, which is exactly why billingEmail exists.
 const recipientsFor = async (org) => {
-  const adminRole = await Role.findOne({ name: 'Admin' }).select('_id').lean()
+  const adminRole = await Role.findOne({ orgId: org._id, nameKey: 'admin' })
+    .setOptions({ skipOrgScope: true })
+    .select('_id')
+    .lean()
   const admins = adminRole
     ? await User.find({ orgId: org._id, role: adminRole._id, isActive: true })
       .select('_id name email')

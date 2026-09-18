@@ -25,23 +25,28 @@ const PLAN_PRESETS = {
   trial: {
     label: 'Trial',
     trialDays: 14,
+    features: { pdfAutoFill: true },
     limits: { maxUsers: 3, maxBuilders: 1, maxForms: 5, maxWorkflows: 2, maxSubmissionsPerPeriod: 100, maxStorageMb: 1 * GB, maxFiles: 0 },
   },
   basic: {
     label: 'Basic',
+    features: { pdfAutoFill: true },
     limits: { maxUsers: 10, maxBuilders: 1, maxForms: 25, maxWorkflows: 10, maxSubmissionsPerPeriod: 1000, maxStorageMb: 5 * GB, maxFiles: 0 },
   },
   professional: {
     label: 'Professional',
+    features: { pdfAutoFill: true },
     limits: { maxUsers: 50, maxBuilders: 3, maxForms: 100, maxWorkflows: 50, maxSubmissionsPerPeriod: 5000, maxStorageMb: 10 * GB, maxFiles: 0 },
   },
   enterprise: {
     label: 'Enterprise',
+    features: { pdfAutoFill: true },
     limits: { maxUsers: 0, maxBuilders: 0, maxForms: 0, maxWorkflows: 0, maxSubmissionsPerPeriod: 0, maxStorageMb: 0, maxFiles: 0 },
   },
   custom: {
     label: 'Custom',
     limits: null,
+    features: { pdfAutoFill: false },
   },
 }
 
@@ -72,6 +77,7 @@ async function reloadPlans() {
       limits: PLAN_PRESETS[key].limits || {
         maxUsers: 0, maxBuilders: 0, maxForms: 0, maxWorkflows: 0, maxSubmissionsPerPeriod: 0, maxStorageMb: 0, maxFiles: 0
       },
+      features: PLAN_PRESETS[key].features || { pdfAutoFill: key !== 'custom' },
       isCustom: key === 'custom'
     }))
     await Plan.insertMany(seedPlans)
@@ -85,12 +91,17 @@ async function reloadPlans() {
     PLAN_PRESETS[p.key] = {
       label: p.label,
       trialDays: p.trialDays,
-      limits: p.isCustom ? null : p.limits
+      limits: p.isCustom ? null : p.limits,
+      features: {
+        // Missing means a pre-feature plan. The approved migration policy is
+        // entitlement-on for every sellable plan.
+        pdfAutoFill: p.isCustom ? false : p.features?.pdfAutoFill !== false
+      }
     }
   })
 
   if (!PLAN_PRESETS.custom) {
-    PLAN_PRESETS.custom = { label: 'Custom', limits: null }
+    PLAN_PRESETS.custom = { label: 'Custom', limits: null, features: { pdfAutoFill: false } }
   }
 
   // Mutate exported arrays in-place to update consumers

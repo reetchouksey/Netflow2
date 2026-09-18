@@ -59,13 +59,13 @@ const run = async () => {
   await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 15000, family: 4 })
   console.log(`Connected: ${mongoose.connection.host}/${mongoose.connection.name}`)
 
-  const workflows = await Workflow.find().select('_id title nodes department orgId').lean()
+  const workflows = await Workflow.find().select('_id title nodes department').lean()
   if (!workflows.length) {
-    console.error('No workflows found.')
+    console.error('No workflows found. Run `npm run seed:demo` first.')
     process.exit(1)
   }
 
-  const users = await User.find().select('_id name orgId').lean()
+  const users = await User.find().select('_id name').lean()
   if (!users.length) {
     console.error('No users found. Register at least one account first.')
     process.exit(1)
@@ -99,7 +99,6 @@ const run = async () => {
         : weighted([['completed', 80], ['failed', 20]])
 
       const doc = {
-        orgId: wf.orgId || user.orgId,
         workflowId: wf._id,
         triggeredBy: user._id,
         status,

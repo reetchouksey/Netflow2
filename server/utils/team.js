@@ -18,6 +18,7 @@
 // what makes a VP's inbox useful without giving them the whole tenant.
 
 const User = require('../models/User')
+const { hasCapability } = require('./roleCapabilities')
 
 // Roles whose remit is the entire workspace, so no graph walk is needed.
 const ORG_WIDE_ROLES = ['Admin', 'CEO']
@@ -32,7 +33,8 @@ const MAX_DEPTH = 6
 const roleOf = (user) => user?.role?.name || null
 
 const hasOrgWideReach = (user) => ORG_WIDE_ROLES.includes(roleOf(user))
-const leadsATeam = (user) => TEAM_ROLES.includes(roleOf(user))
+const leadsATeam = (user) =>
+  TEAM_ROLES.includes(roleOf(user)) || hasCapability(user, 'decide_tasks')
 
 // 'org' | 'team' | 'self' — how far this user can see beyond their own records.
 const reachOf = (user) => {

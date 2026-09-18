@@ -7,7 +7,7 @@
 
 const h = require('./lib/harness')
 const u = require('./lib/uiHarness')
-const { runWithOrgId, Task, Form, FormResponse } = h
+const { runWithOrgId, Task, Form, FormResponse, Workflow, WorkflowExecution } = h
 
 const TCS = ['TSK-004', 'TSK-009', 'TSK-013', 'TSK-023']
 
@@ -32,6 +32,28 @@ h.runSuite('ui_tasks', async () => {
   await mkTask({ title: 'Travel reimbursement' })
   await mkTask({ title: 'Overdue budget sign-off', status: 'escalated' })
 
+  // Resolved work keeps its real due date for history, but the inbox must show
+  // the SLA outcome rather than presenting that date as a future deadline.
+  const completedAt = new Date(Date.now() - 5 * 60000)
+  const completedWorkflow = await runWithOrgId(org._id, () => Workflow.create({
+    title: 'Completed SLA workflow', status: 'published', createdBy: approver._id, nodes: []
+  }))
+  const completedExecution = await runWithOrgId(org._id, () => WorkflowExecution.create({
+    workflowId: completedWorkflow._id,
+    triggeredBy: submitter._id,
+    status: 'completed',
+    startedAt: new Date(Date.now() - 60 * 60000),
+    completedAt,
+  }))
+  await mkTask({
+    title: 'Completed SLA display',
+    status: 'approved',
+    workflowId: completedWorkflow._id,
+    workflowExecutionId: completedExecution._id,
+    dueDate: new Date(Date.now() + 24 * 60 * 60000),
+    approvalHistory: [{ action: 'approved', performedBy: approver._id, performedAt: completedAt }],
+  })
+
   // A real upload so the attachment link resolves to a real file rather than a
   // 404 — "downloads/previews" is only proven if the bytes come back.
   const uploaded = await u.uploadFile(apprTok, { name: 'invoice.png', buf: u.PNG_1PX })
@@ -48,12 +70,32 @@ h.runSuite('ui_tasks', async () => {
 
   const browser = await u.launch()
   try {
+    const taskSession = async () => {
+      const session = await u.session(browser, { token: apprTok, workspace: org.subdomain })
+      await session.context.addInitScript((userId) => {
+        localStorage.setItem(`fs.userGuide.completed.${userId}`, '1')
+      }, String(session.user?._id || session.user?.id || ''))
+      return session
+    }
+
     // ── TSK-004 — the inbox search filters by task name ─────────────────────
     {
-      const { context, page } = await u.session(browser, { token: apprTok, workspace: org.subdomain })
+      const { context, page } = await taskSession()
       await u.goto(page, '/tasks')
       await page.waitForSelector('#task-search', { timeout: 20000 })
       await page.waitForTimeout(800)
+
+      h.check('TSK-004', 'Managers see the Approval inbox title',
+        await page.getByRole('heading', { name: 'Approval inbox' }).isVisible().catch(() => false),
+        'the manager inbox title did not render')
+      const tabLabels = await page.getByRole('tab').allTextContents()
+      h.check('TSK-004', 'Approval scopes use the approved order',
+        tabLabels.join('|') === 'Assigned to me|Submitted by me|Team approvals',
+        `tabs rendered as ${tabLabels.join('|')}`)
+      const columnLabels = await page.locator('.nf-approval-table thead th').allTextContents()
+      h.check('TSK-004', 'Assigned approvals expose requester, step, SLA, and actions columns',
+        columnLabels.join('|') === 'Request|Requester|Status|Current step|SLA / due|Actions',
+        `columns rendered as ${columnLabels.join('|')}`)
 
       const visibleTitles = async () => {
         const body = await page.locator('main').innerText().catch(async () => page.locator('body').innerText())
@@ -79,12 +121,24 @@ h.runSuite('ui_tasks', async () => {
       h.check('TSK-004', 'A search with no matches shows the empty state',
         /nothing matches/i.test(empty), 'no empty state for an unmatched search')
 
+      await page.fill('#task-search', 'Completed SLA workflow')
+      await page.waitForTimeout(700)
+      const completedRow = page.locator('tr', { hasText: 'Completed SLA workflow' }).first()
+      const completedText = await completedRow.innerText().catch(() => '')
+      h.check('TSK-004', 'Completed approvals show an SLA outcome instead of a future due date',
+        completedText.includes('Completed on time') && !completedText.includes('Due tomorrow'),
+        `completed row rendered as ${completedText.replace(/\s+/g, ' ').trim()}`)
+      h.check('TSK-004', 'Resolved approvals expose one contextual details action without a duplicate overflow',
+        await completedRow.getByRole('button', { name: 'View details', exact: true }).isVisible().catch(() => false)
+          && await completedRow.getByRole('button', { name: /More actions/i }).count() === 0,
+        'the completed row did not render one View details action')
+
       await context.close()
     }
 
     // ── TSK-023 — an escalated task wears the orange badge ──────────────────
     {
-      const { context, page } = await u.session(browser, { token: apprTok, workspace: org.subdomain })
+      const { context, page } = await taskSession()
       await u.goto(page, '/tasks')
       await page.waitForSelector('#task-search', { timeout: 20000 })
       await page.fill('#task-search', 'Overdue budget')
@@ -103,7 +157,7 @@ h.runSuite('ui_tasks', async () => {
 
     // ── TSK-009 — submitted attachments open ────────────────────────────────
     {
-      const { context, page } = await u.session(browser, { token: apprTok, workspace: org.subdomain })
+      const { context, page } = await taskSession()
       await u.goto(page, `/tasks/${fileTask._id}`)
       await page.waitForSelector('text=Invoice approval', { timeout: 20000 })
 
@@ -134,7 +188,7 @@ h.runSuite('ui_tasks', async () => {
 
     // ── TSK-013 — the approve button shows progress and blocks double-submit ─
     {
-      const { context, page } = await u.session(browser, { token: apprTok, workspace: org.subdomain })
+      const { context, page } = await taskSession()
 
       // Hold the approve response open so the busy state is observable instead
       // of a sub-100ms flicker.
@@ -153,7 +207,11 @@ h.runSuite('ui_tasks', async () => {
       // Pin the DOM node before clicking: a by-name locator stops matching the
       // moment the label flips to "Approving…", and would silently re-resolve
       // to some other button.
-      const approveBtn = await page.getByRole('button', { name: /^approve$/i }).first().elementHandle()
+      // Decisions are intentionally kept in the row overflow to preserve the
+      // compact catalogue layout while retaining the existing real action.
+      const busyRow = page.locator('tr', { hasText: 'Busy state check' }).first()
+      await busyRow.getByRole('button', { name: /More actions/i }).click()
+      const approveBtn = await page.getByRole('menuitem', { name: /^approve$/i }).first().elementHandle()
       await approveBtn.click()
       await page.waitForTimeout(500)
 

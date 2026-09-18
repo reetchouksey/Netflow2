@@ -45,7 +45,7 @@ const run = async () => {
           permissions: ['*']
         }
       },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
+      { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true }
     )
     console.log(`Admin role ready (${adminRole._id}).`)
 

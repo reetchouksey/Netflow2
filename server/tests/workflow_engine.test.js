@@ -2,10 +2,10 @@
 // real engine (execute → approve → advance). Canvas interactions (pan/zoom,
 // unsaved-changes) live in ui_workflows.test.js and Slack is Pending; node/edge
 // persistence, routing, conditions, SLA, execution log, loop protection and
-// inactive-approver escalation are asserted here.
+// strict direct-manager routing are asserted here.
 
 const h = require('./lib/harness')
-const { runWithOrgId, Task, Form, Notification, WorkflowExecution } = h
+const { runWithOrgId, Task, Form, FormResponse, Notification, WorkflowExecution } = h
 
 const publishWorkflow = async (token, title, nodes, extra = {}) => {
   const created = await h.api('POST', '/workflows', token, { title, nodes, ...extra })
@@ -38,7 +38,7 @@ h.runSuite('workflow_engine', async () => {
   const p1 = await h.createUser(org, { name: 'WFB P1', email: h.emailIn(org, 'wfb-p1'), roleName: 'Employee' })
   const p2 = await h.createUser(org, { name: 'WFB P2', email: h.emailIn(org, 'wfb-p2'), roleName: 'Employee' })
 
-  // WFB-032 chain: submitter -> inactive manager -> active skip-level manager.
+  // WFB-032 proves an inactive manager does not fall through to this skip-level candidate.
   const skipMgr = await h.createUser(org, { name: 'WFB Skip', email: h.emailIn(org, 'wfb-skip'), roleName: 'Manager' })
   const inactiveMgr = await h.createUser(org, { name: 'WFB Inactive', email: h.emailIn(org, 'wfb-inactive'), roleName: 'Manager', isActive: false, managerId: skipMgr._id })
   const escSub = await h.createUser(org, { name: 'WFB EscSub', email: h.emailIn(org, 'wfb-escsub'), roleName: 'Employee', managerId: inactiveMgr._id })
@@ -155,6 +155,150 @@ h.runSuite('workflow_engine', async () => {
   const ex16 = await execute(wf16.id, dmSubTok)
   const t16 = await pendingTask(ex16)
   h.check('WFB-016', "direct_manager → submitter's manager gets task", String(t16?.assignedTo) === String(dmManager._id), `assignedTo ${t16?.assignedTo}, expected ${dmManager._id}`)
+
+  // ── WFB-033 live form approval preview uses the real workflow route ─────────
+  const previewForm = await runWithOrgId(org._id, () => Form.create({
+    title: 'WFB approval preview form',
+    status: 'published',
+    createdBy: builder._id,
+    fields: [{ id: 'amount', type: 'number', label: 'Amount', required: true }]
+  }))
+  await publishWorkflow(bTok, 'WFB approval preview', [
+    { id: 'start', type: 'start', nextNode: 'manager' },
+    { id: 'manager', type: 'approval', label: 'Manager approval', config: { approverRole: 'direct_manager', slaHours: 24 }, nextNode: 'amount-check' },
+    { id: 'amount-check', type: 'condition', config: { conditionField: 'amount', conditionOperator: 'gt', conditionValue: '100', truePath: 'committee', falsePath: 'end' } },
+    { id: 'committee', type: 'multiApproval', label: 'Finance committee', config: { approverIds: [stageA._id, stageB._id, stageC._id], requiredApprovals: 2, slaHours: 48 }, nextNode: 'end' },
+    { id: 'end', type: 'end' }
+  ], { linkedFormId: String(previewForm._id) })
+
+  const previewPending = await h.api('POST', `/forms/${previewForm._id}/approval-preview`, dmSubTok, { formData: {} })
+  const pendingRoute = previewPending.body?.approvalRoute
+  h.check('WFB-033', 'Approval preview resolves the real manager and waits for a controlling answer',
+    previewPending.status === 200 &&
+      pendingRoute?.confirmation === 'needs_input' &&
+      pendingRoute?.stages?.[0]?.approver?.name === dmManager.name &&
+      pendingRoute?.requiredInputs?.[0]?.fieldId === 'amount' &&
+      pendingRoute?.summary?.approvalsRequired === 1,
+    `status ${previewPending.status}, route ${JSON.stringify(pendingRoute)}`)
+
+  const previewHigh = await h.api('POST', `/forms/${previewForm._id}/approval-preview`, dmSubTok, { formData: { amount: 150 } })
+  const highRoute = previewHigh.body?.approvalRoute
+  h.check('WFB-033', 'Approval preview follows the matching branch and counts quorum decisions',
+    previewHigh.status === 200 &&
+      highRoute?.confirmation === 'confirmed' &&
+      highRoute?.summary?.approvalStages === 2 &&
+      highRoute?.summary?.approvalsRequired === 3 &&
+      highRoute?.stages?.[1]?.quorum?.required === 2 &&
+      highRoute?.stages?.[1]?.quorum?.total === 3,
+    `status ${previewHigh.status}, route ${JSON.stringify(highRoute)}`)
+
+  const previewLow = await h.api('POST', `/forms/${previewForm._id}/approval-preview`, dmSubTok, { formData: { amount: 50 } })
+  const lowRoute = previewLow.body?.approvalRoute
+  h.check('WFB-033', 'Approval preview removes conditional approvals that are not required',
+    previewLow.status === 200 &&
+      lowRoute?.confirmation === 'confirmed' &&
+      lowRoute?.summary?.approvalStages === 1 &&
+      lowRoute?.summary?.approvalsRequired === 1 &&
+      lowRoute?.canSubmit === true,
+    `status ${previewLow.status}, route ${JSON.stringify(lowRoute)}`)
+
+  // ── WFB-034 approval-route alerts and submission guard ────────────────────
+  const fallbackForm = await runWithOrgId(org._id, () => Form.create({
+    title: 'WFB manager fallback preview',
+    status: 'published',
+    createdBy: builder._id,
+    fields: [{ id: 'note', type: 'text', label: 'Note', required: true }]
+  }))
+  await publishWorkflow(bTok, 'WFB manager fallback', [
+    { id: 'start', type: 'start', nextNode: 'manager' },
+    { id: 'manager', type: 'approval', label: 'Manager approval', config: { approverRole: 'direct_manager' }, nextNode: 'end' },
+    { id: 'end', type: 'end' }
+  ], { linkedFormId: String(fallbackForm._id) })
+
+  const fallbackPreview = await h.api('POST', `/forms/${fallbackForm._id}/approval-preview`, subTok, { formData: { note: 'Ready' } })
+  const fallbackRoute = fallbackPreview.body?.approvalRoute
+  h.check('WFB-034', 'Missing direct manager is a blocking alert and never falls back',
+    fallbackPreview.status === 200 &&
+      fallbackRoute?.canSubmit === false &&
+      fallbackRoute?.issues?.some((issue) => (
+        issue.code === 'manager_unassigned' &&
+        issue.severity === 'error' &&
+        /no active direct manager assigned/i.test(issue.message)
+      )) &&
+      fallbackRoute?.stages?.[0]?.status === 'unconfigured' &&
+      !fallbackRoute?.stages?.[0]?.approver,
+    `status ${fallbackPreview.status}, route ${JSON.stringify(fallbackRoute)}`)
+
+  const beforeManagerBlockedSubmit = await runWithOrgId(org._id, () => FormResponse.countDocuments({ formId: fallbackForm._id }))
+  const managerBlockedSubmit = await h.api('POST', `/forms/${fallbackForm._id}/submit`, subTok, { formData: { note: 'Ready' } })
+  const afterManagerBlockedSubmit = await runWithOrgId(org._id, () => FormResponse.countDocuments({ formId: fallbackForm._id }))
+  h.check('WFB-034', 'Missing direct manager blocks submission before saving a response',
+    managerBlockedSubmit.status === 409 &&
+      managerBlockedSubmit.body?.code === 'APPROVAL_ROUTE_UNAVAILABLE' &&
+      beforeManagerBlockedSubmit === afterManagerBlockedSubmit,
+    `status ${managerBlockedSubmit.status}, code ${managerBlockedSubmit.body?.code}, responses ${beforeManagerBlockedSubmit} -> ${afterManagerBlockedSubmit}`)
+
+  const inactiveManagerPreview = await h.api('POST', `/forms/${fallbackForm._id}/approval-preview`, escSubTok, { formData: { note: 'Ready' } })
+  const inactiveManagerRoute = inactiveManagerPreview.body?.approvalRoute
+  h.check('WFB-032', 'Inactive direct manager is blocking and does not resolve to the skip-level manager',
+    inactiveManagerPreview.status === 200 &&
+      inactiveManagerRoute?.canSubmit === false &&
+      inactiveManagerRoute?.issues?.some((issue) => issue.code === 'manager_unassigned' && issue.severity === 'error') &&
+      !inactiveManagerRoute?.stages?.[0]?.approver,
+    `status ${inactiveManagerPreview.status}, route ${JSON.stringify(inactiveManagerRoute)}`)
+
+  const inactiveExecutionResponse = await h.api('POST', `/workflows/${wf16.id}/execute`, escSubTok, { variables: {} })
+  const inactiveExecutionId = inactiveExecutionResponse.body?.executionId
+  const inactiveExecution = await runWithOrgId(org._id, () => WorkflowExecution.findById(inactiveExecutionId).lean())
+  const inactiveTask = await taskByExec(inactiveExecutionId)
+  h.check('WFB-032', 'Runtime creates no approval task and never escalates an inactive manager',
+    inactiveExecutionResponse.status === 201 &&
+      inactiveExecution?.status === 'failed' &&
+      !inactiveTask &&
+      /no resolvable approver/i.test(inactiveExecution?.failureReason || ''),
+    `status ${inactiveExecution?.status}, task ${inactiveTask?._id || 'none'}, reason ${inactiveExecution?.failureReason || 'none'}`)
+
+  const blockedForm = await runWithOrgId(org._id, () => Form.create({
+    title: 'WFB unavailable approver preview',
+    status: 'published',
+    createdBy: builder._id,
+    fields: [{ id: 'note', type: 'text', label: 'Note', required: true }]
+  }))
+  await publishWorkflow(bTok, 'WFB unavailable approver', [
+    { id: 'start', type: 'start', nextNode: 'legal' },
+    { id: 'legal', type: 'approval', label: 'Legal approval', config: { approverRole: 'legal_manager' }, nextNode: 'end' },
+    { id: 'end', type: 'end' }
+  ], { linkedFormId: String(blockedForm._id) })
+
+  const blockedPreview = await h.api('POST', `/forms/${blockedForm._id}/approval-preview`, subTok, { formData: { note: 'Ready' } })
+  const blockedRoute = blockedPreview.body?.approvalRoute
+  h.check('WFB-034', 'An unresolved approval is returned as a blocking structured issue',
+    blockedPreview.status === 200 &&
+      blockedRoute?.canSubmit === false &&
+      blockedRoute?.issues?.some((issue) => issue.code === 'approver_unconfigured' && issue.severity === 'error' && issue.title === 'Legal approval'),
+    `status ${blockedPreview.status}, route ${JSON.stringify(blockedRoute)}`)
+
+  const beforeBlockedSubmit = await runWithOrgId(org._id, () => FormResponse.countDocuments({ formId: blockedForm._id }))
+  const blockedSubmit = await h.api('POST', `/forms/${blockedForm._id}/submit`, subTok, { formData: { note: 'Ready' } })
+  const afterBlockedSubmit = await runWithOrgId(org._id, () => FormResponse.countDocuments({ formId: blockedForm._id }))
+  h.check('WFB-034', 'The server refuses a known-unroutable submission before saving a response',
+    blockedSubmit.status === 409 &&
+      blockedSubmit.body?.code === 'APPROVAL_ROUTE_UNAVAILABLE' &&
+      beforeBlockedSubmit === afterBlockedSubmit,
+    `status ${blockedSubmit.status}, code ${blockedSubmit.body?.code}, responses ${beforeBlockedSubmit} -> ${afterBlockedSubmit}`)
+
+  const unlinkedForm = await runWithOrgId(org._id, () => Form.create({
+    title: 'WFB unlinked preview',
+    status: 'published',
+    createdBy: builder._id,
+    fields: []
+  }))
+  const unlinkedPreview = await h.api('POST', `/forms/${unlinkedForm._id}/approval-preview`, subTok, { formData: {} })
+  h.check('WFB-034', 'A form without a workflow returns a non-blocking warning',
+    unlinkedPreview.status === 200 &&
+      unlinkedPreview.body?.approvalRoute?.canSubmit === true &&
+      unlinkedPreview.body?.approvalRoute?.issues?.some((issue) => issue.code === 'workflow_unlinked' && issue.severity === 'warning'),
+    `status ${unlinkedPreview.status}, route ${JSON.stringify(unlinkedPreview.body?.approvalRoute)}`)
 
   // ── WFB-017 role-based approval resolves to a valid Manager ──
   const wf17 = await publishWorkflow(bTok, 'WFB role manager', [
@@ -324,13 +468,4 @@ h.runSuite('workflow_engine', async () => {
   })
   h.check('WFB-029', 'Reject flow ends the workflow as Rejected/failed', !!done29, `status ${done29?.status}`)
 
-  // ── WFB-032 inactive approver escalation (direct manager inactive → skip-level) ──
-  const wf32 = await publishWorkflow(bTok, 'WFB inactive escalation', [
-    { id: 'start', type: 'start', nextNode: 'a' },
-    { id: 'a', type: 'approval', config: { approverRole: 'direct_manager' }, nextNode: 'end' },
-    { id: 'end', type: 'end' }
-  ])
-  const ex32 = await execute(wf32.id, escSubTok)
-  const t32 = await pendingTask(ex32)
-  h.check('WFB-032', 'Inactive direct manager escalates to active skip-level manager', String(t32?.assignedTo) === String(skipMgr._id), `assignedTo ${t32?.assignedTo}, expected ${skipMgr._id}`)
 })
