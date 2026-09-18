@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 
-export function NetFlowSpinningIcon({ size = 96, className = "" }) {
+export function NetFlowSpinningIcon({ size = 135, className = "" }) {
   const darkBlue = "#134287" // Bold rich dark blue
 
   return (
@@ -22,25 +22,25 @@ export function NetFlowSpinningIcon({ size = 96, className = "" }) {
         <path
           d="M 68 64 L 68 37"
           stroke={darkBlue}
-          strokeWidth="4.8"
+          strokeWidth="5"
           strokeLinecap="round"
         />
         {/* Large Arrowhead pointing Up */}
         <polygon
-          points="68,30 61,42 75,42"
+          points="68,29 60,42 76,42"
           fill={darkBlue}
         />
 
         {/* 2. Top-Left Curving Arc: From Top-Right Node curving over to Bottom-Left Node */}
         <path
-          d="M 58 24 C 42 22, 28 34, 27 52"
+          d="M 58 24 C 41 22, 28 34, 27 52"
           stroke={darkBlue}
-          strokeWidth="4.8"
+          strokeWidth="5"
           strokeLinecap="round"
         />
         {/* Large Arrowhead pointing Down-Left */}
         <polygon
-          points="25,58 35,50 25,45"
+          points="24,59 35,50 25,44"
           fill={darkBlue}
         />
 
@@ -48,22 +48,22 @@ export function NetFlowSpinningIcon({ size = 96, className = "" }) {
         <path
           d="M 36 67 C 44 74, 54 75, 60 74"
           stroke={darkBlue}
-          strokeWidth="4.8"
+          strokeWidth="5"
           strokeLinecap="round"
         />
         {/* Large Arrowhead pointing Right / Up-Right */}
         <polygon
-          points="65,74 54,67 56,79"
+          points="66,74 54,66 56,79"
           fill={darkBlue}
         />
 
         {/* 3 Bold Circular Workflow Nodes */}
         {/* Top-Right Node */}
-        <circle cx="68" cy="27" r="9" fill={darkBlue} />
+        <circle cx="68" cy="27" r="9.5" fill={darkBlue} />
         {/* Bottom-Right Node */}
-        <circle cx="68" cy="74" r="9" fill={darkBlue} />
+        <circle cx="68" cy="74" r="9.5" fill={darkBlue} />
         {/* Bottom-Left Node */}
-        <circle cx="26" cy="60" r="9" fill={darkBlue} />
+        <circle cx="26" cy="60" r="9.5" fill={darkBlue} />
       </svg>
     </div>
   )
@@ -93,9 +93,9 @@ export default function WorkspaceSplashScreen({ onFinish, minDuration = 1400 }) 
 
   return (
     <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#f0f4f8] text-slate-800 select-none">
-      {/* Bold Spinning 3-node NetFlow Logo */}
-      <div className="mb-7">
-        <NetFlowSpinningIcon size={98} />
+      {/* Bold Large Spinning 3-node NetFlow Logo */}
+      <div className="mb-8">
+        <NetFlowSpinningIcon size={135} />
       </div>
 
       {/* Brand Title */}
