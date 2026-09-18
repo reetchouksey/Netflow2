@@ -170,12 +170,12 @@ function NavSections({ user, pendingCount, onNavigate }) {
                 className="w-full px-2.5 py-1.5 mb-1.5 flex items-center justify-between text-[12px] font-black tracking-[0.09em] text-slate-800 dark:text-slate-200 uppercase rounded-xl hover:bg-slate-100/90 dark:hover:bg-slate-800/70 transition group cursor-pointer"
               >
                 <span className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#6366F1] shrink-0 shadow-xs" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#134287] shrink-0 shadow-xs" />
                   <span className="tracking-wider">{section.label}</span>
                 </span>
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  className={`w-3.5 h-3.5 text-slate-400 dark:text-slate-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : 'rotate-0'}`}
+                  className={`w-3.5 h-3.5 text-slate-400 dark:text-slate-500 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : 'rotate-0'}`}
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -212,14 +212,14 @@ function NavSections({ user, pendingCount, onNavigate }) {
                           isPlatform
                             ? `gap-3.5 px-3.5 py-3 rounded-2xl text-[15px] font-bold tracking-tight ${
                                 isActive
-                                  ? 'bg-[#6366F1] text-white shadow-md shadow-indigo-500/25 ring-1 ring-indigo-400/30'
+                                  ? 'bg-[#134287] text-white shadow-md shadow-blue-900/25 ring-1 ring-blue-700/30'
                                   : 'text-slate-800 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/90'
                               }`
                             : `gap-3 px-3 py-2.5 rounded-xl text-[13.5px] ${
                                 item.key === 'dashboard' ? 'font-bold' : 'font-medium'
                               } ${
                                 isActive
-                                  ? 'bg-[#6366F1] text-white shadow-sm shadow-indigo-500/20'
+                                  ? 'bg-[#134287] text-white shadow-sm shadow-blue-900/20'
                                   : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/80 dark:hover:bg-slate-800'
                               }`
                         }`}
@@ -362,7 +362,7 @@ function Sidebar({ user, pendingCount, open, onToggle }) {
                       to={item.to}
                       className={`relative w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${
                         isActive
-                          ? 'bg-[#6366F1] text-white shadow-md shadow-indigo-500/30'
+                          ? 'bg-[#134287] text-white shadow-md shadow-blue-900/30'
                           : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
                       }`}
                     >

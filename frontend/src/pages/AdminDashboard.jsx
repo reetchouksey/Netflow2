@@ -43,9 +43,9 @@ const TOOLTIP_STYLE = {
 const TopStatCard = ({ title, value, color, icon, trend, subtext, bottomType = 'bar', onClick }) => {
   const colorStyles = {
     blue: {
-      icon: 'text-[#2563EB] bg-[#EFF6FF] dark:bg-blue-500/15 dark:text-blue-400',
-      dot: 'bg-[#2563EB]',
-      bar: 'bg-[#2563EB]',
+      icon: 'text-[#134287] bg-[#EFF6FF] dark:bg-blue-500/15 dark:text-blue-400',
+      dot: 'bg-[#134287]',
+      bar: 'bg-[#134287]',
     },
     emerald: {
       icon: 'text-[#0F766E] bg-[#EAFBF1] dark:bg-emerald-500/15 dark:text-emerald-400',
@@ -68,9 +68,9 @@ const TopStatCard = ({ title, value, color, icon, trend, subtext, bottomType = '
       bar: 'bg-[#DC2626]',
     },
     cyan: {
-      icon: 'text-[#0284C7] bg-[#E0F2FE] dark:bg-cyan-500/15 dark:text-cyan-400',
-      dot: 'bg-[#0284C7]',
-      bar: 'bg-[#0284C7]',
+      icon: 'text-[#134287] bg-[#E0F2FE] dark:bg-blue-500/15 dark:text-blue-400',
+      dot: 'bg-[#134287]',
+      bar: 'bg-[#134287]',
     },
   }
   const theme = colorStyles[color] || colorStyles.blue
@@ -130,7 +130,7 @@ const MiniStatCard = ({ title, value, color, icon, onClick }) => {
     pink: 'text-[#DB2777] bg-[#FCE7F3] dark:bg-pink-500/15 dark:text-pink-400',
     rose: 'text-[#DC2626] bg-[#FEE2E2] dark:bg-rose-500/15 dark:text-rose-400',
     emerald: 'text-[#0F766E] bg-[#DCFCE7] dark:bg-emerald-500/15 dark:text-emerald-400',
-    blue: 'text-[#0284C7] bg-[#E0F2FE] dark:bg-blue-500/15 dark:text-blue-400',
+    blue: 'text-[#134287] bg-[#E0F2FE] dark:bg-blue-500/15 dark:text-blue-400',
   }
   const theme = colorStyles[color] || colorStyles.purple
 
@@ -309,7 +309,7 @@ export default function AdminDashboard() {
           <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1A2340] dark:text-white tracking-tight">
             Welcome back, {firstName}
           </h1>
-          <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#eef2ff] text-[#4f46e5] border border-indigo-200 dark:bg-indigo-950/70 dark:text-indigo-300 dark:border-indigo-800 shadow-2xs">
+          <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#eef4fc] text-[#134287] border border-blue-200/70 dark:bg-blue-950/70 dark:text-blue-300 dark:border-blue-800 shadow-2xs">
             Workflow Admin
           </span>
         </div>
@@ -317,14 +317,14 @@ export default function AdminDashboard() {
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-0.5">
           <div className="flex items-center text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 leading-normal bg-slate-100/90 dark:bg-slate-800/90 px-3.5 py-2 rounded-xl border border-slate-200/80 dark:border-slate-700/80 shadow-2xs">
             <span>
-              <span className="text-indigo-600 dark:text-indigo-400 font-extrabold">{greetingText} · {dateStr}</span> — Organization overview — here's what's happening across all departments.
+              <span className="text-[#134287] dark:text-blue-400 font-extrabold">{greetingText} · {dateStr}</span> — Organization overview — here's what's happening across all departments.
             </span>
           </div>
 
           <div className="flex items-center gap-2.5 shrink-0 self-start lg:self-center">
             <Link
               to="/workflows/new"
-              className="px-4 py-2 rounded-xl bg-[#2563eb] hover:bg-[#1d4ed8] active:bg-[#1e40af] text-white text-xs font-bold shadow-xs transition flex items-center gap-1.5 h-9"
+              className="px-4 py-2 rounded-xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white text-xs font-bold shadow-xs transition flex items-center gap-1.5 h-9"
             >
               <span className="text-sm font-bold">+</span> Create Workflow
             </Link>
@@ -496,12 +496,12 @@ export default function AdminDashboard() {
           {/* Legend Row */}
           <div className="flex items-center gap-5 text-xs text-slate-600 dark:text-slate-300 mb-3 flex-wrap">
             <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#4F46E5]" />
+              <span className="w-2.5 h-2.5 rounded-full bg-[#134287]" />
               <span className="text-slate-500 dark:text-slate-400">Completed</span>
               <span className="font-bold text-slate-900 dark:text-white">{chartTotals.completed}</span>
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#A5B4FC]" />
+              <span className="w-2.5 h-2.5 rounded-full bg-[#93b7e2]" />
               <span className="text-slate-500 dark:text-slate-400">Started</span>
               <span className="font-bold text-slate-900 dark:text-white">{chartTotals.started}</span>
             </span>
@@ -511,7 +511,7 @@ export default function AdminDashboard() {
               <span className="font-bold text-slate-900 dark:text-white">{chartTotals.failed}</span>
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="w-3.5 h-0.5 bg-[#06B6D4] rounded-full" />
+              <span className="w-3.5 h-0.5 bg-[#134287] rounded-full" />
               <span className="text-slate-500 dark:text-slate-400">Avg. Completion Time</span>
             </span>
           </div>
@@ -541,23 +541,23 @@ export default function AdminDashboard() {
                   orientation="right"
                   axisLine={false}
                   tickLine={false}
-                  tick={{ fontSize: 10, fill: '#06B6D4', fontWeight: 600 }}
+                  tick={{ fontSize: 10, fill: '#134287', fontWeight: 600 }}
                   domain={[0, 'auto']}
                   tickFormatter={(v) => `${v}h`}
-                  label={{ value: 'Time (h)', position: 'top', offset: 8, style: { fontSize: 10, fill: '#06B6D4', fontWeight: 600 } }}
+                  label={{ value: 'Time (h)', position: 'top', offset: 8, style: { fontSize: 10, fill: '#134287', fontWeight: 600 } }}
                 />
                 <RTooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(0,0,0,0.02)' }} />
-                <Bar yAxisId="left" dataKey="started" name="Started" fill="#A5B4FC" radius={[2, 2, 0, 0]} barSize={5} />
-                <Bar yAxisId="left" dataKey="completed" name="Completed" fill="#4F46E5" radius={[2, 2, 0, 0]} barSize={5} />
+                <Bar yAxisId="left" dataKey="started" name="Started" fill="#93b7e2" radius={[2, 2, 0, 0]} barSize={5} />
+                <Bar yAxisId="left" dataKey="completed" name="Completed" fill="#134287" radius={[2, 2, 0, 0]} barSize={5} />
                 <Line
                   yAxisId="right"
                   type="monotone"
                   dataKey="avgTime"
                   name="Avg. Completion Time"
-                  stroke="#06B6D4"
+                  stroke="#134287"
                   strokeWidth={2}
                   dot={false}
-                  activeDot={{ r: 4, fill: '#06B6D4' }}
+                  activeDot={{ r: 4, fill: '#134287' }}
                 />
               </ComposedChart>
             </ResponsiveContainer>
@@ -571,7 +571,7 @@ export default function AdminDashboard() {
               <h3 className="text-sm font-bold text-[#1A2340] dark:text-white tracking-tight">
                 Active / Pending Route
               </h3>
-              <Link to="/workflows" className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400">
+              <Link to="/workflows" className="text-[11px] font-semibold text-[#134287] hover:text-[#0c2340] dark:text-blue-400">
                 View all
               </Link>
             </div>
@@ -630,14 +630,14 @@ export default function AdminDashboard() {
               <>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 truncate">
-                    <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0" />
+                    <span className="w-2 h-2 rounded-full bg-[#134287] shrink-0" />
                     <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">{top.title || top.name || 'Workflow'}</span>
                   </div>
                   <span className="text-xs font-bold tabular-nums text-slate-900 dark:text-white">{runs}</span>
                 </div>
 
                 <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden mt-3">
-                  <div className="bg-indigo-600 h-full rounded-full w-full" />
+                  <div className="bg-[#134287] h-full rounded-full w-full" />
                 </div>
               </>
             )
@@ -696,7 +696,7 @@ export default function AdminDashboard() {
                   </div>
                   <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
                     <span className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" /> In Progress
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#134287]" /> In Progress
                     </span>
                     <span className="font-bold tabular-nums">{runningExecs}</span>
                   </div>
@@ -718,7 +718,7 @@ export default function AdminDashboard() {
             <h4 className="text-xs font-bold text-slate-900 dark:text-white tracking-tight">
               Recent Activity
             </h4>
-            <Link to="/audit-log" className="text-[10px] font-semibold text-indigo-600 hover:underline">
+            <Link to="/audit-log" className="text-[10px] font-semibold text-[#134287] hover:underline dark:text-blue-400">
               View all
             </Link>
           </div>
@@ -748,7 +748,7 @@ export default function AdminDashboard() {
             <h4 className="text-xs font-bold text-slate-900 dark:text-white tracking-tight">
               Upcoming Deadlines
             </h4>
-            <Link to="/tasks" className="text-[10px] font-semibold text-indigo-600 hover:underline">
+            <Link to="/tasks" className="text-[10px] font-semibold text-[#134287] hover:underline dark:text-blue-400">
               View all
             </Link>
           </div>

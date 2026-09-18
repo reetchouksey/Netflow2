@@ -1353,19 +1353,19 @@ function EmployeeDashboard({ user }) {
               <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1A2340] dark:text-white tracking-tight">
                 Welcome back, {firstName}
               </h1>
-              <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#eef2ff] text-[#4f46e5] border border-indigo-200 dark:bg-indigo-950/70 dark:text-indigo-300 dark:border-indigo-800 shadow-2xs">
+              <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#eef4fc] text-[#134287] border border-blue-200/70 dark:bg-blue-950/70 dark:text-blue-300 dark:border-blue-800 shadow-2xs">
                 Employee
               </span>
             </div>
             <p className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 mt-2 leading-relaxed bg-slate-100/90 dark:bg-slate-800/90 px-3 py-1.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80 inline-block shadow-2xs">
-              <span className="text-indigo-600 dark:text-indigo-400 font-extrabold">{greetingText} · {dateStr}</span> — Personal dashboard — your requests and anything that needs attention.
+              <span className="text-[#134287] dark:text-blue-400 font-extrabold">{greetingText} · {dateStr}</span> — Personal dashboard — your requests and anything that needs attention.
             </p>
           </div>
 
           <div className="flex items-center gap-2.5 shrink-0 self-start md:self-center">
             <Link
               to="/forms"
-              className="px-4 py-2.5 rounded-xl bg-[#2563eb] hover:bg-[#1d4ed8] active:bg-[#1e40af] text-white text-xs font-bold shadow-xs transition flex items-center gap-1.5"
+              className="px-4 py-2.5 rounded-xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white text-xs font-bold shadow-xs transition flex items-center gap-1.5"
             >
               <span className="text-sm font-bold">+</span> Start a request
             </Link>

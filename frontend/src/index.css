@@ -13,16 +13,16 @@
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
 
   /* Brand Colors */
-  --color-brand-50: #f3f1ff;
-  --color-brand-100: #e7e3ff;
-  --color-brand-200: #cfc7ff;
-  --color-brand-300: #b3a6ff;
-  --color-brand-400: #8b7bff;
-  --color-brand-500: #6d5df6;
-  --color-brand-600: #5b4bff;
-  --color-brand-700: #4b3ddb;
-  --color-brand-800: #3d33b0;
-  --color-brand-900: #322b8c;
+  --color-brand-50: #f0f5fa;
+  --color-brand-100: #dce7f5;
+  --color-brand-200: #bed3ee;
+  --color-brand-300: #93b7e2;
+  --color-brand-400: #6296d3;
+  --color-brand-500: #134287;
+  --color-brand-600: #103668;
+  --color-brand-700: #0c2340;
+  --color-brand-800: #08182b;
+  --color-brand-900: #040d17;
 
   /* Surfaces — page + cards + subtle fills */
   --color-surface: #ffffff;      /* white  — cards, menus, inputs        */
@@ -57,10 +57,10 @@
   --color-warning-line: #fde68a;    /* amber-200 */
   --color-warning-solid: #f59e0b;   /* amber-500 */
 
-  --color-info-subtle: #eef2ff;     /* indigo-50  */
-  --color-info-fg: #4338ca;         /* indigo-700 */
-  --color-info-line: #c7d2fe;       /* indigo-200 */
-  --color-info-solid: #6366f1;      /* indigo-500 */
+  --color-info-subtle: #eef4fc;     /* blue-50  */
+  --color-info-fg: #134287;         /* dark-blue-700 */
+  --color-info-line: #bed3ee;       /* blue-200 */
+  --color-info-solid: #134287;      /* dark-blue-500 */
 }
 
 @layer theme {

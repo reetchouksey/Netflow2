@@ -12,7 +12,7 @@ export default function NetFlowLogo({ className = "w-[42px] h-[42px]", size = 42
   return (
     <div
       style={containerStyle}
-      className={`rounded-2xl overflow-hidden shadow-md shadow-indigo-500/25 shrink-0 select-none flex items-center justify-center bg-gradient-to-br from-[#3B82F6] via-[#6366F1] to-[#8B5CF6] p-1.5 ${className}`}
+      className={`rounded-2xl overflow-hidden shadow-md shadow-blue-950/25 shrink-0 select-none flex items-center justify-center bg-gradient-to-br from-[#0c2340] via-[#103668] to-[#134287] p-1.5 ${className}`}
     >
       {!imgFailed ? (
         <img
