@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 
-export function NetFlowSpinningIcon({ size = 135, className = "" }) {
+export function NetFlowSpinningIcon({ size = 180, className = "" }) {
   const darkBlue = "#134287" // Bold rich dark blue
 
   return (
@@ -14,56 +14,56 @@ export function NetFlowSpinningIcon({ size = 135, className = "" }) {
         xmlns="http://www.w3.org/2000/svg"
         className="w-full h-full"
         style={{
-          animation: 'spin 3.2s linear infinite',
+          animation: 'spin 3s linear infinite',
           transformOrigin: 'center center'
         }}
       >
         {/* 1. Right Vertical Arrow: From Bottom-Right Node straight UP to Top-Right Node */}
         <path
-          d="M 68 64 L 68 37"
+          d="M 68 63 L 68 37"
           stroke={darkBlue}
-          strokeWidth="5"
+          strokeWidth="6.5"
           strokeLinecap="round"
         />
-        {/* Large Arrowhead pointing Up */}
+        {/* Large Bold Arrowhead pointing Up */}
         <polygon
-          points="68,29 60,42 76,42"
+          points="68,26 58,42 78,42"
           fill={darkBlue}
         />
 
         {/* 2. Top-Left Curving Arc: From Top-Right Node curving over to Bottom-Left Node */}
         <path
-          d="M 58 24 C 41 22, 28 34, 27 52"
+          d="M 57 24 C 38 21, 25 34, 25 51"
           stroke={darkBlue}
-          strokeWidth="5"
+          strokeWidth="6.5"
           strokeLinecap="round"
         />
-        {/* Large Arrowhead pointing Down-Left */}
+        {/* Large Bold Arrowhead pointing Down-Left */}
         <polygon
-          points="24,59 35,50 25,44"
+          points="23,59 36,49 24,42"
           fill={darkBlue}
         />
 
         {/* 3. Bottom Smooth Arc: From Bottom-Left Node curving over to Bottom-Right Node */}
         <path
-          d="M 36 67 C 44 74, 54 75, 60 74"
+          d="M 36 67 C 45 75, 55 76, 61 74"
           stroke={darkBlue}
-          strokeWidth="5"
+          strokeWidth="6.5"
           strokeLinecap="round"
         />
-        {/* Large Arrowhead pointing Right / Up-Right */}
+        {/* Large Bold Arrowhead pointing Right / Up-Right */}
         <polygon
-          points="66,74 54,66 56,79"
+          points="68,74 53,65 56,81"
           fill={darkBlue}
         />
 
-        {/* 3 Bold Circular Workflow Nodes */}
+        {/* 3 Extra Bold Circular Workflow Nodes */}
         {/* Top-Right Node */}
-        <circle cx="68" cy="27" r="9.5" fill={darkBlue} />
+        <circle cx="68" cy="27" r="11.5" fill={darkBlue} />
         {/* Bottom-Right Node */}
-        <circle cx="68" cy="74" r="9.5" fill={darkBlue} />
+        <circle cx="68" cy="74" r="11.5" fill={darkBlue} />
         {/* Bottom-Left Node */}
-        <circle cx="26" cy="60" r="9.5" fill={darkBlue} />
+        <circle cx="26" cy="60" r="11.5" fill={darkBlue} />
       </svg>
     </div>
   )
@@ -93,33 +93,33 @@ export default function WorkspaceSplashScreen({ onFinish, minDuration = 1400 }) 
 
   return (
     <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#f0f4f8] text-slate-800 select-none">
-      {/* Bold Large Spinning 3-node NetFlow Logo */}
-      <div className="mb-8">
-        <NetFlowSpinningIcon size={135} />
+      {/* Extra Bold & Large Spinning 3-node NetFlow Logo */}
+      <div className="mb-9">
+        <NetFlowSpinningIcon size={180} />
       </div>
 
-      {/* Brand Title */}
-      <h1 className="text-4xl sm:text-5xl font-black text-[#1e242b] tracking-tight">
+      {/* Large Brand Title */}
+      <h1 className="text-5xl sm:text-6xl md:text-7xl font-black text-[#1e242b] tracking-tight">
         NetFlow
       </h1>
 
-      {/* Tagline */}
-      <p className="text-[11px] sm:text-[12px] font-bold uppercase tracking-[0.28em] text-[#64748b] mt-2">
+      {/* Larger Tagline */}
+      <p className="text-xs sm:text-sm md:text-base font-extrabold uppercase tracking-[0.32em] text-[#526071] mt-3">
         WORK MADE VISIBLE
       </p>
 
-      {/* Subtext */}
-      <p className="text-sm font-normal text-[#526071] mt-10">
+      {/* Larger Status Subtext */}
+      <p className="text-base sm:text-lg font-medium text-[#475569] mt-12">
         Loading your workspace...
       </p>
 
-      {/* Progress Bar Container */}
-      <div className="w-64 sm:w-72 mt-3.5">
-        <div className="flex justify-between items-center text-[11px] font-medium text-[#526071] mb-1.5">
+      {/* Larger Progress Bar Container */}
+      <div className="w-80 sm:w-96 mt-4">
+        <div className="flex justify-between items-center text-xs sm:text-sm font-semibold text-[#526071] mb-2">
           <span>Estimated progress</span>
-          <span className="tabular-nums font-semibold">{progress}%</span>
+          <span className="tabular-nums font-bold">{progress}%</span>
         </div>
-        <div className="w-full h-[3px] bg-slate-200/90 rounded-full overflow-hidden">
+        <div className="w-full h-[4px] bg-slate-200/90 rounded-full overflow-hidden">
           <div
             className="h-full bg-[#134287] rounded-full transition-all duration-100 ease-out"
             style={{ width: `${progress}%` }}
