@@ -104,6 +104,9 @@ function RequireDms({ children }) {
   if (needsPasswordChange(user, location)) {
     return <Navigate to="/change-password" replace />
   }
+  if (!isOrgAdmin(user) && !isSuperAdmin(user)) {
+    return <Navigate to="/dashboard" replace />
+  }
   if (user.dmsEnabled !== true && user.org?.integrations?.dmsEnabled !== true) {
     return <Navigate to="/dashboard" replace />
   }
@@ -120,7 +123,17 @@ function RequireS3({ children }) {
   if (needsPasswordChange(user, location)) {
     return <Navigate to="/change-password" replace />
   }
-  if (user.s3Enabled !== true && user.s3Storage !== true && user.org?.integrations?.s3Storage !== true) {
+  if (!isOrgAdmin(user) && !isSuperAdmin(user)) {
+    return <Navigate to="/dashboard" replace />
+  }
+  const hasS3 = Boolean(
+    user.s3Enabled === true ||
+    user.s3Storage === true ||
+    user.org?.integrations?.s3?.enabled === true ||
+    user.org?.integrations?.s3Storage === true ||
+    user.org?.integrations?.s3Enabled === true
+  )
+  if (!hasS3) {
     return <Navigate to="/dashboard" replace />
   }
   return children

@@ -204,6 +204,18 @@ const deleteFile = async (org, key) => {
   return await client.send(command)
 }
 
+const getObjectStream = async (org, key) => {
+  const client = getClient(org)
+  if (!client) throw new Error('S3 is not configured for this organization')
+
+  const command = new GetObjectCommand({
+    Bucket: org.integrations.s3.bucket,
+    Key: key
+  })
+
+  return await client.send(command)
+}
+
 // Returns true when the org has a complete, enabled S3 config.
 // Used by upload routes to decide whether to route files to S3.
 const isEnabled = (org) => {
@@ -221,6 +233,7 @@ module.exports = {
   listFolder,
   getPresignedUploadUrl,
   getPresignedDownloadUrl,
+  getObjectStream,
   uploadFile,
   deleteFile
 }

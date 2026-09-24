@@ -172,12 +172,12 @@ const orgToForm = (org) => {
       }
     }),
     // S3 Dedicated Storage
-    s3Storage: Boolean(org.integrations?.s3Storage ?? org.s3Storage),
-    s3Bucket: org.integrations?.s3Bucket || org.s3Bucket || '',
-    s3Region: org.integrations?.s3Region || org.s3Region || 'auto',
-    s3Endpoint: org.integrations?.s3Endpoint || org.s3Endpoint || '',
-    s3AccessKeyId: org.integrations?.s3AccessKeyId || org.s3AccessKeyId || '',
-    s3SecretAccessKey: org.integrations?.s3SecretAccessKey ? '••••••••' : ''
+    s3Storage: Boolean(org.integrations?.s3?.enabled ?? org.integrations?.s3Storage ?? org.s3Storage),
+    s3Bucket: org.integrations?.s3?.bucket || org.integrations?.s3Bucket || org.s3Bucket || '',
+    s3Region: org.integrations?.s3?.region || org.integrations?.s3Region || org.s3Region || 'auto',
+    s3Endpoint: org.integrations?.s3?.endpoint || org.integrations?.s3Endpoint || org.s3Endpoint || '',
+    s3AccessKeyId: org.integrations?.s3?.accessKeyId || org.integrations?.s3AccessKeyId || org.s3AccessKeyId || '',
+    s3SecretAccessKey: (org.integrations?.s3?.secretAccessKey || org.integrations?.s3SecretAccessKey) ? '••••••••' : ''
   }
 }
 
@@ -240,7 +240,15 @@ const formToPayload = (f, { subdomain } = {}) => ({
     ...(f.s3Region !== undefined ? { s3Region: f.s3Region } : {}),
     ...(f.s3Endpoint !== undefined ? { s3Endpoint: f.s3Endpoint } : {}),
     ...(f.s3AccessKeyId !== undefined ? { s3AccessKeyId: f.s3AccessKeyId } : {}),
-    ...(f.s3SecretAccessKey !== undefined ? { s3SecretAccessKey: f.s3SecretAccessKey } : {})
+    ...(f.s3SecretAccessKey !== undefined ? { s3SecretAccessKey: f.s3SecretAccessKey } : {}),
+    s3: {
+      enabled: Boolean(f.s3Storage),
+      ...(f.s3Bucket !== undefined ? { bucket: f.s3Bucket } : {}),
+      ...(f.s3Region !== undefined ? { region: f.s3Region } : {}),
+      ...(f.s3Endpoint !== undefined ? { endpoint: f.s3Endpoint } : {}),
+      ...(f.s3AccessKeyId !== undefined ? { accessKeyId: f.s3AccessKeyId } : {}),
+      ...(f.s3SecretAccessKey !== undefined ? { secretAccessKey: f.s3SecretAccessKey } : {})
+    }
   }
 })
 

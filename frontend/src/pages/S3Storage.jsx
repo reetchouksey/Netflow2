@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import AppShell from '../components/AppShell'
-import { api } from '../utils/api'
+import { api, getToken, toAbsoluteUrl } from '../utils/api'
 import { toast } from '../lib/toastStore'
 import { confirm } from '../lib/confirmStore'
 
@@ -40,6 +40,25 @@ const getFileType = (filename = '', mimetype = '') => {
     return 'text'
   }
   return 'other'
+}
+
+const getFileViewUrl = (file) => {
+  if (!file) return ''
+  const token = getToken()
+  const base = file.url || `/api/s3/files/${file._id}/view`
+  if (/^https?:\/\//i.test(base)) return base
+  const separator = base.includes('?') ? '&' : '?'
+  const urlWithToken = token ? `${base}${separator}token=${encodeURIComponent(token)}` : base
+  return toAbsoluteUrl(urlWithToken)
+}
+
+const getFileDownloadUrl = (file) => {
+  if (!file) return ''
+  const token = getToken()
+  const base = `/api/s3/files/${file._id}/download`
+  const separator = base.includes('?') ? '&' : '?'
+  const urlWithToken = token ? `${base}${separator}token=${encodeURIComponent(token)}` : base
+  return toAbsoluteUrl(urlWithToken)
 }
 
 const getFileIcon = (filename = '', mimetype = '') => {
@@ -213,16 +232,15 @@ export default function S3Storage() {
   // ── Real File Download ─────────────────────────────────────────────────────
   const handleDownload = (file) => {
     if (!file) return
-    const downloadUrl = file.url
-      ? (file.url.includes('?') ? `${file.url}&download=1` : `${file.url}?download=1`)
-      : `/api/s3/files/${file._id}/download`
-
+    const filename = file.originalName || file.filename || 'download'
+    const downloadUrl = getFileDownloadUrl(file)
     const link = document.createElement('a')
     link.href = downloadUrl
-    link.download = file.originalName || 'download'
+    link.download = filename
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+    toast.success(`"${filename}" download started`)
   }
 
   // ── In-page File View ──────────────────────────────────────────────────────
@@ -268,7 +286,7 @@ export default function S3Storage() {
             type="button"
             disabled={uploading}
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-2 bg-[#6366F1] hover:bg-[#4F46E5] text-white rounded-xl px-4 py-2 shadow-xs hover:shadow-sm text-xs font-bold transition cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-2 bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white rounded-xl px-4 py-2 shadow-xs hover:shadow-sm text-xs font-bold transition cursor-pointer disabled:opacity-50"
           >
             <svg className={`w-3.5 h-3.5 ${uploading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
@@ -324,7 +342,7 @@ export default function S3Storage() {
             <div>
               <button
                 type="button"
-                className="w-full bg-[#EEF2FF] text-[#6366F1] dark:bg-indigo-950/60 dark:text-indigo-400 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2.5 border border-indigo-200/50 dark:border-indigo-800/50 transition cursor-default"
+                className="w-full bg-[#EBF3FC] text-[#134287] dark:bg-blue-950/60 dark:text-blue-400 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2.5 border border-blue-200/50 dark:border-blue-800/50 transition cursor-default"
               >
                 <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
                   <path d="M4 4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2H4z" />
@@ -555,7 +573,7 @@ export default function S3Storage() {
                 <button
                   type="button"
                   onClick={() => handleDownload(previewFile)}
-                  className="px-3.5 py-1.5 bg-[#6366F1] hover:bg-[#4F46E5] text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition cursor-pointer"
+                  className="px-3.5 py-1.5 bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition cursor-pointer"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -584,7 +602,7 @@ export default function S3Storage() {
                   style={{ transform: `scale(${zoom / 100})` }}
                 >
                   <img
-                    src={previewFile.url}
+                    src={getFileViewUrl(previewFile)}
                     alt={previewFile.originalName}
                     className="max-h-[70vh] max-w-full object-contain rounded-xl shadow-md border border-slate-200/50 dark:border-slate-800 bg-white"
                   />
@@ -595,7 +613,7 @@ export default function S3Storage() {
                   style={{ transform: `scale(${zoom / 100})` }}
                 >
                   <iframe
-                    src={previewFile.url}
+                    src={getFileViewUrl(previewFile)}
                     className="w-full h-full min-h-[65vh] rounded-2xl border border-slate-200 dark:border-slate-800 bg-white shadow-sm"
                     title={previewFile.originalName}
                   />
@@ -616,7 +634,7 @@ export default function S3Storage() {
                   <button
                     type="button"
                     onClick={() => handleDownload(previewFile)}
-                    className="px-5 py-2.5 bg-[#6366F1] hover:bg-[#4F46E5] text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-500/20 flex items-center gap-2 transition cursor-pointer"
+                    className="px-5 py-2.5 bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white rounded-xl text-xs font-bold shadow-md shadow-blue-900/20 flex items-center gap-2 transition cursor-pointer"
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />

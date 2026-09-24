@@ -326,7 +326,7 @@ export default function AdminDashboard() {
               to="/workflows/new"
               className="px-4 py-2 rounded-xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white text-xs font-bold shadow-xs transition flex items-center gap-1.5 h-9"
             >
-              <span className="text-sm font-bold">+</span> Create Workflow
+              <span className="text-sm font-bold">+</span> New Workflow
             </Link>
             <button
               onClick={() => window.print()}

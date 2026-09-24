@@ -629,7 +629,11 @@ const maskDmsSecrets = (org) => ({
     ...org.integrations,
     dmsApiKey: org.integrations?.dmsApiKey ? '••••••••' : '',
     dmsJwt: org.integrations?.dmsJwt ? '••••••••' : '',
-    departmentDms: (org.integrations?.departmentDms || []).map(item => ({ ...item, apiKey: item.apiKey ? '••••••••' : '' }))
+    departmentDms: (org.integrations?.departmentDms || []).map(item => ({ ...item, apiKey: item.apiKey ? '••••••••' : '' })),
+    s3: org.integrations?.s3 ? {
+      ...org.integrations.s3,
+      secretAccessKey: org.integrations.s3.secretAccessKey ? '••••••••' : ''
+    } : undefined
   }
 })
 
@@ -907,14 +911,23 @@ router.post('/orgs', async (req, res, next) => {
       if (integrations.dmsEnabled !== undefined) integrationsDoc.dmsEnabled = Boolean(integrations.dmsEnabled)
       if (integrations.dmsOrgSlug !== undefined) integrationsDoc.dmsOrgSlug = String(integrations.dmsOrgSlug || '').toLowerCase().trim().replace(/[^a-z0-9-]/g, '-')
       
-      if (integrations.s3 !== undefined) {
+      const s3Data = integrations.s3 || (integrations.s3Storage !== undefined || integrations.s3Bucket !== undefined ? {
+        enabled: Boolean(integrations.s3Storage),
+        bucket: integrations.s3Bucket,
+        endpoint: integrations.s3Endpoint,
+        region: integrations.s3Region,
+        accessKeyId: integrations.s3AccessKeyId,
+        secretAccessKey: integrations.s3SecretAccessKey
+      } : undefined)
+
+      if (s3Data !== undefined) {
         integrationsDoc.s3 = {
-          enabled: Boolean(integrations.s3.enabled),
-          bucket: String(integrations.s3.bucket || '').trim(),
-          endpoint: String(integrations.s3.endpoint || '').trim(),
-          region: String(integrations.s3.region || 'auto').trim(),
-          accessKeyId: String(integrations.s3.accessKeyId || '').trim(),
-          secretAccessKey: String(integrations.s3.secretAccessKey || '').trim()
+          enabled: Boolean(s3Data.enabled),
+          bucket: String(s3Data.bucket || '').trim(),
+          endpoint: String(s3Data.endpoint || '').trim(),
+          region: String(s3Data.region || 'auto').trim(),
+          accessKeyId: String(s3Data.accessKeyId || '').trim(),
+          secretAccessKey: String(s3Data.secretAccessKey || '').trim()
         }
       }
       
@@ -1090,17 +1103,25 @@ router.put('/orgs/:id', async (req, res, next) => {
         }
       }
 
-      if (integrations.s3 !== undefined) {
-        const s3 = integrations.s3
+      const s3Input = integrations.s3 || (integrations.s3Storage !== undefined || integrations.s3Bucket !== undefined ? {
+        enabled: integrations.s3Storage,
+        bucket: integrations.s3Bucket,
+        endpoint: integrations.s3Endpoint,
+        region: integrations.s3Region,
+        accessKeyId: integrations.s3AccessKeyId,
+        secretAccessKey: integrations.s3SecretAccessKey
+      } : undefined)
+
+      if (s3Input !== undefined) {
         if (!org.integrations.s3) org.integrations.s3 = {}
-        if (s3.enabled !== undefined) org.integrations.s3.enabled = Boolean(s3.enabled)
-        if (s3.bucket !== undefined) org.integrations.s3.bucket = String(s3.bucket || '').trim()
-        if (s3.endpoint !== undefined) org.integrations.s3.endpoint = String(s3.endpoint || '').trim()
-        if (s3.region !== undefined) org.integrations.s3.region = String(s3.region || 'auto').trim()
-        if (s3.accessKeyId !== undefined) org.integrations.s3.accessKeyId = String(s3.accessKeyId || '').trim()
-        if (s3.secretAccessKey !== undefined) {
-          const newSecret = String(s3.secretAccessKey || '').trim()
-          if (newSecret !== '••••••••') {
+        if (s3Input.enabled !== undefined) org.integrations.s3.enabled = Boolean(s3Input.enabled)
+        if (s3Input.bucket !== undefined) org.integrations.s3.bucket = String(s3Input.bucket || '').trim()
+        if (s3Input.endpoint !== undefined) org.integrations.s3.endpoint = String(s3Input.endpoint || '').trim()
+        if (s3Input.region !== undefined) org.integrations.s3.region = String(s3Input.region || 'auto').trim()
+        if (s3Input.accessKeyId !== undefined) org.integrations.s3.accessKeyId = String(s3Input.accessKeyId || '').trim()
+        if (s3Input.secretAccessKey !== undefined) {
+          const newSecret = String(s3Input.secretAccessKey || '').trim()
+          if (newSecret !== '••••••••' && newSecret !== '') {
             org.integrations.s3.secretAccessKey = newSecret
             dmsChanges.push('s3.secretAccessKey')
           }

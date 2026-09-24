@@ -48,14 +48,14 @@ function recordTest({ id, module, name, precondition, steps, expected, actual, s
 async function apiCall(endpoint, method = 'GET', body = null, token = null) {
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
-  
+
   const options = { method, headers };
   if (body && method !== 'GET') options.body = JSON.stringify(body);
-  
+
   const t0 = Date.now();
   const res = await fetch(`${BASE_URL}${endpoint}`, options);
   const duration = Date.now() - t0;
-  
+
   let json = {};
   try {
     json = await res.json();
@@ -325,12 +325,12 @@ async function runTests() {
     });
   }
 
-  // TC-USR-04: Non-builder employee cannot create workflows
+  // TC-USR-04: Non-builder employee cannot New Workflows
   {
     const tryWfRes = await apiCall('/api/workflows', 'POST', {
       title: 'Unauthorized Workflow'
     }, employeeToken);
-    
+
     const pass = tryWfRes.status === 403 || !tryWfRes.ok;
     recordTest({
       id: 'TC-USR-04',
@@ -861,7 +861,7 @@ async function generateExcelReport(testResults) {
     sheetSummary.getCell(`D${rowNum}`).value = r[2];
     sheetSummary.getCell(`D${rowNum}`).font = { bold: true };
     sheetSummary.getCell(`E${rowNum}`).value = r[3];
-    
+
     if (r[3] === `${passRate}%`) {
       sheetSummary.getCell(`E${rowNum}`).font = { bold: true, color: { argb: passRate >= 90 ? 'FF16A34A' : 'FFE11D48' } };
     }

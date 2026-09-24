@@ -299,9 +299,15 @@ router.post('/login', authLimiter, async (req, res, next) => {
       if (orgDoc) {
         userPayload.tenantName = orgDoc.name
         userPayload.dmsEnabled = Boolean(orgDoc.integrations?.dmsEnabled)
-        userPayload.s3Enabled = Boolean(orgDoc.integrations?.s3?.enabled)
-        userPayload.s3Bucket = orgDoc.integrations?.s3?.bucket || null
-        userPayload.s3Region = orgDoc.integrations?.s3?.region || null
+        userPayload.s3Enabled = Boolean(orgDoc.integrations?.s3?.enabled || orgDoc.integrations?.s3Storage)
+        userPayload.s3Storage = Boolean(orgDoc.integrations?.s3?.enabled || orgDoc.integrations?.s3Storage)
+        userPayload.s3Bucket = orgDoc.integrations?.s3?.bucket || orgDoc.integrations?.s3Bucket || null
+        userPayload.s3Region = orgDoc.integrations?.s3?.region || orgDoc.integrations?.s3Region || null
+        userPayload.org = {
+          _id: orgDoc._id,
+          name: orgDoc.name,
+          integrations: orgDoc.integrations
+        }
       }
     }
     return sendSuccess(res, { token, user: userPayload })
@@ -572,9 +578,15 @@ router.get('/me', protect, async (req, res) => {
   if (req.organization) {
     userPayload.tenantName = req.organization.name
     userPayload.dmsEnabled = Boolean(req.organization.integrations?.dmsEnabled)
-    userPayload.s3Enabled = Boolean(req.organization.integrations?.s3?.enabled)
-    userPayload.s3Bucket = req.organization.integrations?.s3?.bucket || null
-    userPayload.s3Region = req.organization.integrations?.s3?.region || null
+    userPayload.s3Enabled = Boolean(req.organization.integrations?.s3?.enabled || req.organization.integrations?.s3Storage)
+    userPayload.s3Storage = Boolean(req.organization.integrations?.s3?.enabled || req.organization.integrations?.s3Storage)
+    userPayload.s3Bucket = req.organization.integrations?.s3?.bucket || req.organization.integrations?.s3Bucket || null
+    userPayload.s3Region = req.organization.integrations?.s3?.region || req.organization.integrations?.s3Region || null
+    userPayload.org = {
+      _id: req.organization._id,
+      name: req.organization.name,
+      integrations: req.organization.integrations
+    }
   }
   return sendSuccess(res, { user: userPayload })
 })

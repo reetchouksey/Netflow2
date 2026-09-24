@@ -9,6 +9,7 @@ const crypto = require('crypto')
 const multer = require('multer')
 
 const Task = require('../models/Task')
+const DmsDocument = require('../models/DmsDocument')
 const { protect } = require('../middleware/auth')
 const { sendSuccess, sendError } = require('../utils/apiResponse')
 const { checkStorage, respond } = require('../middleware/quota')
@@ -176,12 +177,42 @@ router.post('/', protect, async (req, res, next) => {
 
         await addStorage(req.orgId, req.file.size, { bufferBytes: room.bufferBytes })
 
+        const orgName = req.organization?.name || 'Organization'
+        const dept = req.user?.department || 'General'
+        const userName = req.user?.name || 'System'
+        const ext = (req.file.originalname.split('.').pop() || 'FILE').toUpperCase()
+        const docType = ['PDF', 'DOCX', 'XLSX', 'JPG', 'PNG', 'JPEG', 'TXT', 'ZIP'].includes(ext) ? ext : 'Document'
+        const folderPath = `${orgName}/${dept}/${userName}/${docType}`
+        const fileUrl = urlFor(req.orgId, req.file.filename)
+
+        let dmsDoc = null
+        try {
+          dmsDoc = await DmsDocument.create({
+            orgId: req.orgId,
+            uploadedBy: req.user._id,
+            name: req.file.originalname,
+            filename: req.file.filename,
+            mime: req.file.mimetype,
+            type: docType,
+            sizeBytes: req.file.size,
+            department: dept,
+            folderPath,
+            fileUrl,
+            status: 'Synced'
+          })
+        } catch (dbErr) {
+          console.warn('[uploads] Failed to create DmsDocument record:', dbErr.message)
+        }
+
         return sendSuccess(res, {
           file: {
+            _id: dmsDoc?._id,
+            id: dmsDoc?._id,
             name: req.file.originalname,
-            url: urlFor(req.orgId, req.file.filename),
+            url: fileUrl,
             mime: req.file.mimetype,
-            size: req.file.size
+            size: req.file.size,
+            folderPath: dmsDoc?.folderPath || folderPath
           },
           ...(room.bufferBytes > 0 ? { usedStorageBuffer: true } : {})
         }, 201)

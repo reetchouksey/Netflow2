@@ -4,6 +4,9 @@
 
 const roleGuard = (...allowedRoles) => {
   return (req, res, next) => {
+    if (req.user?.isSuperAdmin) {
+      return next()
+    }
     if (!req.user || !req.user.role) {
       return res.status(403).json({
         success: false,
@@ -12,7 +15,7 @@ const roleGuard = (...allowedRoles) => {
       })
     }
 
-    const userRole = req.user.role.name
+    const userRole = req.user.role?.name || (typeof req.user.role === 'string' ? req.user.role : '')
     if (!allowedRoles.includes(userRole)) {
       return res.status(403).json({
         success: false,

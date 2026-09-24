@@ -74,8 +74,9 @@ function DmsHeaderActions({ loading, error, needsLogin, onSync }) {
 
       const res = await api.post('/api/uploads', formData);
 
-      if (res && onSync) {
-        onSync(); // Refresh dashboard data after upload
+      if (res) {
+        toast.success("Document uploaded successfully");
+        if (onSync) onSync(); // Refresh dashboard data after upload
       }
     } catch (err) {
       console.error("Upload failed", err);
@@ -124,7 +125,7 @@ function DmsHeaderActions({ loading, error, needsLogin, onSync }) {
       <button
         disabled={uploading}
         onClick={() => fileInputRef.current?.click()}
-        className="flex items-center gap-2 bg-[#6366F1] hover:bg-[#4F46E5] text-white rounded-xl px-4 py-2 shadow-xs hover:shadow-sm text-xs font-bold transition cursor-pointer disabled:opacity-50"
+        className="flex items-center gap-2 bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white rounded-xl px-4 py-2 shadow-xs hover:shadow-sm text-xs font-bold transition cursor-pointer disabled:opacity-50"
       >
         {uploading ? <IconSync className="w-3.5 h-3.5 animate-spin" /> : <IconCloudUpload className="w-3.5 h-3.5" />}
         {uploading ? 'Uploading...' : 'Upload Document'}
@@ -158,7 +159,7 @@ const FolderNode = ({ node, activeFolderId, setActiveFolderId, depth = 0 }) => {
       <div
         className={`flex items-center gap-2 px-2.5 py-2 text-xs font-semibold cursor-pointer rounded-xl transition ${
           isSelected
-            ? 'bg-[#EEF2FF] text-[#6366F1] dark:bg-indigo-950/60 dark:text-indigo-400'
+            ? 'bg-[#EBF3FC] text-[#134287] dark:bg-blue-950/60 dark:text-blue-300 font-bold'
             : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'
         }`}
         onClick={handleClick}
@@ -171,7 +172,7 @@ const FolderNode = ({ node, activeFolderId, setActiveFolderId, depth = 0 }) => {
         ) : (
           <div className="w-4 h-4 shrink-0" />
         )}
-        <IconFolder className={`w-4 h-4 shrink-0 ${isSelected ? 'text-[#6366F1] dark:text-indigo-400' : 'text-blue-500 dark:text-blue-400'}`} />
+        <IconFolder className={`w-4 h-4 shrink-0 ${isSelected ? 'text-[#134287] dark:text-blue-400' : 'text-[#134287] dark:text-blue-400'}`} />
         <span className="truncate">{node.name}</span>
       </div>
 
@@ -190,7 +191,7 @@ const FolderNode = ({ node, activeFolderId, setActiveFolderId, depth = 0 }) => {
 function KpiCard({ label, value, hint, icon, tone = 'neutral' }) {
   const tones = {
     neutral: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
-    indigo: "bg-[#EEF2FF] text-[#6366F1] dark:bg-indigo-950/60 dark:text-indigo-400",
+    indigo: "bg-[#EBF3FC] text-[#134287] dark:bg-blue-950/60 dark:text-blue-400",
     emerald: "bg-[#E6F9F0] text-[#059669] dark:bg-emerald-950/60 dark:text-emerald-400",
     amber: "bg-[#FEF9E7] text-[#D97706] dark:bg-amber-950/60 dark:text-amber-400",
     violet: "bg-[#F5F3FF] text-[#8B5CF6] dark:bg-purple-950/60 dark:text-purple-400",
@@ -232,6 +233,7 @@ export default function DocumentsDashboard() {
   const [loginEmail, setLoginEmail] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
   const [loginLoading, setLoginLoading] = useState(false)
+  const [loginError, setLoginError] = useState(null)
   const [isFullscreenPreview, setIsFullscreenPreview] = useState(false)
   const [zoom, setZoom] = useState(100)
   const [isTableMaximized, setIsTableMaximized] = useState(false)
@@ -415,6 +417,59 @@ export default function DocumentsDashboard() {
       }
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleDownloadDoc = async (doc) => {
+    if (!doc) return
+    try {
+      let downloadUrl = activeDocUrl || doc.fileUrl || ''
+      if (!downloadUrl) {
+        const res = await api.get(`/api/dms/documents/${doc._id}/url?mode=download`)
+        if (res && res.url) {
+          downloadUrl = toAbsoluteUrl(res.url)
+        }
+      }
+      if (!downloadUrl) {
+        toast.error("Download URL not available")
+        return
+      }
+
+      const urlObj = new URL(downloadUrl, window.location.origin)
+      if (!urlObj.searchParams.has('download')) {
+        urlObj.searchParams.set('download', '1')
+      }
+      const targetUrl = urlObj.toString()
+
+      // Fetch blob and trigger standard browser download directly to files/downloads
+      const response = await fetch(targetUrl, { credentials: 'include' })
+      if (response.ok) {
+        const blob = await response.blob()
+        const blobUrl = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = blobUrl
+        a.download = doc.name || 'document'
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        window.URL.revokeObjectURL(blobUrl)
+        toast.success(`Downloaded "${doc.name}"`)
+      } else {
+        const a = document.createElement('a')
+        a.href = targetUrl
+        a.download = doc.name || 'document'
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+      }
+    } catch (err) {
+      console.error('Download failed', err)
+      const a = document.createElement('a')
+      a.href = toAbsoluteUrl(doc.fileUrl || activeDocUrl || '')
+      a.download = doc.name || 'document'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
     }
   }
 
@@ -621,7 +676,7 @@ export default function DocumentsDashboard() {
                             setFilters(tempFilters)
                             setShowFilters(false)
                           }}
-                          className="text-xs font-bold bg-[#6366F1] text-white hover:bg-[#4F46E5] transition px-3.5 py-1.5 rounded-xl shadow-xs cursor-pointer"
+                          className="text-xs font-bold bg-[#134287] text-white hover:bg-[#0f346c] active:bg-[#0c2340] transition px-3.5 py-1.5 rounded-xl shadow-xs cursor-pointer"
                         >
                           Apply
                         </button>
@@ -661,7 +716,7 @@ export default function DocumentsDashboard() {
                             setSortBy(option.id)
                             setShowSortMenu(false)
                           }}
-                          className={`w-full text-left px-3 py-2 text-xs rounded-xl transition cursor-pointer ${sortBy === option.id ? 'bg-[#EEF2FF] text-[#6366F1] dark:bg-indigo-950/60 dark:text-indigo-400 font-bold' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium'}`}
+                          className={`w-full text-left px-3 py-2 text-xs rounded-xl transition cursor-pointer ${sortBy === option.id ? 'bg-[#EBF3FC] text-[#134287] dark:bg-blue-950/60 dark:text-blue-300 font-bold' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium'}`}
                         >
                           {option.label}
                         </button>
@@ -720,7 +775,7 @@ export default function DocumentsDashboard() {
                       <button
                         type="submit"
                         disabled={loginLoading}
-                        className="mt-2 w-full bg-[#6366F1] hover:bg-[#4F46E5] text-white font-bold py-2.5 rounded-xl transition shadow-xs disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer text-xs"
+                        className="mt-2 w-full bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white font-bold py-2.5 rounded-xl transition shadow-xs disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer text-xs"
                       >
                         {loginLoading ? 'Connecting...' : 'Connect to BaseLayer'}
                       </button>
@@ -819,7 +874,10 @@ export default function DocumentsDashboard() {
                         if (typeof doc.uploadedBy === 'string') {
                           uploadedByObj = { name: doc.uploadedBy }
                         }
-                        const avatarStr = uploadedByObj.avatar || uploadedByObj.name?.substring(0, 2).toUpperCase() || 'U'
+                        const avatarVal = uploadedByObj.avatar || ''
+                        const isImgAvatar = typeof avatarVal === 'string' && (avatarVal.startsWith('data:') || avatarVal.startsWith('http') || avatarVal.startsWith('/'))
+                        const initials = (uploadedByObj.name || 'U').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'U'
+                        const roleName = (typeof uploadedByObj.role === 'object' ? uploadedByObj.role?.name : uploadedByObj.role) || 'Member'
 
                         let displaySize = '0 B'
                         if (doc.sizeBytes) {
@@ -834,18 +892,18 @@ export default function DocumentsDashboard() {
                         return (
                           <tr
                             key={doc._id}
-                            className={`group hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition cursor-pointer ${isSelected ? 'bg-indigo-50/70 dark:bg-indigo-950/30' : ''}`}
+                            className={`group hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition cursor-pointer ${isSelected ? 'bg-blue-50/70 dark:bg-blue-950/30' : ''}`}
                             onClick={() => setActiveDoc(doc)}
                           >
                             <td className="px-5 py-3.5 flex items-center gap-3">
                               <FileIcon type={getDisplayType(doc)} className="w-5 h-5 shrink-0" />
                               <div className="min-w-0">
-                                <p className={`font-semibold truncate max-w-[200px] xl:max-w-[250px] ${isSelected ? 'text-[#6366F1] dark:text-indigo-400' : 'text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400'}`}>{doc.name}</p>
+                                <p className={`font-semibold truncate max-w-[200px] xl:max-w-[250px] ${isSelected ? 'text-[#134287] dark:text-blue-400 font-bold' : 'text-slate-800 dark:text-slate-200 group-hover:text-[#134287] dark:group-hover:text-blue-400'}`}>{doc.name}</p>
                                 <div className="flex gap-1.5 mt-1">
                                   {doc.tags?.slice(0, 1).map((t, idx) => {
                                     const tagText = typeof t === 'string' ? t : (t.v || t.k || JSON.stringify(t))
                                     return (
-                                      <span key={idx} className="text-[9.5px] px-2 py-0.5 rounded-md font-bold uppercase bg-indigo-50 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900/50">{tagText}</span>
+                                      <span key={idx} className="text-[9.5px] px-2 py-0.5 rounded-md font-bold uppercase bg-blue-50 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-100 dark:border-blue-900/50">{tagText}</span>
                                     )
                                   })}
                                 </div>
@@ -854,12 +912,16 @@ export default function DocumentsDashboard() {
                             <td className="px-4 py-3.5 font-medium text-slate-600 dark:text-slate-300">{doc.type}</td>
                             <td className="px-4 py-3.5">
                               <div className="flex items-center gap-2">
-                                <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[9px] font-bold text-slate-500 dark:text-slate-400">
-                                  {avatarStr}
+                                <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[9px] font-bold text-slate-500 dark:text-slate-400 overflow-hidden shrink-0">
+                                  {isImgAvatar ? (
+                                    <img src={avatarVal} alt={uploadedByObj.name || ''} className="w-full h-full object-cover" />
+                                  ) : (
+                                    initials
+                                  )}
                                 </div>
                                 <div className="min-w-0">
                                   <p className="font-semibold text-slate-800 dark:text-slate-200 truncate text-[11px]">{uploadedByObj.name || 'Unknown'}</p>
-                                  <p className="text-[10px] text-slate-400 truncate">{uploadedByObj.role || 'Member'}</p>
+                                  <p className="text-[10px] text-slate-400 truncate">{roleName}</p>
                                 </div>
                               </div>
                             </td>
@@ -894,7 +956,7 @@ export default function DocumentsDashboard() {
               </p>
               <div className="flex items-center gap-1 text-xs">
                 <button className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 font-semibold cursor-pointer">&lt;</button>
-                <button className="w-7 h-7 flex items-center justify-center rounded-lg bg-[#6366F1] text-white font-bold shadow-xs cursor-pointer">1</button>
+                <button className="w-7 h-7 flex items-center justify-center rounded-lg bg-[#134287] text-white font-bold shadow-xs cursor-pointer">1</button>
                 {documents.length > 0 && <button className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">2</button>}
                 {documents.length > 0 && <button className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 font-semibold cursor-pointer">&gt;</button>}
               </div>
@@ -945,18 +1007,18 @@ export default function DocumentsDashboard() {
                     <div className="flex gap-2">
                       <button onClick={() => setIsFullscreenPreview(true)} className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200/90 dark:border-slate-700 rounded-xl text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-xs transition flex items-center gap-1.5 cursor-pointer"><IconEye className="w-3.5 h-3.5 text-slate-400" /> Preview</button>
                       <button
-                        onClick={() => window.open(activeDocUrl || '#', '_blank')}
-                        disabled={activeDocUrlLoading || !activeDocUrl}
+                        onClick={() => handleDownloadDoc(activeDoc)}
+                        disabled={activeDocUrlLoading}
                         className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200/90 dark:border-slate-700 rounded-xl text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-xs transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                       >
-                        <IconCloudDownload className="w-3.5 h-3.5 text-slate-400" /> {activeDocUrlLoading ? '...' : 'Download'}
+                        <IconCloudDownload className="w-3.5 h-3.5 text-slate-400" /> Download
                       </button>
                     </div>
                   </div>
 
                   {/* Tabs */}
                   <div className="flex border-b border-slate-100 dark:border-slate-800 text-[11px] font-bold uppercase tracking-wider px-4">
-                    <div className="py-2.5 text-[#6366F1] dark:text-indigo-400 border-b-2 border-[#6366F1] dark:border-indigo-400">Details</div>
+                    <div className="py-2.5 text-[#134287] dark:text-blue-400 border-b-2 border-[#134287] dark:border-blue-400">Details</div>
                   </div>
 
                   {/* Details List */}
@@ -977,13 +1039,27 @@ export default function DocumentsDashboard() {
                     <div className="pt-2 border-t border-slate-100 dark:border-slate-800 grid grid-cols-3 gap-2 items-center">
                       <span className="text-slate-400 dark:text-slate-500 font-semibold text-[11px] uppercase tracking-wider">Uploaded By</span>
                       <div className="col-span-2 flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[9px] font-bold text-slate-500 dark:text-slate-400">
-                          {avatarStr}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-bold text-slate-800 dark:text-slate-200 truncate text-[11px]">{uploadedByObj.name || 'Unknown'}</p>
-                          <p className="text-[10px] text-slate-400 truncate leading-none mt-0.5">{uploadedByObj.role || 'Member'}</p>
-                        </div>
+                        {(() => {
+                          const avatarVal = uploadedByObj.avatar || ''
+                          const isImgAvatar = typeof avatarVal === 'string' && (avatarVal.startsWith('data:') || avatarVal.startsWith('http') || avatarVal.startsWith('/'))
+                          const initials = (uploadedByObj.name || 'U').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'U'
+                          const roleName = (typeof uploadedByObj.role === 'object' ? uploadedByObj.role?.name : uploadedByObj.role) || 'Member'
+                          return (
+                            <>
+                              <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[9px] font-bold text-slate-500 dark:text-slate-400 overflow-hidden shrink-0">
+                                {isImgAvatar ? (
+                                  <img src={avatarVal} alt={uploadedByObj.name || ''} className="w-full h-full object-cover" />
+                                ) : (
+                                  initials
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-bold text-slate-800 dark:text-slate-200 truncate text-[11px]">{uploadedByObj.name || 'Unknown'}</p>
+                                <p className="text-[10px] text-slate-400 truncate leading-none mt-0.5">{roleName}</p>
+                              </div>
+                            </>
+                          )
+                        })()}
                       </div>
                     </div>
 
@@ -998,10 +1074,10 @@ export default function DocumentsDashboard() {
                         {activeDoc.tags?.map((t, idx) => {
                           const tagText = typeof t === 'string' ? t : (t.v || t.k || JSON.stringify(t))
                           return (
-                            <span key={idx} className="text-[9.5px] px-2 py-0.5 rounded-md font-bold uppercase bg-indigo-50 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900/50">{tagText}</span>
+                            <span key={idx} className="text-[9.5px] px-2 py-0.5 rounded-md font-bold uppercase bg-blue-50 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-100 dark:border-blue-900/50">{tagText}</span>
                           )
                         })}
-                        <button className="text-[9.5px] px-2 py-0.5 rounded-md font-bold uppercase border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-400 transition flex items-center gap-0.5 cursor-pointer">
+                        <button className="text-[9.5px] px-2 py-0.5 rounded-md font-bold uppercase border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-[#134287] dark:hover:text-blue-400 hover:border-[#134287] transition flex items-center gap-0.5 cursor-pointer">
                           + Add Tag
                         </button>
                       </div>
@@ -1104,11 +1180,11 @@ export default function DocumentsDashboard() {
 
                   <div className="flex gap-3">
                     <button
-                      onClick={() => window.open(activeDocUrl || '#', '_blank')}
-                      disabled={activeDocUrlLoading || !activeDocUrl}
-                      className="px-5 py-2.5 bg-[#6366F1] hover:bg-[#4F46E5] text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-500/20 transition flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                      onClick={() => handleDownloadDoc(activeDoc)}
+                      disabled={activeDocUrlLoading}
+                      className="px-5 py-2.5 bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white rounded-xl text-xs font-bold shadow-md shadow-blue-900/20 transition flex items-center gap-2 disabled:opacity-50 cursor-pointer"
                     >
-                      <IconCloudDownload className="w-4 h-4" /> {activeDocUrlLoading ? 'Loading...' : 'Download Document'}
+                      <IconCloudDownload className="w-4 h-4" /> Download Document
                     </button>
                     <button
                       onClick={() => window.open(activeDocUrl || '#', '_blank')}

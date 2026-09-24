@@ -10,7 +10,7 @@ import { themeStore, useTheme } from '../lib/themeStore'
 import { useTasks } from '../lib/tasksStore'
 import { useForms } from '../lib/formsStore'
 import { useWorkflows } from '../lib/workflowsStore'
-import { canCreateWorkflow, canEditWorkflow, isSuperAdmin, isPlatformShell, getShell, SHELL } from '../utils/permissions'
+import { canCreateWorkflow, canEditWorkflow, isSuperAdmin, isPlatformShell, getShell, SHELL, isOrgAdmin } from '../utils/permissions'
 import { api } from '../utils/api'
 import { useFocusTrap, useOutsideDismiss, useScrollLock, modifierKeyLabel } from '../utils/a11y'
 import { toast } from '../lib/toastStore'
@@ -94,13 +94,16 @@ const WORKSPACE_NAV = [
 
 function visibleSections(user) {
   const shell = getShell(user)
+  const isSuper = isSuperAdmin(user)
+  const isAdmin = isOrgAdmin(user) || isSuper
+
   let sections = []
   if (shell === SHELL.PLATFORM) sections = [...PLATFORM_NAV]
   else if (shell === SHELL.ORG_ADMIN) sections = [...ORG_ADMIN_NAV]
   else if (shell === SHELL.OPS) sections = [...OPS_NAV]
   else sections = [...WORKSPACE_NAV]
 
-  if (shell !== SHELL.PLATFORM && shell === SHELL.ORG_ADMIN) {
+  if (shell !== SHELL.PLATFORM && isAdmin) {
     const platformItems = []
     
     if (user && (user.dmsEnabled === true || user.org?.integrations?.dmsEnabled === true)) {
@@ -112,7 +115,13 @@ function visibleSections(user) {
       })
     }
     
-    if (user && (user.s3Enabled === true || user.s3Storage === true || user.org?.integrations?.s3Storage === true)) {
+    if (user && (
+      user.s3Enabled === true ||
+      user.s3Storage === true ||
+      user.org?.integrations?.s3?.enabled === true ||
+      user.org?.integrations?.s3Storage === true ||
+      user.org?.integrations?.s3Enabled === true
+    )) {
       platformItems.push({
         key: 's3storage',
         label: 'S3 Storage',
