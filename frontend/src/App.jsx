@@ -169,26 +169,15 @@ function AuthenticatedTourHost() {
 }
 
 function App() {
-  const [ready, setReady] = useState(false)
+  const [ready, setReady] = useState(true)
 
   useEffect(() => {
-    // On boot, if we have a token try to refresh user info. This kicks invalid
-    // tokens out via the /api wrapper's 401 redirect.
+    // Non-blocking background session verification on boot
     const token = getToken()
-    const start = Date.now()
-    const minWait = 1400
-
-    const init = token ? authStore.refresh() : Promise.resolve()
-    init.finally(() => {
-      const elapsed = Date.now() - start
-      const remaining = Math.max(0, minWait - elapsed)
-      setTimeout(() => setReady(true), remaining)
-    })
+    if (token) {
+      authStore.refresh().catch(() => {})
+    }
   }, [])
-
-  if (!ready) {
-    return <WorkspaceSplashScreen />
-  }
 
   return (
     <BrowserRouter>

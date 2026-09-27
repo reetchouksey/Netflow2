@@ -82,11 +82,31 @@ export class ApiError extends Error {
   }
 }
 
+// In-memory cache and promise deduplication for instant zero-latency page transitions
+const responseCache = new Map()
+const inflightGetRequests = new Map()
+const DEFAULT_CACHE_TTL = 15000 // 15 seconds
+
+export const clearApiCache = () => {
+  responseCache.clear()
+  inflightGetRequests.clear()
+}
+
+export const invalidateApiCache = (pattern) => {
+  if (!pattern) {
+    responseCache.clear()
+    return
+  }
+  for (const key of responseCache.keys()) {
+    if (key.includes(pattern)) responseCache.delete(key)
+  }
+}
+
 const request = async (method, endpoint, body, opts = {}) => {
   const token = getToken()
   const headers = { ...(opts.headers || {}) }
   if (body instanceof FormData) {
-    // When sending FormData, delete any manual Content-Type so the browser can automatically set 'multipart/form-data; boundary=...'
+    // When sending FormData, delete manual Content-Type for browser boundary
     delete headers['Content-Type']
     delete headers['content-type']
   } else if (body !== undefined) {
@@ -99,37 +119,73 @@ const request = async (method, endpoint, body, opts = {}) => {
     fetchOpts.body = body instanceof FormData ? body : JSON.stringify(body)
   }
 
-  let response
-  try {
-    response = await fetch(buildUrl(endpoint), fetchOpts)
-  } catch (err) {
-    throw new ApiError('Network error - is the API server running?', 'NETWORK', 0)
-  }
+  const executeFetch = async () => {
+    let response
+    try {
+      response = await fetch(buildUrl(endpoint), fetchOpts)
+    } catch (err) {
+      throw new ApiError('Network error - is the API server running?', 'NETWORK', 0)
+    }
 
-  let data = {}
-  const text = await response.text()
-  if (text) {
-    try { data = JSON.parse(text) } catch { data = { error: text } }
-  }
+    let data = {}
+    const text = await response.text()
+    if (text) {
+      try { data = JSON.parse(text) } catch { data = { error: text } }
+    }
 
-  if (!response.ok) {
-    const code = data.code || `HTTP_${response.status}`
-    const message = data.error || `Request failed: ${response.status}`
+    if (!response.ok) {
+      const code = data.code || `HTTP_${response.status}`
+      const message = data.error || `Request failed: ${response.status}`
 
-    // Token expired / missing - kick to /login (unless we're already there)
-    if (response.status === 401 && code !== 'INVALID_CREDENTIALS' && code !== 'DMS_UNAUTHORIZED' && !opts.skipAuthRedirect) {
-      clearToken()
-      if (typeof window !== 'undefined') {
-        const p = window.location.pathname
-        if (p !== '/login' && p !== '/register') {
-          window.location.href = '/login'
+      // Token expired / missing - kick to /login (unless we're already there)
+      if (response.status === 401 && code !== 'INVALID_CREDENTIALS' && code !== 'DMS_UNAUTHORIZED' && !opts.skipAuthRedirect) {
+        clearToken()
+        clearApiCache()
+        if (typeof window !== 'undefined') {
+          const p = window.location.pathname
+          if (p !== '/login' && p !== '/register') {
+            window.location.href = '/login'
+          }
         }
       }
+      throw new ApiError(message, code, response.status, data)
     }
-    throw new ApiError(message, code, response.status, data)
+
+    return data
   }
 
-  return data
+  // Instant In-Memory Cache & In-Flight Deduplication for GET requests
+  if (method === 'GET' && !opts.noCache) {
+    const cacheKey = `${token || 'anon'}:${endpoint}`
+    const cached = responseCache.get(cacheKey)
+    if (cached && (Date.now() - cached.timestamp < (opts.ttl || DEFAULT_CACHE_TTL))) {
+      return cached.data
+    }
+
+    if (inflightGetRequests.has(cacheKey)) {
+      return inflightGetRequests.get(cacheKey)
+    }
+
+    const getPromise = (async () => {
+      try {
+        const resData = await executeFetch()
+        responseCache.set(cacheKey, { data: resData, timestamp: Date.now() })
+        return resData
+      } finally {
+        inflightGetRequests.delete(cacheKey)
+      }
+    })()
+
+    inflightGetRequests.set(cacheKey, getPromise)
+    return getPromise
+  }
+
+  // Invalidate cache on mutations
+  if (method !== 'GET') {
+    responseCache.clear()
+  }
+
+  return executeFetch()
 }
 
 // fetch() can't report upload progress, so multipart uploads go through XHR
