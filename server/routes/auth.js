@@ -197,6 +197,16 @@ router.post('/register', async (req, res, next) => {
   }
 })
 
+// GET /api/auth/login (Informational check for browser probes)
+router.get('/login', (req, res) => {
+  res.json({
+    success: true,
+    message: 'NetFlow Authentication API is online. Submit a POST request with JSON { email, password } to authenticate, or log in via the web application UI at /login.',
+    endpoint: '/api/auth/login',
+    method: 'POST'
+  })
+})
+
 // POST /api/auth/login
 router.post('/login', authLimiter, async (req, res, next) => {
   try {

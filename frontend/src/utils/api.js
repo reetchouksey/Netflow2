@@ -5,7 +5,7 @@
 // Base URL of the NetFlow API. Defaults to the deployed Render backend so the
 // production build (Vercel) works without a dashboard env var. Override with
 // VITE_API_URL (e.g. http://localhost:5000) for local development.
-const BASE = String(import.meta.env.VITE_API_URL || 'http://localhost:5000').trim()
+const BASE = String(import.meta.env.VITE_API_URL || 'http://localhost:5000').trim().replace(/\/+$/, '')
 
 // Exposed so components can turn a relative attachment URL ("/uploads/x.pdf")
 // returned by the API into an absolute, openable link.

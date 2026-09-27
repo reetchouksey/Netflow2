@@ -60,6 +60,15 @@ connectDB().then(async () => {
 })
 
 app.use(helmet())
+
+// Normalize multiple leading/consecutive slashes in req.url (e.g. //api/... -> /api/...)
+app.use((req, res, next) => {
+  if (req.url && req.url.includes('//')) {
+    req.url = req.url.replace(/\/+/g, '/')
+  }
+  next()
+})
+
 const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
   .split(',')
   .map(s => s.trim())
