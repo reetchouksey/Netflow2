@@ -55,6 +55,7 @@ import {
   Sparkles as Icon_Sparkles,
   Split as Icon_Split,
   Sun as Icon_Sun,
+  Table2 as Icon_Table2,
   Timer as Icon_Timer,
   Type as Icon_Type,
   Upload as Icon_Upload,
