@@ -75,9 +75,9 @@ const toast = {
 
 const CHAPTERS = [
   { id: 'full', label: '⚡ Fast Walkthrough', time: 0, desc: 'Complete quick tour: Dashboard, Forms, Workflows & Users' },
-  { id: 'workflows', label: '01. Build Workflow', time: 8, desc: 'Visual Workflow Builder, Node Connectors & Conditional Triggers' },
-  { id: 'forms', label: '02. Create Form', time: 24, desc: 'Dynamic Form Studio, Field Configuration & Validation' },
-  { id: 'users', label: '03. Add Users & Roles', time: 45, desc: 'User Provisioning, Roles, Permissions & Department Setup' },
+  { id: 'workflows', label: '01. Build Workflow', time: 3, desc: 'Visual Workflow Builder, Node Connectors & Conditional Triggers' },
+  { id: 'forms', label: '02. Create Form', time: 8, desc: 'Dynamic Form Studio, Field Configuration & Validation' },
+  { id: 'users', label: '03. Add Users & Roles', time: 15, desc: 'User Provisioning, Roles, Permissions & Department Setup' },
 ];
 
 function HeroWorkflowPreview() {
@@ -230,10 +230,10 @@ function HeroWorkflowPreview() {
       !videoError ? (
         React.createElement('video', {
           ref: videoRef,
-          src: '/assets/netflow-demo.mp4?v=perfect_crop',
+          src: '/assets/netflow-demo.mp4?v=snappy_27s',
           autoPlay: true,
           loop: true,
-          muted: isMuted,
+          muted: true,
           playsInline: true,
           onTimeUpdate: handleTimeUpdate,
           onLoadedMetadata: handleLoadedMetadata,
@@ -299,18 +299,6 @@ function HeroWorkflowPreview() {
                 className: 'p-1.5 rounded-lg hover:bg-white/10 transition cursor-pointer',
               },
               React.createElement(isPlaying ? Icon_CirclePause : Icon_Play, { className: 'size-4 sm:size-5' })
-            ),
-            // Mute / Unmute
-            React.createElement(
-              'button',
-              {
-                type: 'button',
-                onClick: toggleMute,
-                title: isMuted ? 'Unmute Audio' : 'Mute Audio',
-                className: 'p-1.5 rounded-lg hover:bg-white/10 transition cursor-pointer flex items-center gap-1 text-xs',
-              },
-              React.createElement(isMuted ? Icon_EyeOff : Icon_Eye, { className: 'size-4 sm:size-5' }),
-              React.createElement('span', { className: 'text-[11px] opacity-80 hidden sm:inline' }, isMuted ? 'Muted' : 'Sound On')
             ),
             // Time display
             React.createElement(
