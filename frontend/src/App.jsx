@@ -169,7 +169,7 @@ function AuthenticatedTourHost() {
 }
 
 function App() {
-  const [ready, setReady] = useState(true)
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
     // Non-blocking background session verification on boot
@@ -178,6 +178,10 @@ function App() {
       authStore.refresh().catch(() => {})
     }
   }, [])
+
+  if (!ready) {
+    return <WorkspaceSplashScreen onFinish={() => setReady(true)} minDuration={1400} />
+  }
 
   return (
     <BrowserRouter>
