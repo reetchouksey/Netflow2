@@ -10,10 +10,16 @@ const BASE = String(import.meta.env.VITE_API_URL || 'http://localhost:5000').tri
 // Exposed so components can turn a relative attachment URL ("/uploads/x.pdf")
 // returned by the API into an absolute, openable link.
 export const API_BASE = BASE
+
+export const buildUrl = (endpoint) => {
+  const cleanEp = String(endpoint || '').startsWith('/') ? endpoint : `/${endpoint}`
+  return `${BASE}${cleanEp}`.replace(/([^:])\/{2,}/g, '$1/')
+}
+
 export const toAbsoluteUrl = (url) => {
   if (!url) return ''
   if (/^https?:\/\//i.test(url)) return url
-  return `${BASE}${url.startsWith('/') ? '' : '/'}${url}`
+  return buildUrl(url)
 }
 
 /** BaseLayer DMS web UI (optional). Used for "Open in DMS" links. */
@@ -95,7 +101,7 @@ const request = async (method, endpoint, body, opts = {}) => {
 
   let response
   try {
-    response = await fetch(`${BASE}${endpoint}`, fetchOpts)
+    response = await fetch(buildUrl(endpoint), fetchOpts)
   } catch (err) {
     throw new ApiError('Network error - is the API server running?', 'NETWORK', 0)
   }
@@ -132,7 +138,7 @@ const request = async (method, endpoint, body, opts = {}) => {
 export const uploadWithProgress = (endpoint, formData, { onProgress, headers = {} } = {}) =>
   new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
-    xhr.open('POST', `${BASE}${endpoint}`)
+    xhr.open('POST', buildUrl(endpoint))
     const token = getToken()
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
     for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v)
