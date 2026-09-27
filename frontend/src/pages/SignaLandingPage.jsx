@@ -55,12 +55,14 @@ import {
   Sparkles as Icon_Sparkles,
   Split as Icon_Split,
   Sun as Icon_Sun,
-  Table2 as Icon_Table2,
+  Timer as Icon_Timer,
   Type as Icon_Type,
   Upload as Icon_Upload,
   UserCheck as Icon_UserCheck,
   Users as Icon_Users,
   UsersRound as Icon_UsersRound,
+  Volume2 as Icon_Volume2,
+  VolumeX as Icon_VolumeX,
   Waves as Icon_Waves,
   Workflow as Icon_Workflow,
   X as Icon_X
@@ -85,11 +87,17 @@ function HeroWorkflowPreview() {
   const [isPlaying, setIsPlaying] = useState(true);
   const [isMuted, setIsMuted] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [duration, setDuration] = useState(168);
   const [activeChapter, setActiveChapter] = useState('full');
-  const [playbackRate, setPlaybackRate] = useState(1);
+  const [playbackRate, setPlaybackRate] = useState(1.25);
   const [isHovered, setIsHovered] = useState(false);
   const [videoError, setVideoError] = useState(false);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.playbackRate = playbackRate;
+    }
+  }, [playbackRate]);
 
   const handleTimeUpdate = () => {
     if (videoRef.current) {
@@ -100,6 +108,7 @@ function HeroWorkflowPreview() {
   const handleLoadedMetadata = () => {
     if (videoRef.current) {
       setDuration(videoRef.current.duration);
+      videoRef.current.playbackRate = playbackRate;
     }
   };
 
@@ -124,7 +133,7 @@ function HeroWorkflowPreview() {
 
   const handleSeek = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const pos = (e.clientX - rect.left) / rect.width;
+    const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     if (videoRef.current && duration > 0) {
       videoRef.current.currentTime = pos * duration;
       setCurrentTime(pos * duration);
@@ -145,7 +154,7 @@ function HeroWorkflowPreview() {
 
   const toggleSpeed = (e) => {
     e?.stopPropagation();
-    const speeds = [1, 1.25, 1.5, 2];
+    const speeds = [1, 1.25, 1.5, 1.75, 2];
     const nextSpeed = speeds[(speeds.indexOf(playbackRate) + 1) % speeds.length];
     if (videoRef.current) {
       videoRef.current.playbackRate = nextSpeed;
@@ -169,6 +178,13 @@ function HeroWorkflowPreview() {
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  const formatTotalDurationPill = (seconds) => {
+    if (!seconds || isNaN(seconds)) return '2m 48s Walkthrough';
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}m ${s > 0 ? `${s}s` : ''} Tour`;
   };
 
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -261,12 +277,12 @@ function HeroWorkflowPreview() {
           React.createElement(Icon_Play, { className: 'size-8 ml-1' })
         )
       ),
-      // Floating Bottom Controls Bar
+      // Floating Bottom Controls Bar with Enhanced Time & Duration
       React.createElement(
         'div',
         {
-          className: `absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/75 to-transparent px-3 sm:px-5 py-3 transition-opacity duration-300 flex flex-col gap-2 ${
-            isHovered || !isPlaying ? 'opacity-100' : 'opacity-0 sm:opacity-90'
+          className: `absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/80 to-transparent px-3 sm:px-5 pb-3 pt-6 transition-opacity duration-300 flex flex-col gap-2 ${
+            isHovered || !isPlaying ? 'opacity-100' : 'opacity-0 sm:opacity-95'
           }`,
           onClick: (e) => e.stopPropagation(),
         },
@@ -274,11 +290,11 @@ function HeroWorkflowPreview() {
         React.createElement(
           'div',
           {
-            className: 'w-full h-2 bg-white/20 hover:h-2.5 rounded-full relative cursor-pointer group/seek transition-all overflow-hidden',
+            className: 'w-full h-2 hover:h-2.5 bg-white/20 rounded-full relative cursor-pointer group/seek transition-all overflow-hidden',
             onClick: handleSeek,
           },
           React.createElement('div', {
-            className: 'h-full bg-[var(--landing-accent)] rounded-full relative',
+            className: 'h-full bg-gradient-to-r from-blue-500 via-indigo-400 to-emerald-400 rounded-full relative shadow-[0_0_8px_rgba(59,130,246,0.6)]',
             style: { width: `${progressPercent}%` },
           })
         ),
@@ -286,6 +302,7 @@ function HeroWorkflowPreview() {
         React.createElement(
           'div',
           { className: 'flex items-center justify-between gap-2 text-white' },
+          // Left Group: Play/Pause, Mute, Time Pill & Duration Badge
           React.createElement(
             'div',
             { className: 'flex items-center gap-2 sm:gap-3' },
@@ -296,17 +313,54 @@ function HeroWorkflowPreview() {
                 type: 'button',
                 onClick: togglePlay,
                 title: isPlaying ? 'Pause (Space)' : 'Play (Space)',
-                className: 'p-1.5 rounded-lg hover:bg-white/10 transition cursor-pointer',
+                className: 'size-7 sm:size-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition cursor-pointer text-white',
               },
-              React.createElement(isPlaying ? Icon_CirclePause : Icon_Play, { className: 'size-4 sm:size-5' })
+              React.createElement(isPlaying ? Icon_CirclePause : Icon_Play, { className: 'size-4' })
             ),
-            // Time display
+            // Mute / Unmute
             React.createElement(
-              'span',
-              { className: 'text-xs text-white/80 font-mono tracking-wide' },
-              `${formatTime(currentTime)} / ${formatTime(duration)}`
+              'button',
+              {
+                type: 'button',
+                onClick: toggleMute,
+                title: isMuted ? 'Unmute' : 'Mute',
+                className: 'size-7 sm:size-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition cursor-pointer text-white/80 hover:text-white',
+              },
+              React.createElement(isMuted ? Icon_VolumeX : Icon_Volume2, { className: 'size-3.5 sm:size-4' })
+            ),
+            // High-Visibility Time Pill
+            React.createElement(
+              'div',
+              {
+                className: 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/60 border border-white/15 backdrop-blur-md text-xs font-mono shadow-inner',
+              },
+              React.createElement(
+                'span',
+                { className: 'font-bold text-white tabular-nums text-xs sm:text-[13px]' },
+                formatTime(currentTime)
+              ),
+              React.createElement(
+                'span',
+                { className: 'text-white/40 font-semibold' },
+                '/'
+              ),
+              React.createElement(
+                'span',
+                { className: 'font-bold text-emerald-400 tabular-nums text-xs sm:text-[13px]' },
+                formatTime(duration)
+              )
+            ),
+            // Total Duration Pill Badge
+            React.createElement(
+              'div',
+              {
+                className: 'hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold tracking-tight shadow-sm',
+              },
+              React.createElement(Icon_Timer, { className: 'size-3 text-emerald-400' }),
+              React.createElement('span', null, formatTotalDurationPill(duration))
             )
           ),
+          // Right Group: Speed toggle & Fullscreen
           React.createElement(
             'div',
             { className: 'flex items-center gap-1.5 sm:gap-2' },
@@ -316,10 +370,11 @@ function HeroWorkflowPreview() {
               {
                 type: 'button',
                 onClick: toggleSpeed,
-                title: 'Playback Speed',
-                className: 'px-2 py-1 rounded-md text-[11px] font-bold font-mono bg-white/10 hover:bg-white/20 transition cursor-pointer',
+                title: 'Change Playback Speed',
+                className: 'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold font-mono bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 border border-blue-500/40 transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95',
               },
-              `${playbackRate}x`
+              React.createElement('span', { className: 'text-[10px] text-blue-300 uppercase tracking-wider font-semibold' }, 'Speed'),
+              React.createElement('span', { className: 'text-white font-extrabold' }, `${playbackRate}x`)
             ),
             // Fullscreen
             React.createElement(
@@ -328,9 +383,9 @@ function HeroWorkflowPreview() {
                 type: 'button',
                 onClick: handleFullscreen,
                 title: 'Full Screen',
-                className: 'p-1.5 rounded-lg hover:bg-white/10 transition cursor-pointer',
+                className: 'size-7 sm:size-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition cursor-pointer text-white',
               },
-              React.createElement(Icon_Maximize2, { className: 'size-4' })
+              React.createElement(Icon_Maximize2, { className: 'size-3.5 sm:size-4' })
             )
           )
         )
