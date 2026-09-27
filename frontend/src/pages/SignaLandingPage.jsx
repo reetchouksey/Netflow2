@@ -74,10 +74,10 @@ const toast = {
 
 
 const CHAPTERS = [
-  { id: 'full', label: '⚡ Fast Walkthrough', time: 0, desc: 'Complete quick tour: Dashboard, Forms, Workflows & Users' },
-  { id: 'workflows', label: '01. Build Workflow', time: 3, desc: 'Visual Workflow Builder, Node Connectors & Conditional Triggers' },
-  { id: 'forms', label: '02. Create Form', time: 8, desc: 'Dynamic Form Studio, Field Configuration & Validation' },
-  { id: 'users', label: '03. Add Users & Roles', time: 15, desc: 'User Provisioning, Roles, Permissions & Department Setup' },
+  { id: 'full', label: '⚡ Product Walkthrough', time: 0, desc: 'Complete interactive tour: Dashboard, Forms, Workflows & Users' },
+  { id: 'users', label: '01. Users & Roles', time: 7, desc: 'User Provisioning, Roles, Permissions & Department Setup' },
+  { id: 'forms', label: '02. Create & Publish Form', time: 18, desc: 'Dynamic Form Studio, Field Configuration & Instant Publishing' },
+  { id: 'workflows', label: '03. Workflows & Approvals', time: 31, desc: 'Visual Workflow Builder, Node Connectors & Conditional Triggers' },
 ];
 
 function HeroWorkflowPreview() {
@@ -177,7 +177,7 @@ function HeroWorkflowPreview() {
     'figure',
     {
       className: 'w-full min-w-0 flex flex-col rounded-xl overflow-hidden border border-white/10 shadow-2xl bg-[var(--landing-surface)] select-none group',
-      'aria-label': 'NetFlow Fast Video Walkthrough',
+      'aria-label': 'NetFlow Product Tour',
       onMouseEnter: () => setIsHovered(true),
       onMouseLeave: () => setIsHovered(false),
     },
@@ -216,7 +216,7 @@ function HeroWorkflowPreview() {
           'span',
           { className: 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20' },
           React.createElement('span', { className: 'size-2 rounded-full bg-emerald-400 animate-pulse' }),
-          'QUICK DEMO'
+          'PRODUCT TOUR'
         )
       )
     ),
@@ -230,7 +230,7 @@ function HeroWorkflowPreview() {
       !videoError ? (
         React.createElement('video', {
           ref: videoRef,
-          src: '/assets/netflow-demo.mp4?v=snappy_27s',
+          src: '/assets/netflow-demo.mp4?v=pro_clean_44s',
           autoPlay: true,
           loop: true,
           muted: true,
