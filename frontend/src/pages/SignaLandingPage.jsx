@@ -230,7 +230,7 @@ function HeroWorkflowPreview() {
       !videoError ? (
         React.createElement('video', {
           ref: videoRef,
-          src: '/assets/netflow-demo.mp4?v=new_cropped_clean_v1',
+          src: '/assets/netflow-demo.mp4?v=full_screen_1080p_v2',
           autoPlay: true,
           loop: true,
           muted: true,
