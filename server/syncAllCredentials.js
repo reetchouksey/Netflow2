@@ -18,24 +18,33 @@ async function syncAllCredentials() {
   await mongoose.connect(process.env.MONGO_URI);
   console.log('Connected to DB');
 
+  const allRoles = await mongoose.connection.db.collection('roles').find({}).toArray();
+
   for (const u of seedUsers) {
     const hash = await bcrypt.hash(u.pass, 10);
+    const targetRole = allRoles.find((r) => r.name?.toLowerCase() === u.roleName.toLowerCase());
+    
+    const updateDoc = {
+      password: hash,
+      isActive: true,
+      status: 'Active',
+      isEmailVerified: true,
+      mustChangePassword: false,
+      needsProductTour: false,
+      lockUntil: null,
+      failedLoginAttempts: 0,
+      isSuperAdmin: u.roleName === 'SuperAdmin'
+    };
+
+    if (targetRole) {
+      updateDoc.role = targetRole._id;
+    }
+
     await mongoose.connection.db.collection('users').updateOne(
       { email: u.email },
-      {
-        $set: {
-          password: hash,
-          isActive: true,
-          status: 'Active',
-          isEmailVerified: true,
-          mustChangePassword: false,
-          needsProductTour: false,
-          lockUntil: null,
-          failedLoginAttempts: 0
-        }
-      }
+      { $set: updateDoc }
     );
-    console.log(`Updated credentials for: ${u.email} (Password: ${u.pass})`);
+    console.log(`Updated credentials for: ${u.email} (Role: ${u.roleName}, Password: ${u.pass})`);
   }
 
   await mongoose.disconnect();
