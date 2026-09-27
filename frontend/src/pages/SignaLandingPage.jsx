@@ -74,10 +74,10 @@ const toast = {
 
 
 const CHAPTERS = [
-  { id: 'full', label: '⚡ Product Walkthrough', time: 0, desc: 'Complete interactive tour: Dashboard, Forms, Workflows & Users' },
-  { id: 'users', label: '01. Users & Roles', time: 10, desc: 'User Provisioning, Roles, Permissions & Department Setup' },
-  { id: 'forms', label: '02. Create & Publish Form', time: 25, desc: 'Dynamic Form Studio, Field Configuration & Instant Publishing' },
-  { id: 'workflows', label: '03. Workflows & Approvals', time: 44, desc: 'Visual Workflow Builder, Node Connectors & Conditional Triggers' },
+  { id: 'full', label: '⚡ Product Walkthrough', time: 0, desc: 'Complete interactive tour: Forms, Workflows, Dashboard & Approvals' },
+  { id: 'forms', label: '01. Create & Publish Form', time: 25, desc: 'Dynamic Form Studio, Field Configuration & Instant Publishing' },
+  { id: 'workflows', label: '02. Build Workflows', time: 80, desc: 'Visual Workflow Builder, Node Connectors & Conditional Triggers' },
+  { id: 'approvals', label: '03. Approvals & Routing', time: 135, desc: 'Task Routing, Manager Approvals & Audit Trail' },
 ];
 
 function HeroWorkflowPreview() {
@@ -230,7 +230,7 @@ function HeroWorkflowPreview() {
       !videoError ? (
         React.createElement('video', {
           ref: videoRef,
-          src: '/assets/netflow-demo.mp4?v=pro_clean_62s',
+          src: '/assets/netflow-demo.mp4?v=new_cropped_clean_v1',
           autoPlay: true,
           loop: true,
           muted: true,
