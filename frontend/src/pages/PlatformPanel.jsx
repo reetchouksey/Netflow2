@@ -2391,7 +2391,7 @@ export default function PlatformPanel() {
             onClick={() => setDialog('create')}
             className="px-6 py-3 rounded-2xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2b59] text-white text-xs font-extrabold shadow-md transition flex items-center gap-1.5 shrink-0 cursor-pointer"
           >
-            + Create organization
+            + New organization
           </button>
         </div>
 
