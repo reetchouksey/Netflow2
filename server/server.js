@@ -73,11 +73,17 @@ const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
   .split(',')
   .map(s => s.trim())
   .filter(Boolean)
+
 app.use(cors({
   origin: (origin, cb) => {
-    // No origin = curl/server-to-server. Allow in dev.
+    // No origin = curl/server-to-server.
     if (!origin) return cb(null, true)
-    if (allowedOrigins.includes(origin)) return cb(null, true)
+    // Match configured origins
+    if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) return cb(null, true)
+    // Allow all Vercel preview and production deployments
+    if (/^https:\/\/.*\.vercel\.app$/.test(origin)) return cb(null, true)
+    // Allow localhost origins in dev/preview
+    if (/^https?:\/\/localhost(:\d+)?$/.test(origin)) return cb(null, true)
     if (process.env.NODE_ENV !== 'production') return cb(null, true)
     return cb(new Error(`CORS: origin ${origin} not allowed`))
   },
