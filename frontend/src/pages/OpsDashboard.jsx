@@ -283,7 +283,7 @@ function OpsDashboard() {
 
   const [team, setTeam] = useState(null)
   const [teamTasks, setTeamTasks] = useState([])
-  const [booting, setBooting] = useState(true)
+  const [booting, setBooting] = useState(() => tasksStore.getSnapshot().length === 0)
   const [teamLoading, setTeamLoading] = useState(true)
 
   useEffect(() => {

@@ -572,7 +572,7 @@ function BuilderDashboard() {
   const [approvalDist, setApprovalDist] = useState([])
   const [activityRaw, setActivityRaw] = useState([])
   const [activityLoading, setActivityLoading] = useState(true)
-  const [booting, setBooting] = useState(true)
+  const [booting, setBooting] = useState(() => tasksStore.getSnapshot().length === 0 && workflowsStore.getSnapshot().length === 0)
   const [statsError, setStatsError] = useState('')
   const [statsReloadKey, setStatsReloadKey] = useState(0)
 
@@ -1337,7 +1337,7 @@ function EmployeeDashboard({ user }) {
   const rejected = useMemo(() => requests.filter((r) => r.status === 'Rejected'), [requests])
   const needsAttention = rejected.length + myApprovals.length
 
-  const [booting, setBooting] = useState(true)
+  const [booting, setBooting] = useState(() => tasksStore.getSnapshot().length === 0)
   useEffect(() => { tasksStore.refresh().finally(() => setBooting(false)) }, [])
 
   return (

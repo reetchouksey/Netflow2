@@ -211,7 +211,7 @@ function TaskInbox() {
   const [bulkBusy, setBulkBusy] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => tasksStore.getSnapshot().length === 0)
   const [teamTasks, setTeamTasks] = useState([])
   const [teamLoading, setTeamLoading] = useState(false)
 

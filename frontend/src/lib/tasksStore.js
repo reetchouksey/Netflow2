@@ -6,12 +6,21 @@ import { useEffect, useSyncExternalStore } from 'react'
 import { api, buildQuery } from '../utils/api'
 import { adaptTask } from '../utils/adapters'
 
+const STORAGE_KEY = 'netflow_tasks_cache'
 let cache = []
-let cacheById = new Map()
+try {
+  const stored = localStorage.getItem(STORAGE_KEY)
+  if (stored) cache = JSON.parse(stored)
+} catch (_) {}
+
+let cacheById = new Map(cache.map((t) => [t.id, t]))
 let lastFetchedAt = 0
 let inflight = null
 const listeners = new Set()
-const emit = () => { for (const l of listeners) l() }
+const emit = () => {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(cache)) } catch (_) {}
+  for (const l of listeners) l()
+}
 
 const indexCache = () => {
   cacheById = new Map(cache.map((t) => [t.id, t]))

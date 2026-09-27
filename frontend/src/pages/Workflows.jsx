@@ -181,7 +181,7 @@ function Workflows() {
   const [categoryFilter, setCategoryFilter] = useState('All categories')
   const [statusFilter, setStatusFilter] = useState('All') // 'All' | 'Active' | 'Drafts' | 'Paused'
   const [sortBy, setSortBy] = useState('recently_updated') // 'recently_updated' | 'name' | 'steps'
-  const [booting, setBooting] = useState(true)
+  const [booting, setBooting] = useState(() => workflowsStore.getSnapshot().length === 0)
   const [currentPage, setCurrentPage] = useState(1)
   const pageSize = 10
 

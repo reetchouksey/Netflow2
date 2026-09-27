@@ -904,9 +904,23 @@ function AdminPanel() {
   const me = useUser()
   const departments = useDepartmentNames()
 
-  const [users, setUsers] = useState([])
-  const [roles, setRoles] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [users, setUsers] = useState(() => {
+    try {
+      const stored = localStorage.getItem('netflow_users_cache')
+      return stored ? JSON.parse(stored) : []
+    } catch (_) { return [] }
+  })
+  const [roles, setRoles] = useState(() => {
+    try {
+      const stored = localStorage.getItem('netflow_roles_cache')
+      return stored ? JSON.parse(stored) : []
+    } catch (_) { return [] }
+  })
+  const [loading, setLoading] = useState(() => {
+    try {
+      return !localStorage.getItem('netflow_users_cache')
+    } catch (_) { return true }
+  })
   const [error, setError] = useState('')
 
   const [search, setSearch] = useState('')
@@ -928,7 +942,9 @@ function AdminPanel() {
   const loadUsers = async () => {
     try {
       const data = await fetchAllUsers()
-      setUsers(data.users || [])
+      const uList = data.users || []
+      setUsers(uList)
+      try { localStorage.setItem('netflow_users_cache', JSON.stringify(uList)) } catch (_) {}
       // Every mutation on this page reloads the list, and each one can move a
       // seat count, so the card is refreshed from the same place.
       usageStore.refresh({ withUsage: true }).catch(() => {})
@@ -940,10 +956,10 @@ function AdminPanel() {
   const loadRoles = async () => {
     try {
       const data = await api.get('/api/roles')
-      setRoles(data.roles || [])
+      const rList = data.roles || []
+      setRoles(rList)
+      try { localStorage.setItem('netflow_roles_cache', JSON.stringify(rList)) } catch (_) {}
     } catch {
-      // Roles are required for the dropdowns. Show a quiet hint instead of
-      // a blocking error so the rest of the page still works for browsing.
       setRoles([])
     }
   }

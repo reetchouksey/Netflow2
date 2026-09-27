@@ -175,7 +175,7 @@ function RequestCatalogue() {
   const me = useUser()
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
-  const [booting, setBooting] = useState(true)
+  const [booting, setBooting] = useState(() => formsStore.getSnapshot().length === 0)
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
@@ -472,7 +472,7 @@ function FormsLibrary() {
   const { usage } = useUsage()
   const [search, setSearch] = useState('')
   const [newOpen, setNewOpen] = useState(false)
-  const [booting, setBooting] = useState(true)
+  const [booting, setBooting] = useState(() => formsStore.getSnapshot().length === 0)
   const [activeTab, setActiveTab] = useState('all') // 'all' | 'published' | 'drafts'
   const [categoryFilter, setCategoryFilter] = useState('All categories')
   useEffect(() => { formsStore.refresh().finally(() => setBooting(false)) }, [])

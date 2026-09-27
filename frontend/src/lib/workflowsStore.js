@@ -5,11 +5,20 @@ import { useEffect, useSyncExternalStore } from 'react'
 import { api } from '../utils/api'
 import { adaptWorkflow } from '../utils/adapters'
 
+const STORAGE_KEY = 'netflow_workflows_cache'
 let cache = []
+try {
+  const stored = localStorage.getItem(STORAGE_KEY)
+  if (stored) cache = JSON.parse(stored)
+} catch (_) {}
+
 let lastFetchedAt = 0
 let inflight = null
 const listeners = new Set()
-const emit = () => { for (const l of listeners) l() }
+const emit = () => {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(cache)) } catch (_) {}
+  for (const l of listeners) l()
+}
 
 const fetchAll = async () => {
   if (inflight) return inflight

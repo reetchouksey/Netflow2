@@ -8,15 +8,32 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import { api, getToken } from '../utils/api'
 
-let state = { departments: [], orphans: [], loading: true, error: '' }
+const STORAGE_KEY = 'netflow_departments_cache'
+let state = { departments: [], orphans: [], loading: false, error: '' }
+try {
+  const stored = localStorage.getItem(STORAGE_KEY)
+  if (stored) {
+    const parsed = JSON.parse(stored)
+    if (parsed && Array.isArray(parsed.departments)) {
+      state = { ...state, ...parsed, loading: false }
+    }
+  }
+} catch (_) {}
+
 let lastFetchedAt = 0
 let inflight = null
-// Which session the list belongs to — signing in as another tenant must not
-// leave the previous workspace's teams in the dropdowns.
 let cacheToken = null
 
 const listeners = new Set()
-const emit = () => { for (const l of listeners) l() }
+const emit = () => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      departments: state.departments,
+      orphans: state.orphans
+    }))
+  } catch (_) {}
+  for (const l of listeners) l()
+}
 const setState = (patch) => { state = { ...state, ...patch }; emit() }
 
 const STALE_MS = 5 * 60 * 1000
