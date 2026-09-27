@@ -303,7 +303,7 @@ function HeroWorkflowPreview() {
         React.createElement(
           'div',
           { className: 'flex items-center justify-between gap-2 text-white' },
-          // Left Group: Play/Pause, Mute, Time Pill & Duration Badge
+          // Left Group: Play/Pause
           React.createElement(
             'div',
             { className: 'flex items-center gap-2 sm:gap-3' },
@@ -314,51 +314,9 @@ function HeroWorkflowPreview() {
                 type: 'button',
                 onClick: togglePlay,
                 title: isPlaying ? 'Pause (Space)' : 'Play (Space)',
-                className: 'size-7 sm:size-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition cursor-pointer text-white',
+                className: 'size-7 sm:size-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition cursor-pointer text-white shadow-sm',
               },
               React.createElement(isPlaying ? Icon_CirclePause : Icon_Play, { className: 'size-4' })
-            ),
-            // Mute / Unmute
-            React.createElement(
-              'button',
-              {
-                type: 'button',
-                onClick: toggleMute,
-                title: isMuted ? 'Unmute' : 'Mute',
-                className: 'size-7 sm:size-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition cursor-pointer text-white/80 hover:text-white',
-              },
-              React.createElement(isMuted ? Icon_VolumeX : Icon_Volume2, { className: 'size-3.5 sm:size-4' })
-            ),
-            // High-Visibility Time Pill
-            React.createElement(
-              'div',
-              {
-                className: 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/60 border border-white/15 backdrop-blur-md text-xs font-mono shadow-inner',
-              },
-              React.createElement(
-                'span',
-                { className: 'font-bold text-white tabular-nums text-xs sm:text-[13px]' },
-                formatTime(currentTime)
-              ),
-              React.createElement(
-                'span',
-                { className: 'text-white/40 font-semibold' },
-                '/'
-              ),
-              React.createElement(
-                'span',
-                { className: 'font-bold text-emerald-400 tabular-nums text-xs sm:text-[13px]' },
-                formatTime(duration)
-              )
-            ),
-            // Total Duration Pill Badge
-            React.createElement(
-              'div',
-              {
-                className: 'hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold tracking-tight shadow-sm',
-              },
-              React.createElement(Icon_Timer, { className: 'size-3 text-emerald-400' }),
-              React.createElement('span', null, formatTotalDurationPill(duration))
             )
           ),
           // Right Group: Speed toggle & Fullscreen
