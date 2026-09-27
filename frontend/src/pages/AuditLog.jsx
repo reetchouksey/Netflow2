@@ -239,7 +239,12 @@ function IconAlert(props) {
 
 function AuditLog() {
   const departments = useDepartmentNames()
-  const [logs, setLogs] = useState([])
+  const [logs, setLogs] = useState(() => {
+    try {
+      const stored = localStorage.getItem('netflow_audit_logs_cache')
+      return stored ? JSON.parse(stored) : []
+    } catch (_) { return [] }
+  })
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [searchInput, setSearchInput] = useState('')
@@ -249,7 +254,11 @@ function AuditLog() {
   const actionDropdownRef = useRef(null)
   const [statusFilter, setStatusFilter] = useState('') // '', 'success', 'rejected', 'alerts'
   const [department, setDepartment] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => {
+    try {
+      return !localStorage.getItem('netflow_audit_logs_cache')
+    } catch (_) { return true }
+  })
   const [error, setError] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
   const [exporting, setExporting] = useState(false)
@@ -293,13 +302,16 @@ function AuditLog() {
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
     setError('')
     api.get(`/api/audit-logs${buildQuery({ ...filterParams, page, limit: PAGE_SIZE })}`)
       .then((data) => {
         if (cancelled) return
-        setLogs(data.logs || [])
-        setTotal(data.total ?? data.pagination?.total ?? (data.logs || []).length)
+        const logList = data.logs || []
+        setLogs(logList)
+        if (page === 1 && !hasFilters) {
+          try { localStorage.setItem('netflow_audit_logs_cache', JSON.stringify(logList)) } catch (_) {}
+        }
+        setTotal(data.total ?? data.pagination?.total ?? logList.length)
         if (data.summary) {
           setSummary({
             total: data.summary.total ?? 0,

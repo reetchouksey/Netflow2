@@ -89,10 +89,29 @@ function DataRow({ label, value, valueNode, actionNode }) {
 
 export default function OrgSettings() {
   const user = useUser()
-  const [org, setOrg] = useState(null)
-  const [name, setName] = useState('')
-  const [billingEmail, setBillingEmail] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [org, setOrg] = useState(() => {
+    try {
+      const stored = localStorage.getItem('netflow_org_settings_cache')
+      return stored ? JSON.parse(stored) : null
+    } catch (_) { return null }
+  })
+  const [name, setName] = useState(() => {
+    try {
+      const stored = localStorage.getItem('netflow_org_settings_cache')
+      return stored ? (JSON.parse(stored)?.name || '') : ''
+    } catch (_) { return '' }
+  })
+  const [billingEmail, setBillingEmail] = useState(() => {
+    try {
+      const stored = localStorage.getItem('netflow_org_settings_cache')
+      return stored ? (JSON.parse(stored)?.billingEmail || '') : ''
+    } catch (_) { return '' }
+  })
+  const [loading, setLoading] = useState(() => {
+    try {
+      return !localStorage.getItem('netflow_org_settings_cache')
+    } catch (_) { return true }
+  })
   const [saving, setSaving] = useState(false)
   const [dmsStatus, setDmsStatus] = useState(null)
   const [recentActivity, setRecentActivity] = useState([])
@@ -102,13 +121,14 @@ export default function OrgSettings() {
   const readOnly = useReadOnly()
 
   const apply = (o) => {
+    if (!o) return
     setOrg(o)
     setName(o.name || '')
     setBillingEmail(o.billingEmail || '')
+    try { localStorage.setItem('netflow_org_settings_cache', JSON.stringify(o)) } catch (_) {}
   }
 
   const loadAll = useCallback(async () => {
-    setLoading(true)
     try {
       const [orgRes, dmsRes, auditRes] = await Promise.allSettled([
         api.get('/api/organization'),

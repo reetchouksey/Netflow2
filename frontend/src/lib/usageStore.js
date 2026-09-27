@@ -13,15 +13,32 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import { api, getToken } from '../utils/api'
 
-let state = { licence: null, usage: null, loading: true, error: '', canManage: false }
+const STORAGE_KEY = 'netflow_usage_cache'
+let state = { licence: null, usage: null, loading: false, error: '', canManage: false }
+try {
+  const stored = localStorage.getItem(STORAGE_KEY)
+  if (stored) {
+    const parsed = JSON.parse(stored)
+    if (parsed) state = { ...state, ...parsed, loading: false }
+  }
+} catch (_) {}
+
 let lastFetchedAt = 0
 let inflight = null
-// Which session the cached numbers belong to. Signing in as somebody else must
-// not leave the previous tenant's licence on screen.
 let cacheToken = null
 
 const listeners = new Set()
-const emit = () => { for (const l of listeners) l() }
+const emit = () => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      licence: state.licence,
+      usage: state.usage,
+      trend: state.trend,
+      canManage: state.canManage
+    }))
+  } catch (_) {}
+  for (const l of listeners) l()
+}
 const setState = (patch) => { state = { ...state, ...patch }; emit() }
 
 // Long interval on purpose: usage moves when somebody submits something, and the

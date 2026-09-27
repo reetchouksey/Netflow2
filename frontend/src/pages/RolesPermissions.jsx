@@ -171,9 +171,18 @@ function RoleActionMenu({ role, onEdit, onDelete, onManage }) {
 
 export default function RolesPermissions() {
   const navigate = useNavigate()
-  const [data, setData] = useState(null)
+  const [data, setData] = useState(() => {
+    try {
+      const stored = localStorage.getItem('netflow_roles_summary_cache')
+      return stored ? JSON.parse(stored) : null
+    } catch (_) { return null }
+  })
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => {
+    try {
+      return !localStorage.getItem('netflow_roles_summary_cache')
+    } catch (_) { return true }
+  })
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -195,9 +204,10 @@ export default function RolesPermissions() {
 
   const load = useCallback(async () => {
     setError('')
-    setLoading(true)
     try {
-      setData(await api.get('/api/roles/summary'))
+      const res = await api.get('/api/roles/summary')
+      setData(res)
+      try { localStorage.setItem('netflow_roles_summary_cache', JSON.stringify(res)) } catch (_) {}
     } catch (err) {
       setError(err.message || 'Could not load roles')
     } finally {

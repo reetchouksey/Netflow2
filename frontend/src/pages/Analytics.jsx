@@ -350,9 +350,18 @@ function Analytics() {
   const [range, setRange] = useState(RANGES[1])
   const [department, setDepartment] = useState('')
   const orgDepartments = useDepartmentNames()
-  const [loading, setLoading] = useState(true)
+  const [summary, setSummary] = useState(() => {
+    try {
+      const stored = localStorage.getItem('netflow_analytics_summary_cache')
+      return stored ? JSON.parse(stored) : null
+    } catch (_) { return null }
+  })
+  const [loading, setLoading] = useState(() => {
+    try {
+      return !localStorage.getItem('netflow_analytics_summary_cache')
+    } catch (_) { return true }
+  })
   const [error, setError] = useState('')
-  const [summary, setSummary] = useState(null)
 
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), [])
   const thirtyDaysAgoStr = useMemo(() => new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10), [])
@@ -370,7 +379,6 @@ function Analytics() {
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
     setError('')
 
     const iso = (d) => d.toISOString().slice(0, 10)
@@ -409,8 +417,10 @@ function Analytics() {
       const [s, c, a, d, sla] = results
 
       if (s.status === 'fulfilled') {
-        setSummary(s.value.summary || s.value)
+        const sum = s.value.summary || s.value
+        setSummary(sum)
         setScope(s.value.scope || null)
+        try { localStorage.setItem('netflow_analytics_summary_cache', JSON.stringify(sum)) } catch (_) {}
       }
 
       if (c.status === 'fulfilled') {
