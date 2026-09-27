@@ -325,7 +325,7 @@ function Workflows() {
               onClick={() => navigate('/workflows/new')}
               disabled={readOnly}
               title={readOnly ? 'The workspace licence has expired — new workflows are paused.' : undefined}
-              className="inline-flex items-center gap-2 px-4.5 py-2.5 rounded-2xl bg-[#6366F1] hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold shadow-md shadow-indigo-500/20 transition cursor-pointer"
+              className="inline-flex items-center gap-2 px-4.5 py-2.5 rounded-2xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold shadow-md shadow-blue-900/20 transition cursor-pointer"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -338,7 +338,7 @@ function Workflows() {
         {/* Enterprise Plan Usage Bar Card */}
         <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 py-4 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shrink-0">
           <div className="flex items-center gap-3 text-xs">
-            <span className="bg-[#EEF2FF] dark:bg-indigo-500/15 text-[#6366F1] dark:text-indigo-400 font-bold px-3 py-1 rounded-xl text-[11px]">
+            <span className="bg-[#EBF3FC] dark:bg-indigo-500/15 text-[#134287] dark:text-indigo-400 font-bold px-3 py-1 rounded-xl text-[11px]">
               Enterprise plan
             </span>
             <div className="text-slate-600 dark:text-slate-300">
@@ -433,13 +433,13 @@ function Workflows() {
                   type="button"
                   onClick={() => setStatusFilter(tab.key)}
                   className={`pb-3 text-xs sm:text-sm font-semibold transition relative cursor-pointer ${isActive
-                      ? 'text-[#6366F1] dark:text-indigo-400 font-bold'
+                      ? 'text-[#134287] dark:text-indigo-400 font-bold'
                       : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                     }`}
                 >
                   {tab.label}
                   {isActive && (
-                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#6366F1] dark:bg-indigo-400 rounded-full" />
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#134287] dark:bg-indigo-400 rounded-full" />
                   )}
                 </button>
               )
@@ -540,7 +540,7 @@ function Workflows() {
                     >
                       {/* Left: Workflow Node Icon + Title + Description + Chips */}
                       <div className="flex items-start gap-4 min-w-0 flex-1">
-                        <div className="w-12 h-12 rounded-2xl bg-[#EEF2FF] text-[#6366F1] dark:bg-indigo-950/60 dark:text-indigo-400 flex items-center justify-center shrink-0 shadow-2xs mt-0.5">
+                        <div className="w-12 h-12 rounded-2xl bg-[#EBF3FC] text-[#134287] dark:bg-indigo-950/60 dark:text-indigo-400 flex items-center justify-center shrink-0 shadow-2xs mt-0.5">
                           <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
                             <circle cx="6" cy="6" r="2.5" />
                             <circle cx="18" cy="12" r="2.5" />
@@ -551,7 +551,7 @@ function Workflows() {
 
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <h2 className="font-bold text-slate-900 dark:text-white text-sm sm:text-base group-hover:text-[#6366F1] dark:group-hover:text-indigo-400 transition truncate">
+                            <h2 className="font-bold text-slate-900 dark:text-white text-sm sm:text-base group-hover:text-[#134287] dark:group-hover:text-indigo-400 transition truncate">
                               {w.name || 'Untitled workflow'}
                             </h2>
                           </div>
@@ -646,7 +646,7 @@ function Workflows() {
                             type="button"
                             onClick={() => setCurrentPage(item)}
                             className={`min-w-[30px] h-7.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center cursor-pointer ${isCurrent
-                                ? 'bg-indigo-600 text-white shadow-xs'
+                                ? 'bg-[#134287] text-white shadow-xs'
                                 : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60'
                               }`}
                           >

@@ -345,7 +345,7 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
               <button
                 type="button"
                 onClick={generatePassword}
-                className="text-[11px] font-medium text-indigo-600 hover:text-indigo-700"
+                className="text-[11px] font-medium text-[#134287] hover:text-[#0f346c]"
               >
                 Generate
               </button>
@@ -385,7 +385,7 @@ function CreateUserDialog({ roles, managers, hrPeople, onClose, onCreated }) {
             <button
               type="submit"
               disabled={submitting}
-              className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-sm font-semibold shadow-sm transition"
+              className="px-4 py-2 rounded-md bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] disabled:opacity-60 text-white text-sm font-semibold shadow-sm transition"
             >
               {submitting ? 'Creating…' : 'Create user'}
             </button>
@@ -716,7 +716,7 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
                 type="button"
                 onClick={() => setShowPw((s) => !s)}
                 tabIndex={-1}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-indigo-600 hover:text-indigo-700 px-1"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-[#134287] hover:text-[#0f346c] px-1"
               >
                 {showPw ? 'Hide' : 'Show'}
               </button>
@@ -768,7 +768,7 @@ function EditUserDialog({ user, roles, managers, hrPeople, isSelf, onClose, onSa
               <button
                 type="submit"
                 disabled={submitting}
-                className="px-6 py-2.5 rounded-2xl bg-[#6366F1] hover:bg-indigo-600 active:scale-[0.99] disabled:opacity-60 text-white text-sm font-bold shadow-md shadow-indigo-500/25 transition cursor-pointer"
+                className="px-6 py-2.5 rounded-2xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] disabled:opacity-60 text-white text-sm font-bold shadow-md shadow-blue-900/20 transition cursor-pointer"
               >
                 {submitting ? 'Saving…' : 'Save changes'}
               </button>
@@ -1149,7 +1149,7 @@ function AdminPanel() {
             onClick={() => setCreateOpen(true)}
             disabled={newUserBlocked}
             title={blockedHint}
-            className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-[8px] bg-[#6366f1] hover:bg-indigo-600 disabled:opacity-50 text-white text-[13px] font-semibold shadow-sm transition"
+            className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-[8px] bg-[#134287] hover:bg-[#0f346c] disabled:opacity-50 text-white text-[13px] font-semibold shadow-sm transition"
           >
             + Invite user
           </button>
@@ -1366,7 +1366,7 @@ function AdminPanel() {
                           onClick={() => setCurrentPage(page)}
                           className={`w-6 h-6 rounded flex items-center justify-center transition ${
                             currentPage === page 
-                              ? 'bg-[#6366f1] text-white' 
+                              ? 'bg-[#134287] text-white' 
                               : 'hover:bg-slate-100 dark:hover:bg-white/5'
                           }`}
                         >
@@ -1441,7 +1441,7 @@ function AdminPanel() {
 
 function StatusCard({ label, value, hint, tone = 'neutral', icon, active, onClick, loading }) {
   const tones = {
-    neutral: "bg-[#EEF2FF] text-[#6366F1] dark:bg-indigo-950/60 dark:text-indigo-400",
+    neutral: "bg-[#EBF3FC] text-[#134287] dark:bg-indigo-950/60 dark:text-indigo-400",
     success: "bg-[#E6F9F0] text-[#059669] dark:bg-emerald-950/60 dark:text-emerald-400",
     info: "bg-[#FEF9E7] text-[#D97706] dark:bg-amber-950/60 dark:text-amber-400",
     muted: "bg-[#FEE2E2] text-[#DC2626] dark:bg-rose-950/60 dark:text-rose-400",
@@ -1612,7 +1612,7 @@ function ImportUsersDialog({ roles, onClose, onImported }) {
               type="button"
               onClick={submit}
               disabled={submitting || rows.length === 0 || validCount === 0}
-              className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-semibold shadow-sm transition"
+              className="px-4 py-2 rounded-md bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-semibold shadow-sm transition"
             >
               {submitting ? 'Importing…' : `Import ${validCount} user${validCount === 1 ? '' : 's'}`}
             </button>
@@ -1641,7 +1641,7 @@ function ImportUsersDialog({ roles, onClose, onImported }) {
                 <button
                   type="button"
                   onClick={() => fileRef.current?.click()}
-                  className="text-[11px] font-medium text-indigo-600 hover:text-indigo-700 shrink-0"
+                  className="text-[11px] font-medium text-[#134287] hover:text-[#0f346c] shrink-0"
                 >
                   Replace
                 </button>

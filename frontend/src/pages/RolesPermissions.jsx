@@ -354,7 +354,7 @@ export default function RolesPermissions() {
             <button
               disabled={isSaving}
               onClick={handleCreateRole}
-              className="px-4 py-2 text-xs font-bold text-white bg-[#6366F1] hover:bg-indigo-600 rounded-xl shadow-xs transition cursor-pointer"
+              className="px-4 py-2 text-xs font-bold text-white bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] rounded-xl shadow-xs transition cursor-pointer"
             >
               {isSaving ? 'Creating...' : 'Create Role'}
             </button>
@@ -423,7 +423,7 @@ export default function RolesPermissions() {
             <button
               disabled={isUpdating}
               onClick={handleSaveEditRole}
-              className="px-4 py-2 text-xs font-bold text-white bg-[#6366F1] hover:bg-indigo-600 rounded-xl shadow-xs transition cursor-pointer"
+              className="px-4 py-2 text-xs font-bold text-white bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] rounded-xl shadow-xs transition cursor-pointer"
             >
               {isUpdating ? 'Saving...' : 'Save Changes'}
             </button>
@@ -495,7 +495,7 @@ export default function RolesPermissions() {
             </Link>
             <button
               onClick={() => setIsModalOpen(true)}
-              className="px-4.5 py-2.5 rounded-2xl bg-[#6366F1] hover:bg-indigo-600 text-white text-xs font-bold shadow-md shadow-indigo-500/20 transition cursor-pointer flex items-center gap-2"
+              className="px-4.5 py-2.5 rounded-2xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white text-xs font-bold shadow-md shadow-blue-900/20 transition cursor-pointer flex items-center gap-2"
             >
               + New role
             </button>
@@ -510,7 +510,7 @@ export default function RolesPermissions() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Item 1: Roles in Use */}
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-4 flex items-center gap-3.5 hover:border-slate-300 dark:hover:border-slate-700 transition min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-[#EEF2FF] text-[#6366F1] dark:bg-indigo-950/60 dark:text-indigo-400 flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-[#EBF3FC] text-[#134287] dark:bg-indigo-950/60 dark:text-indigo-400 flex items-center justify-center shrink-0">
               <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
               </svg>
@@ -650,7 +650,7 @@ export default function RolesPermissions() {
                   >
                     {/* Left: Role Circle Avatar + Role Name & Description */}
                     <div className="flex items-center gap-4 min-w-0 md:w-[42%] lg:w-[45%]">
-                      <div className="w-11 h-11 rounded-full bg-[#EEF2FF] text-[#6366F1] dark:bg-indigo-950/70 dark:text-indigo-300 font-bold text-xs flex items-center justify-center shrink-0 ring-4 ring-indigo-50/50 dark:ring-indigo-950/30">
+                      <div className="w-11 h-11 rounded-full bg-[#EBF3FC] text-[#134287] dark:bg-indigo-950/70 dark:text-indigo-300 font-bold text-xs flex items-center justify-center shrink-0 ring-4 ring-indigo-50/50 dark:ring-indigo-950/30">
                         {initials}
                       </div>
                       <div className="min-w-0 flex-1">
@@ -753,7 +753,7 @@ export default function RolesPermissions() {
                       onClick={() => setCurrentPage(i + 1)}
                       className={`w-7 h-7 rounded-lg text-xs font-bold transition flex items-center justify-center cursor-pointer ${
                         currentPage === i + 1
-                          ? 'bg-indigo-600 text-white shadow-xs'
+                          ? 'bg-[#134287] text-white shadow-xs'
                           : 'text-slate-600 hover:bg-white dark:text-slate-400 dark:hover:bg-slate-800'
                       }`}
                     >

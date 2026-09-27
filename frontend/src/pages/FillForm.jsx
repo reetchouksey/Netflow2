@@ -238,7 +238,7 @@ function CameraField({ value, onChange, maxMb = MAX_UPLOAD_MB }) {
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="w-full sm:w-auto px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition cursor-pointer"
+                    className="w-full sm:w-auto px-4 py-2 text-xs font-bold text-white bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] rounded-xl shadow-xs transition cursor-pointer"
                   >
                     📁 Upload photo from device
                   </button>
@@ -295,7 +295,7 @@ function CameraField({ value, onChange, maxMb = MAX_UPLOAD_MB }) {
                       type="button"
                       onClick={handleUsePhoto}
                       disabled={uploading}
-                      className="px-4.5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 rounded-xl shadow-xs transition cursor-pointer"
+                      className="px-4.5 py-2 text-xs font-bold text-white bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] dark:bg-indigo-500 dark:hover:bg-indigo-400 rounded-xl shadow-xs transition cursor-pointer"
                     >
                       {uploading ? 'Uploading...' : 'Use Photo'}
                     </button>
@@ -305,7 +305,7 @@ function CameraField({ value, onChange, maxMb = MAX_UPLOAD_MB }) {
                     type="button"
                     onClick={handleCapture}
                     disabled={!stream}
-                    className="px-4.5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 rounded-xl shadow-xs transition disabled:opacity-50 cursor-pointer"
+                    className="px-4.5 py-2 text-xs font-bold text-white bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] dark:bg-indigo-500 dark:hover:bg-indigo-400 rounded-xl shadow-xs transition disabled:opacity-50 cursor-pointer"
                   >
                     Capture
                   </button>
@@ -869,7 +869,7 @@ function FillForm() {
             </Link>
             <Link
               to="/tasks"
-              className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium shadow-sm transition"
+              className="px-4 py-2 rounded-md bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white text-sm font-medium shadow-sm transition"
             >
               View my tasks
             </Link>
@@ -967,7 +967,7 @@ function FillForm() {
           <button
             type="submit"
             disabled={submitting || visibleFields.length === 0}
-            className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium shadow-sm transition"
+            className="px-4 py-2 rounded-md bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium shadow-sm transition"
           >
             {submitting ? 'Submitting…' : 'Submit'}
           </button>

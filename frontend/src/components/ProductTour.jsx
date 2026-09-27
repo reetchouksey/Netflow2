@@ -261,7 +261,7 @@ export default function ProductTour() {
       {hole && (
         <div
           aria-hidden="true"
-          className="absolute rounded-xl ring-2 ring-indigo-400 pointer-events-none"
+          className="absolute rounded-xl ring-2 ring-[#134287] dark:ring-blue-400 pointer-events-none"
           style={{
             top: hole.top,
             left: hole.left,
@@ -279,7 +279,7 @@ export default function ProductTour() {
         className="absolute w-[min(22.5rem,calc(100vw-2rem))] bg-surface border border-line rounded-xl shadow-xl p-4 pointer-events-auto"
         style={tipStyle}
       >
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-300 mb-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-[#134287] dark:text-blue-300 mb-2">
           Demo · step {index + 1} of {total}
         </p>
         <h2 id="tour-title" className="text-sm font-semibold text-fg">
@@ -306,7 +306,7 @@ export default function ProductTour() {
             <button
               type="button"
               onClick={() => (isLast ? finish() : userGuideStore.next())}
-              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition"
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#134287] text-white hover:bg-[#0f346c] active:bg-[#0c2b59] transition"
             >
               {isLast ? 'Done' : 'Next'}
             </button>

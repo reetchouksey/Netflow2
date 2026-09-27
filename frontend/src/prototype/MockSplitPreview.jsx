@@ -8,7 +8,7 @@ export default function MockSplitPreview() {
     <div className="space-y-6">
       <div className="bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-800/60 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#4F46E5] text-white flex items-center justify-center font-bold text-sm shadow-xs shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-[#134287] text-white flex items-center justify-center font-bold text-sm shadow-xs shrink-0">
             ⚡
           </div>
           <div>

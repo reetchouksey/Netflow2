@@ -321,18 +321,18 @@ export default function PlatformOverview() {
               <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1A2340] dark:text-white tracking-tight">
                 Welcome back, Platform
               </h1>
-              <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#eef2ff] text-[#4f46e5] border border-indigo-200 dark:bg-indigo-950/70 dark:text-indigo-300 dark:border-indigo-800 shadow-2xs">
+              <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-[#134287] border border-blue-200 dark:bg-blue-950/70 dark:text-blue-300 dark:border-blue-800 shadow-2xs">
                 Platform Super Admin
               </span>
             </div>
             <p className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 mt-2 leading-relaxed bg-slate-100/90 dark:bg-slate-800/90 px-3 py-1.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80 inline-block shadow-2xs">
-              <span className="text-indigo-600 dark:text-indigo-400 font-extrabold">{greetingText} · {dateStr}</span> — Platform overview — organizations across NetFlow.
+              <span className="text-[#134287] dark:text-blue-400 font-extrabold">{greetingText} · {dateStr}</span> — Platform overview — organizations across NetFlow.
             </p>
           </div>
 
           <Link
             to="/platform"
-            className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 shrink-0 transition"
+            className="px-4 py-2.5 rounded-xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2b59] text-white text-xs font-bold shadow-xs flex items-center gap-1.5 shrink-0 transition"
           >
             <Plus className="w-4 h-4" /> New org
           </Link>
@@ -542,7 +542,7 @@ export default function PlatformOverview() {
                     <span className="text-slate-900 dark:text-white font-bold">0.02%</span>
                   </div>
                   <div className="h-1.5 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                    <div className="h-full bg-indigo-500 rounded-full" style={{ width: '2%' }} />
+                    <div className="h-full bg-[#134287] rounded-full" style={{ width: '2%' }} />
                   </div>
                 </div>
 
@@ -579,7 +579,7 @@ export default function PlatformOverview() {
             <div>
               <div className="flex items-center justify-between h-7 mb-3.5">
                 <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">Organizations</h3>
-                <Link to="/platform" className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline">
+                <Link to="/platform" className="text-xs font-bold text-[#134287] dark:text-blue-400 hover:underline">
                   Manage all
                 </Link>
               </div>
@@ -590,7 +590,7 @@ export default function PlatformOverview() {
                   return (
                     <div key={org._id} className="p-3 rounded-xl bg-slate-50/80 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800/80 flex items-center justify-between min-h-[58px]">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 font-bold text-xs flex items-center justify-center shrink-0 shadow-2xs">
+                        <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-950/70 text-[#134287] dark:text-blue-300 font-bold text-xs flex items-center justify-center shrink-0 shadow-2xs">
                           {org.name?.substring(0, 2).toUpperCase() || 'NA'}
                         </div>
                         <div>
@@ -625,7 +625,7 @@ export default function PlatformOverview() {
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                   Needs attention <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
                 </h3>
-                <Link to="/platform" className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
+                <Link to="/platform" className="text-xs font-semibold text-[#134287] dark:text-blue-400 hover:underline">
                   View all
                 </Link>
               </div>

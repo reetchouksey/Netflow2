@@ -116,7 +116,9 @@ export function useUser() {
 
 export const initials = (name) => {
   if (!name) return '?'
-  const parts = String(name).trim().split(/\s+/)
+  const clean = String(name).replace(/\([^)]*\)/g, '').replace(/[^a-zA-Z0-9\s]/g, '').trim()
+  const parts = clean.split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return String(name).trim().slice(0, 2).toUpperCase() || '?'
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
 }

@@ -26,9 +26,9 @@ const formatDate = (iso) => {
 }
 
 const fieldCls =
-  'w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-line bg-surface-2 text-fg placeholder:text-fg-subtle focus:bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition'
+  'w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-line bg-surface-2 text-fg placeholder:text-fg-subtle focus:bg-surface focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300 transition'
 const selectCls =
-  'px-3 py-2 text-sm rounded-lg border border-line bg-surface text-fg focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition'
+  'px-3 py-2 text-sm rounded-lg border border-line bg-surface text-fg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300 transition'
 
 function StatCard({ label, value, hint }) {
   return (
@@ -336,7 +336,7 @@ function RequestCatalogue() {
                           <button
                             onClick={() => navigate(`/forms/${f.id}/fill`)}
                             disabled={readOnly}
-                            className="px-4 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-[13px] font-bold shadow-sm transition disabled:opacity-50"
+                            className="px-4 py-1.5 rounded-lg bg-indigo-500 hover:bg-[#0f346c] text-white text-[13px] font-bold shadow-sm transition disabled:opacity-50"
                           >
                             Fill
                           </button>
@@ -387,7 +387,7 @@ function RequestCatalogue() {
                           onClick={() => setCurrentPage(item)}
                           className={`min-w-[28px] h-7 px-2 rounded-lg text-xs font-bold transition cursor-pointer ${
                             isCurrent
-                              ? 'bg-indigo-600 text-white shadow-sm'
+                              ? 'bg-[#134287] text-white shadow-sm'
                               : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/50 dark:hover:bg-slate-700'
                           }`}
                         >
@@ -419,7 +419,7 @@ function RequestCatalogue() {
 function RefStatCard({ label, value, hint, icon, tone = 'neutral' }) {
   const tones = {
     neutral: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
-    indigo: "bg-[#EEF2FF] text-[#6366F1] dark:bg-indigo-950/60 dark:text-indigo-400",
+    indigo: "bg-[#EBF3FC] text-[#134287] dark:bg-indigo-950/60 dark:text-indigo-400",
     emerald: "bg-[#E6F9F0] text-[#059669] dark:bg-emerald-950/60 dark:text-emerald-400",
     amber: "bg-[#FEF9E7] text-[#D97706] dark:bg-amber-950/60 dark:text-amber-400",
     violet: "bg-[#F5F3FF] text-[#8B5CF6] dark:bg-purple-950/60 dark:text-purple-400",
@@ -582,7 +582,7 @@ function FormsLibrary() {
               onClick={() => setNewOpen(true)}
               disabled={readOnly}
               title={readOnly ? 'The workspace licence has expired — new forms are paused.' : undefined}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold shadow-sm transition"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold shadow-md shadow-blue-900/20 transition"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
               New form
@@ -686,7 +686,7 @@ function FormsLibrary() {
                     ? canCreate ? 'Create a form to start collecting requests and routing approvals.' : 'No forms have been published yet.'
                     : 'Try a different search or clear the filters.'}
                   action={forms.length === 0 && canCreate
-                    ? <button onClick={() => setNewOpen(true)} className="mt-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-sm transition">Create form</button>
+                    ? <button onClick={() => setNewOpen(true)} className="mt-2 px-4 py-2 rounded-lg bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white text-sm font-semibold shadow-sm transition">Create form</button>
                     : null}
                 />
               </div>
@@ -862,7 +862,7 @@ function FormsLibrary() {
                               onClick={() => setCurrentPage(item)}
                               className={`min-w-[28px] h-7 px-2 rounded-lg text-xs font-bold transition ${
                                 isCurrent
-                                  ? 'bg-indigo-600 text-white shadow-sm'
+                                  ? 'bg-[#134287] text-white shadow-sm'
                                   : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/50 dark:hover:bg-slate-700'
                               }`}
                             >

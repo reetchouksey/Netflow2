@@ -78,7 +78,7 @@ function DepartmentDialog({ mode, initial = '', onClose, onSaved }) {
           <button
             type="submit"
             disabled={saving}
-            className="px-5 py-2.5 text-xs font-bold bg-[#6366F1] text-white rounded-2xl hover:bg-indigo-600 shadow-md shadow-indigo-500/20 transition cursor-pointer disabled:opacity-60"
+            className="px-5 py-2.5 text-xs font-bold bg-[#134287] text-white rounded-2xl hover:bg-[#0f346c] active:bg-[#0c2b59] shadow-md shadow-blue-900/20 transition cursor-pointer disabled:opacity-60"
           >
             {saving ? 'Saving…' : isRename ? 'Rename' : 'Add department'}
           </button>
@@ -103,7 +103,7 @@ function IconBox(p) { return <svg {...p} fill="none" viewBox="0 0 24 24" stroke=
 function SummaryCard({ icon, title, value, tone = "neutral" }) {
   const tones = {
     neutral: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
-    indigo: "bg-[#EEF2FF] text-[#6366F1] dark:bg-indigo-950/60 dark:text-indigo-400",
+    indigo: "bg-blue-50 text-[#134287] dark:bg-blue-950/60 dark:text-blue-300",
     emerald: "bg-[#E6F9F0] text-[#059669] dark:bg-emerald-950/60 dark:text-emerald-400",
     amber: "bg-[#FEF9E7] text-[#D97706] dark:bg-amber-950/60 dark:text-amber-400",
     cyan: "bg-[#E0F2FE] text-[#0284C7] dark:bg-cyan-950/60 dark:text-cyan-400",
@@ -204,7 +204,7 @@ export default function Departments() {
           disabled={readOnly}
           onClick={() => setDialog({ mode: 'create' })}
           title={readOnly ? 'This workspace is read-only' : undefined}
-          className="inline-flex items-center gap-2 px-4.5 py-2.5 text-xs font-bold bg-[#6366F1] text-white rounded-2xl hover:bg-indigo-600 shadow-md shadow-indigo-500/20 transition cursor-pointer disabled:opacity-60"
+          className="inline-flex items-center gap-2 px-4.5 py-2.5 text-xs font-bold bg-[#134287] text-white rounded-2xl hover:bg-[#0f346c] active:bg-[#0c2b59] shadow-md shadow-blue-900/20 transition cursor-pointer disabled:opacity-60"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
@@ -269,7 +269,7 @@ export default function Departments() {
                 type="button"
                 disabled={readOnly}
                 onClick={() => setDialog({ mode: 'create' })}
-                className="px-5 py-2.5 rounded-2xl bg-[#6366F1] text-white text-xs font-bold hover:bg-indigo-600 transition cursor-pointer shadow-md shadow-indigo-500/20 disabled:opacity-60"
+                className="px-5 py-2.5 rounded-2xl bg-[#134287] text-white text-xs font-bold hover:bg-[#0f346c] active:bg-[#0c2b59] transition cursor-pointer shadow-md shadow-blue-900/20 disabled:opacity-60"
               >
                 New department
               </button>
@@ -294,7 +294,7 @@ export default function Departments() {
                     type="button"
                     disabled={readOnly || busy === dept.name}
                     onClick={() => setDialog({ mode: 'rename', initial: dept.name })}
-                    className="text-xs font-bold text-[#6366F1] hover:text-indigo-600 transition cursor-pointer disabled:opacity-60"
+                    className="text-xs font-bold text-[#134287] hover:underline dark:text-blue-400 transition cursor-pointer disabled:opacity-60"
                   >
                     Rename
                   </button>

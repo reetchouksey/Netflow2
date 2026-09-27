@@ -32,8 +32,8 @@ const ACTION_META = {
   },
   org_updated: {
     label: 'Organization updated',
-    bg: 'bg-indigo-50 dark:bg-indigo-500/15',
-    fg: 'text-indigo-600 dark:text-indigo-300',
+    bg: 'bg-blue-50 dark:bg-blue-950/60',
+    fg: 'text-[#134287] dark:text-blue-300',
     Icon: IconPencil
   },
   org_suspended: {

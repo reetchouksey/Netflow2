@@ -27,7 +27,7 @@ function CredsModal({ data, onClose }) {
         <button
           type="button"
           onClick={onClose}
-          className="px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
+          className="px-4 py-2 text-sm font-medium bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2b59] text-white rounded-lg transition"
         >
           Done
         </button>
@@ -57,7 +57,7 @@ function CredRow({ label, value, mono }) {
       <button
         type="button"
         onClick={() => copyToClipboard(value)}
-        className="shrink-0 px-2 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-md transition"
+        className="shrink-0 px-2 py-1 text-xs font-medium text-[#134287] hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-md transition"
       >
         Copy
       </button>
@@ -92,7 +92,7 @@ function InviteDialog({ onClose, onCreated }) {
     }
   }
 
-  const fieldCls = 'mt-1 w-full px-3 py-2 text-sm border border-line rounded-lg bg-surface-2 text-fg focus:outline-none focus:ring-2 focus:ring-indigo-300'
+  const fieldCls = 'mt-1 w-full px-3 py-2 text-sm border border-line rounded-lg bg-surface-2 text-fg focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-[#134287]'
 
   return (
     <Modal
@@ -129,7 +129,7 @@ function InviteDialog({ onClose, onCreated }) {
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-fg-muted hover:bg-surface-3 rounded-lg transition">
             Cancel
           </button>
-          <button type="submit" disabled={saving} className="px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition disabled:opacity-60">
+          <button type="submit" disabled={saving} className="px-4 py-2 text-sm font-medium bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2b59] text-white rounded-lg transition disabled:opacity-60">
             {saving ? 'Creating…' : 'Create admin'}
           </button>
         </div>
@@ -217,7 +217,7 @@ export default function PlatformAdmins() {
         <button
           type="button"
           onClick={() => setInviteOpen(true)}
-          className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 shadow-sm transition"
+          className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2b59] text-white rounded-lg shadow-sm transition cursor-pointer"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
@@ -245,7 +245,7 @@ export default function PlatformAdmins() {
               <button
                 type="button"
                 onClick={() => setInviteOpen(true)}
-                className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition"
+                className="px-4 py-2 rounded-lg bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2b59] text-white text-sm font-medium transition cursor-pointer"
               >
                 Invite admin
               </button>
@@ -256,7 +256,7 @@ export default function PlatformAdmins() {
             {admins.map((admin) => (
               <li key={admin._id} className="px-4 py-3.5 flex flex-col sm:flex-row sm:items-center gap-3 hover:bg-surface-2/50 transition">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <span className="w-10 h-10 rounded-full bg-indigo-600 text-white text-sm font-semibold flex items-center justify-center shrink-0">
+                  <span className="w-10 h-10 rounded-full bg-[#134287] text-white text-sm font-semibold flex items-center justify-center shrink-0">
                     {String(admin.name || '?').split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase()}
                   </span>
                   <div className="min-w-0">

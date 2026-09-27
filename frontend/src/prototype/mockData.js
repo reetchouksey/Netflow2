@@ -19,7 +19,7 @@ export const MOCK_MANAGERS = [
     department: "IT",
     email: "jordan.lee@netflow.mock",
     avatar: "JL",
-    avatarColor: "bg-indigo-600",
+    avatarColor: "bg-[#134287]",
   },
   {
     id: "mgr-3",
@@ -302,7 +302,7 @@ export const MOCK_EMPLOYEES_ROSTER = [
     slaCompliance: "99%",
     lastActive: "3 hours ago",
     avatar: "RZ",
-    avatarColor: "bg-indigo-600",
+    avatarColor: "bg-[#134287]",
   },
 
   // Operations Department Employees

@@ -91,7 +91,7 @@ function TaskCard({ task, onOpen, onApprove, onReject, busy, canAct, showApprove
           onClick={(e) => e.stopPropagation()}
           onChange={() => onToggleSelect(task.id)}
           aria-label={`Select ${task.title} for bulk approval`}
-          className="mt-2.5 w-4.5 h-4.5 rounded-lg border-slate-300 text-[#6366F1] focus:ring-indigo-400 shrink-0"
+          className="mt-2.5 w-4.5 h-4.5 rounded-lg border-slate-300 text-[#134287] focus:ring-indigo-400 shrink-0"
         />
       )}
       <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-bold shrink-0 shadow-2xs ${task.avatarColor}`}>
@@ -468,7 +468,7 @@ function TaskInbox() {
             onClick={() => setScope(t.key)}
             className={`text-sm px-3 py-1 rounded transition ${
               scope === t.key
-                ? 'bg-indigo-600 text-white'
+                ? 'bg-[#134287] text-white'
                 : 'text-fg-muted hover:bg-surface-2'
             }`}
           >
@@ -594,7 +594,7 @@ function TaskInbox() {
                   action={
                     <button
                       onClick={() => navigate('/forms')}
-                      className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium shadow-sm transition"
+                      className="px-4 py-2 rounded-md bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white text-sm font-medium shadow-sm transition"
                     >
                       Browse forms
                     </button>
@@ -662,7 +662,7 @@ function TaskInbox() {
                           onClick={() => setCurrentPage(item)}
                           className={`min-w-[28px] h-7 px-2 rounded-lg text-xs font-bold transition ${
                             isCurrent
-                              ? 'bg-indigo-600 text-white shadow-sm'
+                              ? 'bg-[#134287] text-white shadow-sm'
                               : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/50 dark:hover:bg-slate-700'
                           }`}
                         >

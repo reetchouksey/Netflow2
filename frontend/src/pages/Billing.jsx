@@ -18,7 +18,7 @@ function IconFiles(p) { return <svg {...p} fill="none" viewBox="0 0 24 24" strok
 
 function getMeterConfig(key) {
   const configs = {
-    users: { icon: IconUsers, iconBg: 'bg-indigo-50 text-indigo-600', color: 'bg-indigo-600' },
+    users: { icon: IconUsers, iconBg: 'bg-indigo-50 text-indigo-600', color: 'bg-[#134287]' },
     builders: { icon: IconBuilders, iconBg: 'bg-orange-50 text-orange-600', color: 'bg-orange-500' },
     forms: { icon: IconForms, iconBg: 'bg-blue-50 text-blue-600', color: 'bg-blue-500' },
     workflows: { icon: IconWorkflows, iconBg: 'bg-emerald-50 text-emerald-600', color: 'bg-emerald-500' },
@@ -77,7 +77,7 @@ export default function Billing() {
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-[#6366F1] text-white flex items-center justify-center text-xl font-black shrink-0 shadow-md shadow-indigo-500/20">
+            <div className="w-12 h-12 rounded-2xl bg-[#134287] text-white flex items-center justify-center text-xl font-black shrink-0 shadow-md shadow-blue-900/20">
               <IconCrown className="w-6 h-6" />
             </div>
             <div>
@@ -93,7 +93,7 @@ export default function Billing() {
             >
               Refresh
             </button>
-            <button className="text-xs font-bold px-5 py-2.5 bg-[#6366F1] hover:bg-indigo-600 text-white rounded-2xl shadow-md shadow-indigo-500/20 transition cursor-pointer">
+            <button className="text-xs font-bold px-5 py-2.5 bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2b59] text-white rounded-2xl shadow-md shadow-blue-900/20 transition cursor-pointer">
               Upgrade Plan
             </button>
           </div>
@@ -106,7 +106,7 @@ export default function Billing() {
             <div>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-[#EEF2FF] dark:bg-indigo-500/15 text-[#6366F1] dark:text-indigo-400 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs">
+                  <div className="w-10 h-10 bg-blue-50 dark:bg-blue-950/60 text-[#134287] dark:text-blue-400 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs">
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
                   </div>
                   <div>
@@ -123,7 +123,7 @@ export default function Billing() {
               </p>
             </div>
             <div className="pt-4">
-              <button className="text-xs font-bold text-[#6366F1] dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-xl px-4 py-2 transition cursor-pointer">
+              <button className="text-xs font-bold text-[#134287] dark:text-blue-400 border border-blue-200 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-xl px-4 py-2 transition cursor-pointer">
                 View Plan Details
               </button>
             </div>
@@ -170,7 +170,7 @@ export default function Billing() {
                     <h2 className="text-xl font-black text-slate-900 dark:text-white leading-none tracking-tight">Yearly</h2>
                   </div>
                 </div>
-                <div className="w-9 h-9 bg-[#EEF2FF] dark:bg-indigo-500/15 rounded-xl flex items-center justify-center shrink-0 shadow-2xs text-[#6366F1]">
+                <div className="w-9 h-9 bg-blue-50 dark:bg-blue-950/60 rounded-xl flex items-center justify-center shrink-0 shadow-2xs text-[#134287] dark:text-blue-300">
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z" />
                   </svg>

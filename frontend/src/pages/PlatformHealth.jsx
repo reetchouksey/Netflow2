@@ -97,7 +97,7 @@ function Row({ label, value }) {
 
 function MetricTile({ label, value, tone = 'indigo', icon }) {
   const tones = {
-    indigo: "bg-[#EEF2FF] text-[#6366F1] dark:bg-indigo-950/60 dark:text-indigo-400",
+    indigo: "bg-blue-50 text-[#134287] dark:bg-blue-950/60 dark:text-blue-300",
     success: "bg-[#E6F9F0] text-[#059669] dark:bg-emerald-950/60 dark:text-emerald-400",
     danger: "bg-[#FEE2E2] text-[#DC2626] dark:bg-rose-950/60 dark:text-rose-400",
     default: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"

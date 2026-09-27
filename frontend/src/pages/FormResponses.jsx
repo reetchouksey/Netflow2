@@ -259,7 +259,7 @@ function FormResponses() {
             onClick={exportCsv}
             disabled={loading || filtered.length === 0}
             title={query.trim() ? 'Exports the responses matching your search' : 'Exports every response'}
-            className="px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-medium shadow-sm transition"
+            className="px-3 py-1.5 rounded-md bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] disabled:opacity-50 text-white text-sm font-medium shadow-sm transition"
           >
             {query.trim() ? `Export ${filtered.length} matching` : 'Export CSV'}
           </button>

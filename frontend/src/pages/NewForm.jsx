@@ -1008,7 +1008,7 @@ function PreviewModal({ open, onClose, name, fields }) {
           )}
 
           {fields.length > 0 && (
-            <button type="submit" className="w-full mt-2 py-2.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-sm transition">
+            <button type="submit" className="w-full mt-2 py-2.5 rounded-md bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white text-sm font-semibold shadow-sm transition">
               Submit
             </button>
           )}
@@ -1610,7 +1610,7 @@ function NewForm() {
         <div className="p-6 rounded-lg bg-danger-subtle border border-danger-line text-danger-fg text-sm max-w-md text-center">
           <p className="font-semibold mb-1">Could not load form</p>
           <p>{loadError}</p>
-          <button onClick={() => navigate('/forms')} className="mt-4 px-4 py-2 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700 transition">Back to forms</button>
+          <button onClick={() => navigate('/forms')} className="mt-4 px-4 py-2 rounded-md bg-[#134287] text-white text-sm hover:bg-[#0f346c] transition">Back to forms</button>
         </div>
       </div>
     )
@@ -1726,7 +1726,7 @@ function NewForm() {
                       type="button"
                       onClick={generateWithAI}
                       disabled={aiBusy || !aiPrompt.trim()}
-                      className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold shadow-sm transition"
+                      className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold shadow-sm transition"
                     >
                       {aiBusy ? 'Generating…' : 'Generate'}
                     </button>
@@ -1826,7 +1826,7 @@ function NewForm() {
             data-tour="form-builder-publish"
             onClick={() => persist('Published')}
             disabled={saving}
-            className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium shadow-sm transition"
+            className="px-4 py-2 rounded-lg bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium shadow-sm transition"
           >
             {saving ? 'Publishing…' : 'Publish'}
           </button>
@@ -1935,7 +1935,7 @@ function NewForm() {
                   type="button"
                   onClick={generateWithAI}
                   disabled={aiBusy || !aiPrompt.trim()}
-                  className="px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium shadow-sm transition whitespace-nowrap"
+                  className="px-4 py-2.5 rounded-lg bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium shadow-sm transition whitespace-nowrap"
                 >
                   {aiBusy ? 'Generating…' : 'Generate'}
                 </button>

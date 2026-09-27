@@ -88,7 +88,7 @@ const getFileIcon = (filename = '', mimetype = '') => {
 function KpiCard({ label, value, hint, icon, tone = 'neutral' }) {
   const tones = {
     neutral: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
-    indigo: "bg-[#EEF2FF] text-[#6366F1] dark:bg-indigo-950/60 dark:text-indigo-400",
+    indigo: "bg-[#EBF3FC] text-[#134287] dark:bg-indigo-950/60 dark:text-indigo-400",
     emerald: "bg-[#E6F9F0] text-[#059669] dark:bg-emerald-950/60 dark:text-emerald-400",
     amber: "bg-[#FEF9E7] text-[#D97706] dark:bg-amber-950/60 dark:text-amber-400",
     violet: "bg-[#F5F3FF] text-[#8B5CF6] dark:bg-purple-950/60 dark:text-purple-400",

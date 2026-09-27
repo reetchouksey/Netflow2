@@ -220,7 +220,7 @@ export default function NewFormModal({ open, onClose }) {
             <div>
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 sm:items-stretch">
                 <label className="sr-only" htmlFor="new-form-ai-prompt">Build with AI</label>
-                <div className="relative min-w-0 flex-1 rounded-xl border border-line bg-surface-2 focus-within:ring-2 focus-within:ring-indigo-200 focus-within:border-indigo-400">
+                <div className="relative min-w-0 flex-1 rounded-xl border border-line bg-surface-2 focus-within:ring-2 focus-within:ring-blue-200 dark:focus-within:ring-blue-900/40 focus-within:border-[#134287]">
                   {suggestion ? (
                     <div
                       aria-hidden="true"
@@ -248,7 +248,7 @@ export default function NewFormModal({ open, onClose }) {
                   type="button"
                   onClick={startQuickGenerate}
                   disabled={generating}
-                  className="shrink-0 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold shadow-sm transition min-w-[8.5rem]"
+                  className="shrink-0 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2b59] disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold shadow-sm transition min-w-[8.5rem]"
                 >
                   {generating ? (
                     <>
@@ -288,7 +288,7 @@ export default function NewFormModal({ open, onClose }) {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v3H4V5zM4 10h7v9H5a1 1 0 01-1-1v-8zM13 10h7v8a1 1 0 01-1 1h-6v-9z" />
                   </svg>
                 </div>
-                <h3 className="text-base font-semibold text-fg group-hover:text-indigo-700">Pre-Built Template</h3>
+                <h3 className="text-base font-semibold text-fg group-hover:text-[#134287]">Pre-Built Template</h3>
                 <p className="mt-1.5 text-[11px] font-medium text-fg-subtle">{FORM_TEMPLATES.length} templates</p>
               </button>
 
@@ -303,7 +303,7 @@ export default function NewFormModal({ open, onClose }) {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                   </svg>
                 </div>
-                <h3 className="text-base font-semibold text-fg group-hover:text-indigo-700">Start from Scratch</h3>
+                <h3 className="text-base font-semibold text-fg group-hover:text-[#134287]">Start from Scratch</h3>
                 <p className="mt-1.5 text-[11px] text-fg-muted">Empty canvas, add your own fields</p>
               </button>
             </div>
@@ -318,10 +318,10 @@ export default function NewFormModal({ open, onClose }) {
                   key={t.id}
                   type="button"
                   onClick={() => startTemplate(t.id)}
-                  className="group rounded-lg border border-line p-3 text-left transition hover:border-info-line hover:bg-info-subtle/40"
+                  className="group rounded-lg border border-line p-3 text-left transition hover:border-[#134287]/40 hover:bg-blue-50/50 dark:hover:bg-blue-950/20"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium text-fg group-hover:text-indigo-700">{t.name}</span>
+                    <span className="text-sm font-medium text-fg group-hover:text-[#134287]">{t.name}</span>
                     <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${categoryBadge(t.category)}`}>
                       {t.category}
                     </span>

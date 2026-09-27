@@ -40,7 +40,7 @@ export default function MockManagerApprovals() {
       {/* Top Banner explaining prototype flow */}
       <div className="bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/60 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-xs shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-[#134287] text-white flex items-center justify-center font-bold text-sm shadow-xs shrink-0">
             {currentManager.avatar}
           </div>
           <div>
@@ -91,7 +91,7 @@ export default function MockManagerApprovals() {
                   }}
                   className={`w-full text-left p-3.5 rounded-2xl border transition-all cursor-pointer ${
                     isSelected
-                      ? 'bg-white dark:bg-slate-800 border-[#4F46E5] shadow-sm ring-1 ring-[#4F46E5]/40'
+                      ? 'bg-white dark:bg-slate-800 border-[#134287] shadow-sm ring-1 ring-[#134287]/40'
                       : 'bg-white/80 dark:bg-slate-900 border-slate-200/80 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                   }`}
                 >
@@ -220,7 +220,7 @@ export default function MockManagerApprovals() {
                   if (validationError) setValidationError('');
                 }}
                 placeholder="Type your approval feedback or reason for rejection here..."
-                className="w-full text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 focus:outline-none focus:ring-2 focus:ring-[#4F46E5] text-slate-800 dark:text-slate-100"
+                className="w-full text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 focus:outline-none focus:ring-2 focus:ring-[#134287] text-slate-800 dark:text-slate-100"
               />
               {validationError && (
                 <p className="text-[11.5px] font-semibold text-rose-600 dark:text-rose-400 mt-1.5 flex items-center gap-1.5 animate-fade-in">

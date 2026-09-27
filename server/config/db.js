@@ -10,7 +10,11 @@ dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4'])
 
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI, {
+    const mongoUri = process.env.MONGODB_URI || process.env.MONGO_URI
+    if (!mongoUri) {
+      throw new Error('MongoDB connection string is missing. Please define MONGODB_URI or MONGO_URI in your .env file.')
+    }
+    const conn = await mongoose.connect(mongoUri, {
       serverSelectionTimeoutMS: 15000,
       family: 4
     })

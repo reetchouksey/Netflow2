@@ -149,7 +149,7 @@ export default function ApprovalRouting() {
 
           <button
             type="button" onClick={infer} disabled={loading}
-            className="mt-2 w-full py-2 rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-semibold transition"
+            className="mt-2 w-full py-2 rounded-md bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] disabled:opacity-50 text-white text-sm font-semibold transition"
           >
             {loading ? 'Inferring…' : 'Infer approver chain'}
           </button>
@@ -190,7 +190,7 @@ export default function ApprovalRouting() {
                   const escalated = step.requiredRole && step.role && step.requiredRole !== step.role
                   return (
                     <li key={step.order} className="mb-5 ml-5">
-                      <span className="absolute -left-[11px] flex items-center justify-center w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] font-bold">
+                      <span className="absolute -left-[11px] flex items-center justify-center w-5 h-5 rounded-full bg-[#134287] text-white text-[10px] font-bold">
                         {step.order}
                       </span>
                       <div className="flex items-start gap-3">

@@ -162,7 +162,7 @@ export default function DmsProviderWidget({ user }) {
         onClick={() => setOpen(!open)}
         className={`w-full group relative flex items-center gap-3 pl-3 pr-2.5 py-2.5 rounded-xl text-[13px] font-medium transition-colors ${
           isActive
-            ? 'bg-indigo-50 text-indigo-700 shadow-sm shadow-indigo-500/5 dark:bg-indigo-500/15 dark:text-indigo-300 dark:shadow-none'
+            ? 'bg-indigo-50 text-indigo-700 shadow-sm shadow-blue-900/20 dark:bg-indigo-500/15 dark:text-indigo-300 dark:shadow-none'
             : 'text-fg-muted hover:bg-surface-3/80 hover:text-fg'
         }`}
       >
@@ -241,7 +241,7 @@ export default function DmsProviderWidget({ user }) {
                 <button
                   type="submit"
                   disabled={loginLoading}
-                  className="mt-1 w-full bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-medium py-1.5 rounded transition-colors disabled:opacity-70"
+                  className="mt-1 w-full bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white text-[11px] font-medium py-1.5 rounded transition-colors disabled:opacity-70"
                 >
                   {loginLoading ? 'Connecting...' : 'Connect to BaseLayer'}
                 </button>

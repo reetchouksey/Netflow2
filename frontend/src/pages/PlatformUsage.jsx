@@ -68,8 +68,8 @@ function KpiCard({ label, value, foot, badgeText, tone = 'indigo', icon: Icon })
       badge: 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200/60 dark:border-amber-800',
     },
     indigo: {
-      icon: 'bg-[#EEF2FF] border border-indigo-200/60 text-[#6366F1] dark:bg-indigo-500/15 dark:text-indigo-400 dark:border-indigo-800/40',
-      badge: 'text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/60 dark:border-indigo-800',
+      icon: 'bg-blue-50 border border-blue-200/60 text-[#134287] dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800/40',
+      badge: 'text-[#134287] dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 border border-blue-200/60 dark:border-blue-800',
     },
     emerald: {
       icon: 'bg-[#E6F9F0] border border-emerald-200/60 text-[#059669] dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-800/40',
@@ -126,10 +126,10 @@ function MeterCard({ label, meter, Icon }) {
 
   // Refined subtle color palette matching app theme (no screaming red lines)
   const barColor = isExceeded
-    ? 'bg-[#6366f1]'
+    ? 'bg-[#134287]'
     : isWarn
     ? 'bg-amber-500'
-    : 'bg-[#6366f1]'
+    : 'bg-[#134287]'
 
   const badgeStyle = isExceeded
     ? 'text-indigo-700 bg-indigo-50 border-indigo-200/80 dark:bg-indigo-950/80 dark:text-indigo-300 dark:border-indigo-800'
@@ -213,7 +213,7 @@ function TenantCard({ org }) {
 
         <Link
           to={`/platform?q=${encodeURIComponent(org.subdomain || org.name || '')}`}
-          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/50 dark:bg-indigo-500/10 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-600 hover:text-white transition shadow-2xs shrink-0 cursor-pointer self-start sm:self-center"
+          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-blue-200 dark:border-blue-800/80 bg-blue-50/50 dark:bg-blue-500/10 text-xs font-bold text-[#134287] dark:text-blue-400 hover:bg-[#134287] hover:text-white transition shadow-2xs shrink-0 cursor-pointer self-start sm:self-center"
         >
           Manage Org
           <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
@@ -324,7 +324,7 @@ export default function PlatformUsage() {
             type="button"
             onClick={load}
             disabled={loading}
-            className="px-6 py-3 rounded-2xl bg-[#6366f1] hover:bg-[#4f46e5] text-white text-xs font-extrabold shadow-md transition flex items-center gap-1.5 shrink-0 cursor-pointer disabled:opacity-50"
+            className="px-6 py-3 rounded-2xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2b59] text-white text-xs font-extrabold shadow-md transition flex items-center gap-1.5 shrink-0 cursor-pointer disabled:opacity-50"
           >
             <IconRefresh className={`w-3.5 h-3.5 text-white ${loading ? 'animate-spin' : ''}`} />
             Refresh
@@ -442,7 +442,7 @@ export default function PlatformUsage() {
                 onClick={() => setFilter(f.key)}
                 className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold border transition cursor-pointer shadow-2xs ${
                   filter === f.key
-                    ? 'bg-[#6366f1] border-[#6366f1] text-white shadow-sm shadow-indigo-500/25'
+                    ? 'bg-[#134287] border-[#134287] text-white shadow-sm shadow-blue-900/25'
                     : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
                 }`}
               >

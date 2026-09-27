@@ -169,7 +169,7 @@ function ActionBadge({ action }) {
 
 function StatusCard({ label, value, hint, tone = 'neutral', icon, active, onClick, loading }) {
   const tones = {
-    neutral: { bg: 'bg-[#EEF2FF] text-[#6366F1] dark:bg-indigo-950/60 dark:text-indigo-400', activeRing: 'ring-2 ring-indigo-500 border-transparent' },
+    neutral: { bg: 'bg-[#EBF3FC] text-[#134287] dark:bg-indigo-950/60 dark:text-indigo-400', activeRing: 'ring-2 ring-indigo-500 border-transparent' },
     success: { bg: 'bg-[#E6F9F0] text-[#059669] dark:bg-emerald-950/60 dark:text-emerald-400', activeRing: 'ring-2 ring-emerald-500 border-transparent' },
     danger: { bg: 'bg-[#FEE2E2] text-[#DC2626] dark:bg-rose-950/60 dark:text-rose-400', activeRing: 'ring-2 ring-rose-500 border-transparent' },
     warning: { bg: 'bg-[#FEF9E7] text-[#D97706] dark:bg-amber-950/60 dark:text-amber-400', activeRing: 'ring-2 ring-amber-500 border-transparent' },
@@ -392,7 +392,7 @@ function AuditLog() {
       className="inline-flex items-center gap-2 px-4.5 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 text-xs font-bold text-slate-700 dark:text-slate-200 transition shadow-2xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
       title={hasFilters ? 'Exports every entry matching the current filters' : 'Exports every entry'}
     >
-      <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-[#6366F1]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+      <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-[#134287]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
         <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M12 4v12m0 0l-4-4m4 4l4-4" />
       </svg>
       {exporting ? 'Exporting…' : hasFilters ? 'Export filtered CSV' : 'Export CSV'}

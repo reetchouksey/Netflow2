@@ -542,7 +542,7 @@ function DocumentPreviewModal({ doc, onClose }) {
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition cursor-pointer"
+            className="px-4 py-1.5 rounded-xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white text-xs font-bold shadow-xs transition cursor-pointer"
           >
             Close
           </button>
@@ -563,7 +563,7 @@ function DocumentPreviewModal({ doc, onClose }) {
               download={name}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-sm transition"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white rounded-xl text-xs font-bold shadow-sm transition"
             >
               Download {name}
             </a>

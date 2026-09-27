@@ -82,7 +82,7 @@ function PrototypeContent() {
             onClick={() => setActiveTab('manager')}
             className={`px-4 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-2 shrink-0 ${
               activeTab === 'manager'
-                ? 'bg-[#4F46E5] text-white shadow-xs'
+                ? 'bg-[#134287] text-white shadow-xs'
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
@@ -95,7 +95,7 @@ function PrototypeContent() {
             onClick={() => setActiveTab('employee')}
             className={`px-4 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-2 shrink-0 ${
               activeTab === 'employee'
-                ? 'bg-[#4F46E5] text-white shadow-xs'
+                ? 'bg-[#134287] text-white shadow-xs'
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
@@ -108,7 +108,7 @@ function PrototypeContent() {
             onClick={() => setActiveTab('team')}
             className={`px-4 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-2 shrink-0 ${
               activeTab === 'team'
-                ? 'bg-[#4F46E5] text-white shadow-xs'
+                ? 'bg-[#134287] text-white shadow-xs'
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
@@ -121,7 +121,7 @@ function PrototypeContent() {
             onClick={() => setActiveTab('split')}
             className={`px-4 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-2 shrink-0 ${
               activeTab === 'split'
-                ? 'bg-[#4F46E5] text-white shadow-xs'
+                ? 'bg-[#134287] text-white shadow-xs'
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >

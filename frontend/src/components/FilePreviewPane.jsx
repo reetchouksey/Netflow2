@@ -80,7 +80,7 @@ export function FilePreviewPane({ file, onClose, availableDocs = [], onSelect })
               href={file.url}
               target="_blank"
               rel="noreferrer"
-              className="mt-4 inline-block text-sm text-indigo-600 hover:text-indigo-700 font-medium bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-lg transition"
+              className="mt-4 inline-block text-sm text-[#134287] dark:text-blue-300 hover:text-[#0f346c] font-medium bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 px-4 py-2 rounded-lg transition"
             >
               Open in new tab
             </a>

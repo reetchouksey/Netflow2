@@ -27,7 +27,7 @@ function TopCard({ icon, title, value, subtitle, badge, tone = "neutral", action
   const tones = {
     neutral: "text-slate-600 bg-slate-100 dark:bg-slate-800 dark:text-slate-300",
     success: "text-emerald-600 bg-emerald-50 dark:bg-emerald-500/15 dark:text-emerald-400",
-    indigo: "text-[#6366F1] bg-[#EEF2FF] dark:bg-indigo-500/15 dark:text-indigo-400",
+    indigo: "text-[#134287] bg-[#EBF3FC] dark:bg-indigo-500/15 dark:text-indigo-400",
     amber: "text-amber-600 bg-amber-50 dark:bg-amber-500/15 dark:text-amber-400",
     danger: "text-slate-600 bg-slate-100 dark:bg-slate-800 dark:text-slate-300",
   }
@@ -63,7 +63,7 @@ function SectionCard({ title, icon, action, children }) {
     <section className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl shadow-2xs flex flex-col h-full overflow-hidden">
       <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-4">
         <div className="flex items-center gap-2.5">
-          <div className="text-[#6366F1] bg-[#EEF2FF] dark:bg-indigo-500/15 p-2 rounded-xl">
+          <div className="text-[#134287] bg-[#EBF3FC] dark:bg-indigo-500/15 p-2 rounded-xl">
             {icon}
           </div>
           <h2 className="text-sm font-bold text-slate-900 dark:text-white">{title}</h2>
@@ -165,7 +165,7 @@ export default function OrgSettings() {
         { name: 'Available', value: availableKb, color: '#25f56eff' } // green-100
       ]
     : [
-        { name: 'Used', value: usedKb || 1, color: '#4f46e5' }, // Solid circle
+        { name: 'Used', value: usedKb || 1, color: '#134287' }, // Solid circle
         { name: 'Unlimited', value: 0, color: 'transparent' }
       ]
 
@@ -183,7 +183,7 @@ export default function OrgSettings() {
         <button 
           onClick={handleSaveAll}
           disabled={!dirty || saving || readOnly}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition disabled:opacity-50"
+          className="flex items-center gap-2 bg-[#134287] text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-[#0f346c] transition disabled:opacity-50"
         >
           <IconSave className="w-4 h-4" />
           {saving ? 'Saving...' : 'Save All Changes'}
@@ -251,7 +251,7 @@ export default function OrgSettings() {
                     <button 
                       onClick={handleSaveAll} 
                       disabled={saving || readOnly} 
-                      className="flex items-center gap-1.5 bg-indigo-600 text-white px-2.5 py-1.5 rounded-md text-xs font-medium hover:bg-indigo-700 transition disabled:opacity-50"
+                      className="flex items-center gap-1.5 bg-[#134287] text-white px-2.5 py-1.5 rounded-md text-xs font-medium hover:bg-[#0f346c] transition disabled:opacity-50"
                     >
                       {saving ? 'Saving...' : 'Save'}
                     </button>
@@ -352,7 +352,7 @@ export default function OrgSettings() {
                   label="External users" 
                   valueNode={
                     <span className="inline-flex items-center gap-2">
-                      <div className={`w-8 h-4 rounded-full flex items-center p-0.5 ${org.features?.externalUsers ? 'bg-indigo-600' : 'bg-surface-3'}`}>
+                      <div className={`w-8 h-4 rounded-full flex items-center p-0.5 ${org.features?.externalUsers ? 'bg-[#134287]' : 'bg-surface-3'}`}>
                         <div className={`w-3 h-3 rounded-full bg-white shadow-sm transform transition-transform ${org.features?.externalUsers ? 'translate-x-4' : 'translate-x-0'}`} />
                       </div>
                       <span className="text-xs text-fg-muted">{org.features?.externalUsers ? 'On' : 'Off'}</span>

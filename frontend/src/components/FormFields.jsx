@@ -7,7 +7,7 @@ import { api, toAbsoluteUrl, resolveAttachmentHref, dmsWebUrl } from '../utils/a
 import { fieldMaxMb, MAX_UPLOAD_MB } from '../utils/uploads'
 
 const inputCls =
-  'w-full px-3 py-2 text-sm rounded-md border border-line bg-surface text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition'
+  'w-full px-3 py-2 text-sm rounded-md border border-line bg-surface text-fg placeholder:text-fg-subtle focus:outline-none focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-900/40 focus:border-[#134287] transition'
 const inputErrorCls = 'border-red-400 focus:ring-red-200 focus:border-red-400'
 
 // Field types a designer can drop into a Submit-node form.
@@ -403,7 +403,7 @@ export function SignaturePad({ onChange, disabled, label, id, uploadFile }) {
   }
 
   const tabCls = (m) =>
-    `px-2.5 py-1 transition ${mode === m ? 'bg-indigo-600 text-white' : 'bg-surface text-fg-muted hover:bg-surface-2'}`
+    `px-2.5 py-1 transition ${mode === m ? 'bg-[#134287] text-white' : 'bg-surface text-fg-muted hover:bg-surface-2'}`
 
   return (
     <div
@@ -529,12 +529,12 @@ export function SignaturePad({ onChange, disabled, label, id, uploadFile }) {
                   <button type="button" onClick={openCamera} disabled={uploading || disabled} className="px-3 py-1.5 text-xs font-medium rounded border border-line text-fg-muted hover:bg-surface disabled:opacity-50 transition">
                     Retake
                   </button>
-                  <button type="button" onClick={handleUsePhoto} disabled={uploading || disabled} className="px-3 py-1.5 text-xs font-bold rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition">
+                  <button type="button" onClick={handleUsePhoto} disabled={uploading || disabled} className="px-3 py-1.5 text-xs font-bold rounded bg-[#134287] text-white hover:bg-[#0f346c] active:bg-[#0c2b59] disabled:opacity-50 transition">
                     {uploading ? 'Saving…' : 'Use Photo'}
                   </button>
                 </>
               ) : (
-                <button type="button" onClick={handleCapture} disabled={!stream || disabled} className="px-3 py-1.5 text-xs font-bold rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition shadow-sm">
+                <button type="button" onClick={handleCapture} disabled={!stream || disabled} className="px-3 py-1.5 text-xs font-bold rounded bg-[#134287] text-white hover:bg-[#0f346c] active:bg-[#0c2b59] disabled:opacity-50 transition shadow-sm">
                   Capture
                 </button>
               )}
@@ -714,7 +714,7 @@ export function FieldRow({ field, value, onChange, error, richSignature = false,
               checked={!!value}
               disabled={disabled}
               onChange={(e) => onChange(e.target.checked)}
-              className="w-4 h-4 rounded border-line text-indigo-600 focus:ring-indigo-400"
+              className="w-4 h-4 rounded border-line text-[#134287] focus:ring-blue-400"
             />
             <span>{field.placeholder || 'Yes'}</span>
           </label>
@@ -732,7 +732,7 @@ export function FieldRow({ field, value, onChange, error, richSignature = false,
                   checked={value === opt}
                   disabled={disabled}
                   onChange={(e) => onChange(e.target.value)}
-                  className="w-4 h-4 border-line text-indigo-600 focus:ring-indigo-400"
+                  className="w-4 h-4 border-line text-[#134287] focus:ring-blue-400"
                 />
                 <span>{opt}</span>
               </label>
@@ -927,7 +927,7 @@ export function FieldValueView({ field, value }) {
   }
   if (field.type === 'file' && typeof value === 'object' && value.url) {
     return (
-      <a href={toAbsoluteUrl(value.url)} target="_blank" rel="noreferrer" className="text-indigo-600 hover:text-indigo-700 underline">
+      <a href={toAbsoluteUrl(value.url)} target="_blank" rel="noreferrer" className="text-[#134287] dark:text-blue-400 hover:underline">
         {value.name || 'Attachment'}
       </a>
     )

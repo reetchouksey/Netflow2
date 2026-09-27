@@ -207,7 +207,7 @@ export default function PlatformPlans() {
         label,
         name: priceNum === 0 ? 'Free' : `$${priceNum}`,
         badge: label,
-        badgeClass: 'bg-[#EEF2FF] text-[#4F46E5] border-indigo-200',
+        badgeClass: 'bg-[#EBF3FC] text-[#134287] border-indigo-200',
         price: priceNum === 0 ? 'Free' : `$${priceNum}`,
         pricePeriod: priceNum === 0 ? '' : '/mo',
         usersLimit: seatSummary,
@@ -316,7 +316,7 @@ export default function PlatformPlans() {
           <button
             type="button"
             onClick={() => setShowCreateModal(true)}
-            className="px-6 py-3 rounded-2xl bg-[#6366F1] hover:bg-[#4F46E5] active:bg-[#4338CA] text-white text-xs font-extrabold shadow-md shadow-indigo-500/20 transition-all hover:scale-[1.02] flex items-center gap-2 shrink-0"
+            className="px-6 py-3 rounded-2xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2b59] text-white text-xs font-extrabold shadow-md shadow-blue-900/20 transition-all hover:scale-[1.02] flex items-center gap-2 shrink-0 cursor-pointer"
           >
             <Plus className="w-4 h-4 stroke-[3]" /> Create plan
           </button>
@@ -327,7 +327,7 @@ export default function PlatformPlans() {
         {/* Current Workspace Subscription Banner */}
         <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-7 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-4">
           <div className="flex items-start gap-4">
-            <div className="w-10 h-10 rounded-2xl bg-[#EEF2FF] dark:bg-indigo-950/60 text-[#6366F1] dark:text-indigo-400 flex items-center justify-center font-bold shrink-0 border border-indigo-100 dark:border-indigo-900">
+            <div className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-[#134287] dark:text-blue-400 flex items-center justify-center font-bold shrink-0 border border-blue-100 dark:border-blue-900">
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div className="flex-1 min-w-0">
@@ -351,7 +351,7 @@ export default function PlatformPlans() {
             <div
               key={plan.key}
               className={`bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-6 border ${plan.isPopular
-                ? 'border-indigo-400/80 dark:border-indigo-500/50 ring-2 ring-indigo-500/15 shadow-md shadow-indigo-500/5'
+                ? 'border-indigo-400/80 dark:border-indigo-500/50 ring-2 ring-indigo-500/15 shadow-md shadow-blue-900/20'
                 : 'border-slate-200/80 dark:border-slate-800 shadow-xs'
                 } hover:shadow-md transition-all duration-200 flex flex-col xl:flex-row xl:items-center justify-between gap-6`}
             >
@@ -398,7 +398,7 @@ export default function PlatformPlans() {
                     <div className="pt-0.5">
                       <span
                         onClick={() => setSelectedPlanDetails(plan)}
-                        className="text-[#6366F1] font-bold text-xs cursor-pointer hover:underline inline-flex items-center"
+                        className="text-[#134287] font-bold text-xs cursor-pointer hover:underline inline-flex items-center"
                       >
                         +{plan.moreFeaturesCount} more
                       </span>
@@ -511,7 +511,7 @@ export default function PlatformPlans() {
                   setSelectedPlanDetails(null)
                   setEditingPlan(p)
                 }}
-                className="px-6 py-2.5 rounded-2xl bg-[#6366F1] hover:bg-[#4F46E5] text-white text-xs font-extrabold shadow-md transition flex items-center gap-1.5"
+                className="px-6 py-2.5 rounded-2xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2b59] text-white text-xs font-extrabold shadow-md transition flex items-center gap-1.5 cursor-pointer"
               >
                 <Edit2 className="w-3.5 h-3.5" /> Edit plan
               </button>
@@ -765,7 +765,7 @@ export default function PlatformPlans() {
               <button
                 type="submit"
                 disabled={isCreating}
-                className="px-6 py-2.5 rounded-xl bg-[#6366F1] hover:bg-[#4F46E5] text-white text-xs font-bold shadow-md"
+                className="px-6 py-2.5 rounded-xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2b59] text-white text-xs font-bold shadow-md cursor-pointer disabled:opacity-60"
               >
                 {isCreating ? 'Creating...' : 'Create Plan'}
               </button>
@@ -793,7 +793,7 @@ export default function PlatformPlans() {
                 type="text"
                 defaultValue={editingPlan.label}
                 required
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-[#134287] focus:outline-none"
               />
             </div>
 
@@ -806,7 +806,7 @@ export default function PlatformPlans() {
                   name="price"
                   type="number"
                   defaultValue={editingPlan.price?.replace(/[^0-9.]/g, '') || '0'}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-[#134287] focus:outline-none"
                 />
               </div>
               <div>
@@ -817,7 +817,7 @@ export default function PlatformPlans() {
                   name="seatSummary"
                   type="text"
                   defaultValue={editingPlan.usersLimit}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-[#134287] focus:outline-none"
                 />
               </div>
             </div>
@@ -830,7 +830,7 @@ export default function PlatformPlans() {
                 name="description"
                 rows={2}
                 defaultValue={editingPlan.description}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-[#134287] focus:outline-none"
               />
             </div>
 
@@ -857,14 +857,14 @@ export default function PlatformPlans() {
               <button
                 type="button"
                 onClick={() => setEditingPlan(null)}
-                className="px-5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200"
+                className="px-5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer hover:bg-slate-50"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={isCreating}
-                className="px-6 py-2.5 rounded-xl bg-[#6366F1] hover:bg-[#4F46E5] text-white text-xs font-bold shadow-md"
+                className="px-6 py-2.5 rounded-xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2b59] text-white text-xs font-bold shadow-md cursor-pointer disabled:opacity-60"
               >
                 {isCreating ? 'Saving...' : 'Save Changes'}
               </button>

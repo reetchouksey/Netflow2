@@ -271,7 +271,7 @@ function ImageCropperModal({ open, imageSrc, onClose, onApply }) {
           <button
             type="button"
             onClick={handleApply}
-            className="px-4 py-1.5 rounded-xl bg-[#6366F1] hover:bg-indigo-600 text-white text-xs font-extrabold shadow-md shadow-indigo-500/25 transition cursor-pointer"
+            className="px-4 py-1.5 rounded-xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white text-xs font-extrabold shadow-md shadow-blue-900/20 transition cursor-pointer"
           >
             Apply photo
           </button>
@@ -303,7 +303,7 @@ function PhotoPreviewModal({ open, photo, name, onClose }) {
         </button>
 
         {/* Large Pure Circular Preview */}
-        <div className="w-64 h-64 sm:w-80 sm:h-80 rounded-full bg-gradient-to-tr from-[#6366F1] via-[#7C3AED] to-[#8B5CF6] text-white font-black text-6xl flex items-center justify-center shadow-2xl overflow-hidden border-4 border-white/90 dark:border-slate-800 shrink-0 select-none">
+        <div className="w-64 h-64 sm:w-80 sm:h-80 rounded-full bg-gradient-to-tr from-[#134287] via-[#0f346c] to-[#1e5bb5] text-white font-black text-6xl flex items-center justify-center shadow-2xl overflow-hidden border-4 border-white/90 dark:border-slate-800 shrink-0 select-none">
           {photo ? (
             <img
               src={photo}
@@ -454,7 +454,7 @@ function EditProfileModal({ open, onClose, user, onSaved }) {
             <div
               onClick={() => setPreviewOpen(true)}
               title="Click to view full photo"
-              className="w-24 h-24 rounded-full bg-gradient-to-tr from-[#6366F1] via-[#7C3AED] to-[#8B5CF6] text-white font-black text-2xl flex items-center justify-center shadow-md shadow-indigo-500/20 overflow-hidden border-2 border-white dark:border-slate-800 shrink-0 cursor-pointer hover:scale-[1.03] transition-transform"
+              className="w-24 h-24 rounded-full bg-gradient-to-tr from-[#134287] via-[#0f346c] to-[#1e5bb5] text-white font-black text-2xl flex items-center justify-center shadow-md shadow-blue-900/20 overflow-hidden border-2 border-white dark:border-slate-800 shrink-0 cursor-pointer hover:scale-[1.03] transition-transform"
             >
               {photo ? (
                 <img
@@ -662,7 +662,7 @@ function EditProfileModal({ open, onClose, user, onSaved }) {
                       type="button"
                       onClick={handleChangePassword}
                       disabled={changingPassword}
-                      className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition disabled:opacity-50 cursor-pointer"
+                      className="px-3.5 py-1.5 rounded-xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white text-xs font-bold shadow-xs transition disabled:opacity-50 cursor-pointer"
                     >
                       {changingPassword ? 'Saving…' : 'Save new password'}
                     </button>
@@ -685,7 +685,7 @@ function EditProfileModal({ open, onClose, user, onSaved }) {
             <button
               type="submit"
               disabled={saving}
-              className="px-4.5 py-2 rounded-xl bg-[#6366F1] hover:bg-indigo-600 text-white text-xs font-extrabold shadow-md shadow-indigo-500/25 transition disabled:opacity-60 cursor-pointer"
+              className="px-4.5 py-2 rounded-xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white text-xs font-extrabold shadow-md shadow-blue-900/20 transition disabled:opacity-60 cursor-pointer"
             >
               {saving ? 'Saving...' : 'Save changes'}
             </button>
@@ -867,7 +867,7 @@ export default function Profile() {
               <div
                 onClick={() => setMainPreviewOpen(true)}
                 title="Click to view full photo"
-                className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl sm:rounded-3xl bg-gradient-to-tr from-[#6366F1] via-[#7C3AED] to-[#8B5CF6] text-white font-black text-2xl sm:text-3xl flex items-center justify-center shadow-md shadow-indigo-500/20 shrink-0 overflow-hidden cursor-pointer hover:scale-[1.02] transition-transform"
+                className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl sm:rounded-3xl bg-gradient-to-tr from-[#134287] via-[#0f346c] to-[#1e5bb5] text-white font-black text-2xl sm:text-3xl flex items-center justify-center shadow-md shadow-blue-900/20 shrink-0 overflow-hidden cursor-pointer hover:scale-[1.02] transition-transform"
               >
                 {user?.photo || user?.avatar ? (
                   <img
@@ -891,8 +891,8 @@ export default function Profile() {
 
                 {/* Badge Tags Row */}
                 <div className="flex flex-wrap items-center gap-2 mt-3">
-                  <span className="px-3 py-0.5 rounded-full text-[11px] font-extrabold bg-[#EEF2FF] text-[#6366F1] border border-indigo-100 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800 flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#6366F1]" /> {roleLabel}
+                  <span className="px-3 py-0.5 rounded-full text-[11px] font-extrabold bg-[#EBF3FC] text-[#134287] border border-indigo-100 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#134287]" /> {roleLabel}
                   </span>
 
                   <span className="px-3 py-0.5 rounded-full text-[11px] font-extrabold bg-[#F1F5F9] text-[#64748B] dark:bg-slate-800 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60">
@@ -935,7 +935,7 @@ export default function Profile() {
               <button
                 type="button"
                 onClick={() => setShowTwoFactor(true)}
-                className="px-5 py-2 rounded-xl bg-[#4f46e5] hover:bg-indigo-700 text-white text-xs font-bold transition shadow-sm cursor-pointer"
+                className="px-5 py-2 rounded-xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white text-xs font-bold transition shadow-sm cursor-pointer"
               >
                 Enable
               </button>
@@ -987,7 +987,7 @@ export default function Profile() {
                     <button
                       type="button"
                       onClick={handleVerify2FA}
-                      className="px-5 py-2.5 rounded-xl bg-[#4f46e5] hover:bg-indigo-700 text-white text-xs font-bold transition shadow-sm cursor-pointer"
+                      className="px-5 py-2.5 rounded-xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white text-xs font-bold transition shadow-sm cursor-pointer"
                     >
                       Verify &amp; enable
                     </button>
@@ -1185,7 +1185,7 @@ export default function Profile() {
                   
                   {/* You Avatar & Info */}
                   <div className="flex items-start gap-3.5 shrink-0 min-w-[180px] z-10">
-                    <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-900/30 border-2 border-indigo-500 flex items-center justify-center text-indigo-600 dark:text-indigo-300 font-black text-xs shrink-0 shadow-sm shadow-indigo-500/20">
+                    <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-900/30 border-2 border-indigo-500 flex items-center justify-center text-indigo-600 dark:text-indigo-300 font-black text-xs shrink-0 shadow-sm shadow-blue-900/20">
                       {initials(user.name || '')}
                     </div>
                     <div className="pt-0.5 pr-3">
@@ -1271,7 +1271,7 @@ export default function Profile() {
                   }}
                   aria-label="Toggle Out of office mode"
                   className={`w-11 h-6 rounded-full transition-colors relative shrink-0 cursor-pointer ${
-                    ooo.enabled ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'
+                    ooo.enabled ? 'bg-[#134287]' : 'bg-slate-200 dark:bg-slate-700'
                   }`}
                 >
                   <span
@@ -1339,7 +1339,7 @@ export default function Profile() {
                     <button
                       onClick={() => saveOoo(ooo)}
                       disabled={oooSaving}
-                      className="px-5 py-2 rounded-xl bg-[#6366F1] hover:bg-indigo-600 text-white text-sm font-extrabold shadow-md shadow-indigo-500/25 transition disabled:opacity-60 cursor-pointer"
+                      className="px-5 py-2 rounded-xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white text-sm font-extrabold shadow-md shadow-blue-900/20 transition disabled:opacity-60 cursor-pointer"
                     >
                       {oooSaving ? 'Saving...' : 'Save'}
                     </button>
@@ -1383,7 +1383,7 @@ export default function Profile() {
                         type="button"
                         onClick={() => toggleNotif(event.key, 'email')}
                         className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                          notifPrefs[event.key]?.email !== false ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'
+                          notifPrefs[event.key]?.email !== false ? 'bg-[#134287]' : 'bg-slate-200 dark:bg-slate-700'
                         }`}
                       >
                         <span
@@ -1399,7 +1399,7 @@ export default function Profile() {
                         type="button"
                         onClick={() => toggleNotif(event.key, 'inApp')}
                         className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                          notifPrefs[event.key]?.inApp !== false ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'
+                          notifPrefs[event.key]?.inApp !== false ? 'bg-[#134287]' : 'bg-slate-200 dark:bg-slate-700'
                         }`}
                       >
                         <span

@@ -34,7 +34,7 @@ export default function UsageCharts() {
 
   // 3. Workflows vs Forms (Horizontal Bar Chart)
   const assetsData = [
-    { name: 'Forms', count: usage.resources?.forms?.used || 0, fill: '#6366f1' }, // Indigo
+    { name: 'Forms', count: usage.resources?.forms?.used || 0, fill: '#134287' }, // Indigo
     { name: 'Workflows', count: usage.resources?.workflows?.used || 0, fill: '#10b981' }, // Emerald
     { name: 'Builders', count: usage.resources?.builders?.used || 0, fill: '#ea580c' } // Orange
   ]
@@ -105,7 +105,7 @@ export default function UsageCharts() {
           </div>
         </div>
         <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
-          <Link to="/settings" className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1">
+          <Link to="/settings" className="text-xs font-bold text-[#134287] dark:text-blue-400 hover:underline flex items-center gap-1">
             View storage details &rarr;
           </Link>
         </div>
@@ -136,7 +136,7 @@ export default function UsageCharts() {
           </div>
         </div>
         <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
-          <Link to="/forms" className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1">
+          <Link to="/forms" className="text-xs font-bold text-[#134287] dark:text-blue-400 hover:underline flex items-center gap-1">
             View all submissions &rarr;
           </Link>
         </div>
@@ -180,7 +180,7 @@ export default function UsageCharts() {
           </div>
         </div>
         <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
-          <Link to="/workflows" className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1">
+          <Link to="/workflows" className="text-xs font-bold text-[#134287] dark:text-blue-400 hover:underline flex items-center gap-1">
             View all assets &rarr;
           </Link>
         </div>

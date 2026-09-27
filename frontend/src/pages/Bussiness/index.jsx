@@ -176,7 +176,7 @@ export default function BusinessLandingPage() {
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <button onClick={() => setIsModalOpen(true)} className="group inline-flex min-h-[52px] items-center justify-center gap-2 rounded-xl bg-[#5368F5] px-6 py-3.5 text-sm font-bold text-white shadow-xl shadow-indigo-500/20 transition hover:-translate-y-0.5 hover:bg-indigo-600">
+                <button onClick={() => setIsModalOpen(true)} className="group inline-flex min-h-[52px] items-center justify-center gap-2 rounded-xl bg-[#5368F5] px-6 py-3.5 text-sm font-bold text-white shadow-xl shadow-blue-900/20 transition hover:-translate-y-0.5 hover:bg-[#0f346c]">
                   Start building free
                   <ArrowRight className="size-4 transition group-hover:translate-x-1" />
                 </button>
@@ -704,7 +704,7 @@ export default function BusinessLandingPage() {
         {/* CTA */}
         <section className="bg-[#F3F6F7] pb-6 sm:pb-10">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="relative overflow-hidden rounded-[2rem] bg-[#5368F5] px-5 py-16 text-center text-white shadow-[0_32px_100px_rgba(9,19,34,0.18)] sm:px-12 sm:py-20">
+            <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#134287] via-[#103668] to-[#0c2340] border border-blue-900/30 px-5 py-16 text-center text-white shadow-[0_32px_100px_rgba(9,19,34,0.25)] sm:px-12 sm:py-20">
               <div className="absolute -left-40 -top-40 size-96 rounded-full border border-white/15 shadow-[0_0_0_70px_rgba(255,255,255,.035),0_0_0_140px_rgba(255,255,255,.02)]"></div>
               <div className="absolute -bottom-48 -right-36 size-96 rounded-full border border-white/15 shadow-[0_0_0_70px_rgba(255,255,255,.035),0_0_0_140px_rgba(255,255,255,.02)]"></div>
               <div className="relative mx-auto max-w-3xl">
@@ -764,7 +764,7 @@ export default function BusinessLandingPage() {
                   <label className="text-xs font-bold text-slate-600">Team size<select required name="size" className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-normal outline-none transition focus:border-[#5368F5] focus:ring-4 focus:ring-indigo-100"><option value="">Select size</option><option>1–50</option><option>51–250</option><option>251–1,000</option><option>1,000+</option></select></label>
                 </div>
                 <label className="block text-xs font-bold text-slate-600">What would you like to automate?<textarea name="process" rows={3} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-normal outline-none transition focus:border-[#5368F5] focus:ring-4 focus:ring-indigo-100" placeholder="Purchase approvals, employee onboarding, IT access requests..."></textarea></label>
-                <button type="submit" className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#5368F5] px-5 text-sm font-extrabold text-white shadow-lg shadow-indigo-500/20 transition hover:bg-indigo-600">Request my demo <ArrowRight className="size-4" /></button>
+                <button type="submit" className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#5368F5] px-5 text-sm font-extrabold text-white shadow-lg shadow-blue-900/20 transition hover:bg-[#0f346c]">Request my demo <ArrowRight className="size-4" /></button>
               </form>
             ) : (
               <div className="px-7 py-12 text-center">

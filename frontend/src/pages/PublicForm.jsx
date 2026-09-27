@@ -281,7 +281,7 @@ function Page({ children }) {
     <div className="min-h-screen bg-surface-2">
       <header className="bg-surface border-b border-line">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-2">
-          <div className="w-7 h-7 rounded-md bg-indigo-600 flex items-center justify-center text-white font-bold text-sm">N</div>
+          <div className="w-7 h-7 rounded-md bg-[#134287] flex items-center justify-center text-white font-bold text-sm">N</div>
           <span className="font-semibold text-fg">NetFlow</span>
         </div>
       </header>
@@ -482,7 +482,7 @@ function PublicForm() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="px-5 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium shadow-sm transition"
+                className="px-5 py-2 rounded-md bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-medium shadow-sm transition"
               >
                 {submitting ? 'Submitting…' : 'Submit'}
               </button>

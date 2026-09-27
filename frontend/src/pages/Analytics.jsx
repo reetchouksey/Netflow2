@@ -57,7 +57,7 @@ function Panel({ title, subtitle, children, className = '' }) {
 
 function KpiCard({ label, value, hint, loading, icon, tone = 'neutral' }) {
   const tones = {
-    neutral: 'bg-[#EEF2FF] text-[#6366F1] dark:bg-indigo-950/60 dark:text-indigo-400',
+    neutral: 'bg-[#EBF3FC] text-[#134287] dark:bg-indigo-950/60 dark:text-indigo-400',
     success: 'bg-[#E6F9F0] text-[#059669] dark:bg-emerald-950/60 dark:text-emerald-400',
     danger: 'bg-[#FEE2E2] text-[#DC2626] dark:bg-rose-950/60 dark:text-rose-400',
   }

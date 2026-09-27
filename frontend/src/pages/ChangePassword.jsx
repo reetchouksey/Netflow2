@@ -133,7 +133,7 @@ export default function ChangePassword() {
           <button
             type="submit"
             disabled={busy}
-            className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-sm font-semibold shadow transition"
+            className="w-full py-2.5 rounded-lg bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] disabled:opacity-60 text-white text-sm font-semibold shadow transition"
           >
             {busy ? 'Saving…' : forced ? 'Set password & continue' : 'Update password'}
           </button>

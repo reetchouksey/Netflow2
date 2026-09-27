@@ -398,7 +398,7 @@ function Sidebar({ user, pendingCount, open, onToggle }) {
               <button
                 type="button"
                 onClick={onToggle}
-                className="relative w-10 h-10 rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 flex items-center justify-center hover:scale-105 transition border border-indigo-100/60 dark:border-indigo-900 shrink-0 cursor-pointer"
+                className="relative w-10 h-10 rounded-2xl bg-blue-50/80 dark:bg-blue-950/60 text-[#134287] dark:text-blue-300 flex items-center justify-center hover:scale-105 transition border border-blue-100/60 dark:border-blue-900 shrink-0 cursor-pointer"
               >
                 <span className="text-lg">☁️</span>
                 <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] font-extrabold flex items-center justify-center shadow-xs">
@@ -444,7 +444,7 @@ function BottomTabBar({ user, pendingCount, menuOpen, onOpenMenu }) {
               to={item.to}
               data-tour={`nav-${item.key}`}
               className={`relative flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium transition-colors ${
-                active ? 'text-indigo-600 dark:text-indigo-300' : 'text-fg-muted'
+                active ? 'text-[#134287] dark:text-blue-300' : 'text-fg-muted'
               }`}
             >
               <span className="relative">
@@ -467,7 +467,7 @@ function BottomTabBar({ user, pendingCount, menuOpen, onOpenMenu }) {
             aria-controls="mobile-nav-drawer"
             aria-label="Open menu"
             className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium transition-colors ${
-              menuOpen ? 'text-indigo-600 dark:text-indigo-300' : 'text-fg-muted'
+              menuOpen ? 'text-[#134287] dark:text-blue-300' : 'text-fg-muted'
             }`}
           >
             <IconMenu className="w-5 h-5" />
@@ -555,7 +555,7 @@ const TYPE_BADGE = {
   Request:  'bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300',
   Form:     'bg-success-subtle text-success-fg',
   Workflow: 'bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300',
-  Org:      'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300',
+  Org:      'bg-blue-50 text-[#134287] dark:bg-blue-950/60 dark:text-blue-300',
   Page:     'bg-surface-3 text-fg-muted',
 }
 
@@ -733,7 +733,7 @@ function GlobalSearch({ user }) {
           aria-expanded={showDropdown}
           aria-controls="global-search-results"
           aria-autocomplete="list"
-          className="w-full pl-10 pr-20 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-100 dark:bg-slate-800/80 placeholder-slate-400 hover:border-slate-300 dark:hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:bg-white dark:focus:bg-slate-800 transition-all"
+          className="w-full pl-10 pr-20 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-100 dark:bg-slate-800/80 placeholder-slate-400 hover:border-slate-300 dark:hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-[#134287] focus:bg-white dark:focus:bg-slate-800 transition-all"
         />
         <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-600 rounded px-1.5 py-0.5 bg-white dark:bg-slate-700 font-mono shadow-sm pointer-events-none">
           {modKey} K
@@ -753,7 +753,7 @@ function GlobalSearch({ user }) {
                     tabIndex={-1}
                     onMouseEnter={() => setActiveIdx(i)}
                     onClick={() => go(r)}
-                    className={`w-full text-left px-3 py-2 flex items-center gap-3 transition ${i === activeIdx ? 'bg-indigo-50 dark:bg-indigo-500/15' : 'hover:bg-surface-2'}`}
+                    className={`w-full text-left px-3 py-2 flex items-center gap-3 transition ${i === activeIdx ? 'bg-blue-50 dark:bg-blue-950/40 text-[#134287] dark:text-blue-300' : 'hover:bg-surface-2'}`}
                   >
                     <span className={`shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded ${TYPE_BADGE[r.type] || TYPE_BADGE.Page}`}>{r.type}</span>
                     <span className="min-w-0 flex-1">
@@ -779,9 +779,9 @@ function TopBar({ user, pageTitle, onToggleSidebar, sidebarOpen }) {
   const displayName = user?.name || 'Guest'
   const roleLabel = user?.role?.name
     ? (ROLE_LABELS[user.role.name] || user.role.name)
-    : 'Member'
-  const chipPrimary = isSuperAdmin(user) ? roleLabel : displayName
-  const chipSecondary = isSuperAdmin(user) ? '' : roleLabel
+    : (isSuperAdmin(user) ? 'Platform Super Admin' : 'Member')
+  const chipPrimary = displayName
+  const chipSecondary = roleLabel
 
   const getDynamicTitle = () => {
     if (pageTitle && typeof pageTitle === 'string' && pageTitle.trim()) return pageTitle
@@ -859,7 +859,7 @@ function TopBar({ user, pageTitle, onToggleSidebar, sidebarOpen }) {
           displayName={displayName}
           chipPrimary={chipPrimary}
           chipSecondary={chipSecondary}
-          avatarSeed={isSuperAdmin(user) ? roleLabel : displayName}
+          avatarSeed={displayName}
         />
       </div>
     </header>
@@ -1024,7 +1024,7 @@ export default function AppShell({
       {/* Keyboard users had to tab past the whole nav and search on every page */}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[120] focus:px-4 focus:py-2 focus:rounded-md focus:bg-indigo-600 focus:text-white focus:text-sm focus:font-medium focus:shadow-lg"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[120] focus:px-4 focus:py-2 focus:rounded-md focus:bg-[#134287] focus:text-white focus:text-sm focus:font-medium focus:shadow-lg"
       >
         Skip to main content
       </a>

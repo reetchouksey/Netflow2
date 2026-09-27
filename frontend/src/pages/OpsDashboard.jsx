@@ -34,7 +34,7 @@ const waitingFor = (task) => relativeTime(task.createdAt) || 'just now'
 
 function StatCard({ icon: Icon, tone, label, value, hint, onClick }) {
   const colorStyles = {
-    indigo: 'text-[#6366F1] bg-[#EEF2FF] dark:bg-indigo-500/15 dark:text-indigo-400',
+    indigo: 'text-[#134287] bg-[#EBF3FC] dark:bg-indigo-500/15 dark:text-indigo-400',
     danger: 'text-[#DC2626] bg-[#FEE2E2] dark:bg-rose-500/15 dark:text-rose-400',
     warning: 'text-[#D97706] bg-[#FEF3C7] dark:bg-amber-500/15 dark:text-amber-400',
     success: 'text-[#0F766E] bg-[#EAFBF1] dark:bg-emerald-500/15 dark:text-emerald-400',
@@ -353,7 +353,7 @@ function OpsDashboard() {
               <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1A2340] dark:text-white tracking-tight">
                 Welcome back, {firstName}
               </h1>
-              <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#eef2ff] text-[#4f46e5] border border-indigo-200 dark:bg-indigo-950/70 dark:text-indigo-300 dark:border-indigo-800 shadow-2xs">
+              <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#eef2ff] text-[#134287] border border-indigo-200 dark:bg-indigo-950/70 dark:text-indigo-300 dark:border-indigo-800 shadow-2xs">
                 Manager
               </span>
             </div>

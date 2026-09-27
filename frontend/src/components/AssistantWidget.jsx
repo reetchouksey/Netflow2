@@ -49,7 +49,7 @@ function Bubble({ role, error, children }) {
       <div
         className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm leading-relaxed ${
           isUser
-            ? 'rounded-br-sm bg-indigo-600 text-white'
+            ? 'rounded-br-sm bg-[#134287] text-white'
             : error
               ? 'rounded-bl-sm bg-danger-subtle text-danger-fg border border-danger-line'
               : 'rounded-bl-sm bg-surface text-fg border border-line'
@@ -139,7 +139,7 @@ export default function AssistantWidget() {
         aria-controls="assistant-panel"
         // z-30 keeps the launcher under dialogs — at z-40 it floated on top of
         // every modal in the app.
-        className="fixed bottom-20 right-5 md:bottom-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 transition hover:scale-105 hover:bg-indigo-700"
+        className="fixed bottom-20 right-5 md:bottom-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-[#134287] text-white shadow-lg shadow-blue-950/30 transition hover:scale-105 hover:bg-[#0f346c] active:bg-[#0c2b59]"
       >
         {open ? (
           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -157,19 +157,19 @@ export default function AssistantWidget() {
           aria-label="NetFlow Assistant"
           className="fixed bottom-24 right-5 z-30 flex h-[32rem] max-h-[calc(100vh-7rem)] w-[22rem] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl"
         >
-          <div className="flex items-center gap-2 bg-indigo-600 px-4 py-3 text-white">
+          <div className="flex items-center gap-2 bg-[#134287] px-4 py-3 text-white">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface/20">
               <Robot className="h-4 w-4" />
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold leading-tight">NetFlow Assistant</p>
-              <p className="text-[11px] text-indigo-100">Ask about your requests</p>
+              <p className="text-[11px] text-blue-100">Ask about your requests</p>
             </div>
             <button
               type="button"
               onClick={() => setOpen(false)}
               aria-label="Close"
-              className="flex h-7 w-7 items-center justify-center rounded-md text-indigo-100 transition hover:bg-surface/15 hover:text-white"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-blue-100 transition hover:bg-surface/15 hover:text-white"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -209,13 +209,13 @@ export default function AssistantWidget() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(input) } }}
                 placeholder="Ask about your requests…"
-                className="max-h-28 flex-1 resize-none rounded-lg border border-line px-3 py-2 text-sm transition focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                className="max-h-28 flex-1 resize-none rounded-lg border border-line px-3 py-2 text-sm transition focus:border-[#134287] focus:outline-none focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-900/40"
               />
               <button
                 type="button"
                 onClick={() => ask(input)}
                 disabled={busy || !input.trim()}
-                className="shrink-0 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="shrink-0 rounded-lg bg-[#134287] px-3 py-2 text-sm font-medium text-white transition hover:bg-[#0f346c] active:bg-[#0c2b59] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Send
               </button>

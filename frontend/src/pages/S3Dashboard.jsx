@@ -279,7 +279,7 @@ export default function S3Dashboard() {
             <p className="text-sm text-fg-subtle mt-2 max-w-md">Failed to connect to AWS S3 bucket. Ensure your S3 integration configurations are correct.</p>
             <button
               onClick={() => fetchContents(currentPrefix)}
-              className="mt-6 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow text-sm font-semibold transition"
+              className="mt-6 px-4 py-2 bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white rounded-xl shadow text-sm font-semibold transition"
             >
               Retry Connection
             </button>
@@ -321,7 +321,7 @@ export default function S3Dashboard() {
                     onClick={() => setCurrentPrefix('')}
                     className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-sm font-medium transition ${
                       currentPrefix === ''
-                        ? 'bg-indigo-600 text-white shadow-sm'
+                        ? 'bg-[#134287] text-white shadow-sm'
                         : 'text-fg-muted hover:bg-surface-2'
                     }`}
                   >
@@ -335,7 +335,7 @@ export default function S3Dashboard() {
                     onClick={() => setCurrentPrefix(folder.path)}
                     className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-sm font-medium transition ${
                       currentPrefix === folder.path
-                        ? 'bg-indigo-600 text-white shadow-sm'
+                        ? 'bg-[#134287] text-white shadow-sm'
                         : 'text-fg-muted hover:bg-surface-2'
                     }`}
                   >

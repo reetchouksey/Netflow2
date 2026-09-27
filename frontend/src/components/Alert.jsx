@@ -47,7 +47,7 @@ export function ErrorState({ title = 'Something went wrong', message, onRetry, r
         <button
           type="button"
           onClick={onRetry}
-          className="mt-4 px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium shadow-sm transition"
+          className="mt-4 px-4 py-2 rounded-md bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2b59] text-white text-sm font-medium shadow-sm transition"
         >
           {retryLabel}
         </button>

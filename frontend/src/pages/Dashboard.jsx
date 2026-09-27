@@ -346,7 +346,7 @@ function RecentRequests({ tasks, loading }) {
           title="No requests yet"
           description="Fill out a form to submit your first request — it'll show up here."
           action={
-            <Link to="/forms" className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-sm transition">
+            <Link to="/forms" className="px-4 py-2 rounded-lg bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2b59] text-white text-sm font-semibold shadow-sm transition">
               Browse forms
             </Link>
           }
@@ -464,7 +464,7 @@ function SemiGauge({ pct }) {
   return (
     <svg width={110} height={65} viewBox="0 0 100 58" className="block mx-auto">
       <path d={`M ${CX - R} ${CY} A ${R} ${R} 0 0 1 ${CX + R} ${CY}`} fill="none" stroke="var(--color-surface-3)" strokeWidth="11" strokeLinecap="round" />
-      <path d={`M ${CX - R} ${CY} A ${R} ${R} 0 0 1 ${CX + R} ${CY}`} fill="none" stroke="#6366f1" strokeWidth="11" strokeLinecap="round"
+      <path d={`M ${CX - R} ${CY} A ${R} ${R} 0 0 1 ${CX + R} ${CY}`} fill="none" stroke="#134287" strokeWidth="11" strokeLinecap="round"
         strokeDasharray={`${filled} ${halfCirc}`} />
       <text x={CX} y={CY - 4} textAnchor="middle" fontSize="14" fontWeight="700" fill="var(--color-fg)">
         {value === null ? '—' : `${value}%`}
@@ -859,7 +859,7 @@ function MyRequestsList({ requests, loading }) {
     <div className="bg-surface border border-line rounded-xl flex flex-col">
       <div className="px-5 py-4 flex items-center justify-between border-b border-line">
         <h2 className="text-sm font-semibold text-fg">My Requests</h2>
-        <Link to="/tasks" className="text-xs font-medium text-indigo-600 hover:text-indigo-700">View all</Link>
+        <Link to="/tasks" className="text-xs font-medium text-[#134287] dark:text-blue-400 hover:underline">View all</Link>
       </div>
       {loading && rows.length === 0 ? (
         <ul className="divide-y divide-line">
@@ -871,7 +871,7 @@ function MyRequestsList({ requests, loading }) {
           title="No requests yet"
           description="Fill out a form to submit your first request — it'll show up here."
           action={
-            <Link to="/forms" className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium shadow-sm transition">
+            <Link to="/forms" className="px-4 py-2 rounded-md bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2b59] text-white text-sm font-medium shadow-sm transition">
               Browse forms
             </Link>
           }
@@ -1130,7 +1130,7 @@ function TrackStatusCard({ requests }) {
           title="Nothing to track yet"
           description="Submit a request to follow its approval progress here."
           action={
-            <Link to="/forms" className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium shadow-sm transition">
+            <Link to="/forms" className="px-4 py-2 rounded-md bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2b59] text-white text-sm font-medium shadow-sm transition">
               Browse forms
             </Link>
           }

@@ -27,7 +27,7 @@ import {
 
 const VIEW_KEY = 'netflow.platform.orgs.view'
 
-const TILE_COLORS = ['#4f46e5', '#0f766e', '#b45309', '#047857', '#b91c1c', '#4338ca', '#0e7490', '#9a3412']
+const TILE_COLORS = ['#134287', '#0f766e', '#b45309', '#047857', '#b91c1c', '#4338ca', '#0e7490', '#9a3412']
 
 const orgBucket = (org) => {
   if ((org.status || 'active') === 'suspended') return 'suspended'
@@ -331,7 +331,7 @@ function OrgDialog({ org, onClose, onSaved }) {
     }
   }
 
-  const inputCls = "w-full px-4 py-2.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 transition font-medium"
+  const inputCls = "w-full px-4 py-2.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-[#134287] focus:ring-2 focus:ring-blue-200/50 transition font-medium"
 
   return (
     <Modal
@@ -355,7 +355,7 @@ function OrgDialog({ org, onClose, onSaved }) {
             type="button"
             onClick={submit}
             disabled={saving}
-            className="px-6 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md transition disabled:opacity-60 cursor-pointer"
+            className="px-6 py-2.5 rounded-2xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2b59] text-white text-xs font-bold shadow-md transition disabled:opacity-60 cursor-pointer"
           >
             {saving ? 'Creating…' : isEdit ? 'Save changes' : 'Create organization'}
           </button>
@@ -373,7 +373,7 @@ function OrgDialog({ org, onClose, onSaved }) {
             onChange={set('name')}
             placeholder="Acme Corporation"
             required
-            className={`${inputCls} border-indigo-400 focus:ring-2 focus:ring-indigo-200`}
+            className={`${inputCls} border-blue-400 focus:ring-2 focus:ring-blue-200`}
           />
         </div>
 
@@ -906,7 +906,7 @@ function StorageDialog({ org, onClose, onSaved }) {
             type="button"
             onClick={grant}
             disabled={busy || !Number(extraMb) || !Number(days)}
-            className="px-5 py-2.5 rounded-xl bg-[#4f46e5] hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-500/20 transition disabled:opacity-60 cursor-pointer"
+            className="px-5 py-2.5 rounded-xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white text-xs font-bold shadow-md shadow-blue-900/20 transition disabled:opacity-60 cursor-pointer"
           >
             {busy ? 'Saving…' : 'Grant extension'}
           </button>
@@ -1005,7 +1005,7 @@ function CredsModal({ data, onClose }) {
       showClose={false}
       title={data.title || 'Admin credentials'}
       footer={
-        <button onClick={onClose} className="px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
+        <button onClick={onClose} className="px-4 py-2 text-sm font-medium bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white rounded-lg transition">
           Done
         </button>
       }
@@ -1485,7 +1485,7 @@ function EditAdminProfileModal({ open, onClose, currentName, currentEmail, curre
           </button>
           <button
             type="submit"
-            className="px-5 py-2.5 text-xs font-bold rounded-xl bg-[#6366F1] hover:bg-indigo-700 text-white shadow-md shadow-indigo-500/20 transition cursor-pointer"
+            className="px-5 py-2.5 text-xs font-bold rounded-xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2b59] text-white shadow-md shadow-blue-900/20 transition cursor-pointer"
           >
             Save Profile
           </button>
@@ -2059,7 +2059,7 @@ export default function PlatformPanel() {
               <button
                 type="button"
                 onClick={() => setDialog(org)}
-                className="px-4 py-2 rounded-xl bg-[#6366F1] hover:bg-indigo-600 text-white font-bold text-xs shadow-md shadow-indigo-500/20 transition flex items-center gap-1.5 shrink-0 cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2b59] text-white font-bold text-xs shadow-md shadow-blue-900/20 transition flex items-center gap-1.5 shrink-0 cursor-pointer"
               >
                 <RefreshCw className="w-3.5 h-3.5 text-white shrink-0" /> Renew 12 months
               </button>
@@ -2389,7 +2389,7 @@ export default function PlatformPanel() {
 
           <button
             onClick={() => setDialog('create')}
-            className="px-6 py-3 rounded-2xl bg-[#6366f1] hover:bg-[#4f46e5] text-white text-xs font-extrabold shadow-md transition flex items-center gap-1.5 shrink-0 cursor-pointer"
+            className="px-6 py-3 rounded-2xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2b59] text-white text-xs font-extrabold shadow-md transition flex items-center gap-1.5 shrink-0 cursor-pointer"
           >
             + Create organization
           </button>
@@ -2447,7 +2447,7 @@ export default function PlatformPanel() {
 
           {/* Item 3: Upgrade Requests */}
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-4 flex items-center gap-3.5 hover:border-slate-300 dark:hover:border-slate-700 transition min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-[#EEF2FF] text-[#6366F1] dark:bg-indigo-950/60 dark:text-indigo-400 flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#134287] dark:bg-blue-950/60 dark:text-blue-400 flex items-center justify-center shrink-0">
               <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18 9 11.25l4.306 4.306a11.95 11.95 0 0 0 5.814-5.518l2.74-1.22m0 0-3.94-1.22m3.94 1.22-1.22 3.94" />
               </svg>
@@ -2470,7 +2470,7 @@ export default function PlatformPanel() {
                   setActiveTab('directory')
                   document.getElementById('org-directory-table')?.scrollIntoView({ behavior: 'smooth' })
                 }}
-                className="text-xs text-[#6366f1] hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium truncate mt-0.5 cursor-pointer flex items-center gap-1 text-left"
+                className="text-xs text-[#134287] hover:underline dark:text-blue-400 font-medium truncate mt-0.5 cursor-pointer flex items-center gap-1 text-left"
               >
                 <span>Click to view orgs</span>
                 <span>→</span>

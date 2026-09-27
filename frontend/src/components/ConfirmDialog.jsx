@@ -58,7 +58,7 @@ export default function ConfirmDialog() {
             onClick={confirmController.accept}
             autoFocus={!danger}
             className={`px-5 py-2.5 rounded-2xl text-xs font-bold text-white transition cursor-pointer shadow-md ${
-              danger ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-500/25' : 'bg-[#6366F1] hover:bg-indigo-600 shadow-indigo-500/25'
+              danger ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-500/25' : 'bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2b59] shadow-blue-900/20'
             }`}
           >
             {confirmLabel}

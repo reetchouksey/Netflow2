@@ -1,1372 +1,372 @@
-import React, { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+// SignaLandingPage.jsx - Exact Original Landing Page with Fast Sped-Up Walkthrough Video
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { Link, useNavigate, Navigate } from 'react-router-dom'
+import { ResponsiveContainer, AreaChart, Area } from 'recharts'
+import { authStore, useUser } from '../utils/auth'
+import { getToken, getStoredUser } from '../utils/api'
 import { themeStore, useTheme } from '../lib/themeStore'
-import NetFlowLogo from '../components/NetFlowLogo'
 import {
-  ArrowRight,
-  Check,
-  Shield,
-  Activity,
-  Layers,
-  Sparkles,
-  RefreshCw,
-  Globe,
-  Database,
-  CheckCircle2,
-  AlertTriangle,
-  FileText,
-  Clock,
-  ExternalLink,
-  Lock,
-  ChevronRight,
-  ChevronDown,
-  TrendingUp,
-  Inbox,
-  UserCheck,
-  Zap,
-  Bell,
-  Sliders,
-  Users,
-  Building2,
-  HelpCircle,
-  FileCheck2,
-  FileSpreadsheet,
-  Workflow,
-  KeyRound,
-  Sun,
-  Moon,
-  Play,
-  Pause,
-  LayoutDashboard,
-  FileSignature,
-  FileCode2,
-  CheckSquare,
-  Search
+  Activity as Icon_Activity,
+  ArrowRight as Icon_ArrowRight,
+  ArrowUpRight as Icon_ArrowUpRight,
+  BadgeCheck as Icon_BadgeCheck,
+  CalendarDays as Icon_CalendarDays,
+  CalendarRange as Icon_CalendarRange,
+  ChartNoAxesColumnIncreasing as Icon_ChartNoAxesColumnIncreasing,
+  Check as Icon_Check,
+  ChevronDown as Icon_ChevronDown,
+  ChevronLeft as Icon_ChevronLeft,
+  ChevronRight as Icon_ChevronRight,
+  CircleCheck as Icon_CircleCheck,
+  CirclePause as Icon_CirclePause,
+  ClipboardList as Icon_ClipboardList,
+  Ellipsis as Icon_Ellipsis,
+  Eye as Icon_Eye,
+  EyeOff as Icon_EyeOff,
+  FileInput as Icon_FileInput,
+  FileText as Icon_FileText,
+  Fingerprint as Icon_Fingerprint,
+  FolderLock as Icon_FolderLock,
+  Gauge as Icon_Gauge,
+  GitBranch as Icon_GitBranch,
+  History as Icon_History,
+  Inbox as Icon_Inbox,
+  KeyRound as Icon_KeyRound,
+  Landmark as Icon_Landmark,
+  LayoutTemplate as Icon_LayoutTemplate,
+  ListFilter as Icon_ListFilter,
+  Lock as Icon_Lock,
+  MailWarning as Icon_MailWarning,
+  Maximize2 as Icon_Maximize2,
+  Menu as Icon_Menu,
+  MonitorCog as Icon_MonitorCog,
+  Moon as Icon_Moon,
+  Network as Icon_Network,
+  PanelsTopLeft as Icon_PanelsTopLeft,
+  Paperclip as Icon_Paperclip,
+  PenLine as Icon_PenLine,
+  Play as Icon_Play,
+  Radar as Icon_Radar,
+  Route as Icon_Route,
+  ScrollText as Icon_ScrollText,
+  Search as Icon_Search,
+  ShieldCheck as Icon_ShieldCheck,
+  Shuffle as Icon_Shuffle,
+  Sparkles as Icon_Sparkles,
+  Split as Icon_Split,
+  Sun as Icon_Sun,
+  Table2 as Icon_Table2,
+  Type as Icon_Type,
+  Upload as Icon_Upload,
+  UserCheck as Icon_UserCheck,
+  Users as Icon_Users,
+  UsersRound as Icon_UsersRound,
+  Waves as Icon_Waves,
+  Workflow as Icon_Workflow,
+  X as Icon_X
 } from 'lucide-react'
 
-// ---------- Mini Interactive App Demo Screen Component ----------
-function AppLiveDemoScreen() {
-  const [activeScreen, setActiveScreen] = useState('dashboard')
-  const [isPlaying, setIsPlaying] = useState(true)
+const toast = {
+  info: (msg) => console.log('[Info]', msg),
+  success: (msg) => console.log('[Success]', msg),
+  error: (msg) => console.log('[Error]', msg),
+}
 
-  const screens = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: 'app.netflow.io/dashboard' },
-    { id: 'workflow', label: 'Workflow Canvas', icon: Workflow, path: 'app.netflow.io/workflows/builder' },
-    { id: 'forms', label: 'Form Intake', icon: FileText, path: 'app.netflow.io/forms/vendor-nda' },
-    { id: 'approvals', label: 'Approvals & Audit', icon: CheckSquare, path: 'app.netflow.io/tasks/approval-queue' }
-  ]
 
-  // Auto-cycle through the demo screens
-  useEffect(() => {
-    if (!isPlaying) return
-    const interval = setInterval(() => {
-      setActiveScreen(curr => {
-        const idx = screens.findIndex(s => s.id === curr)
-        return screens[(idx + 1) % screens.length].id
-      })
-    }, 4500)
-    return () => clearInterval(interval)
-  }, [isPlaying, screens.length])
+const CHAPTERS = [
+  { id: 'full', label: '⚡ Fast Walkthrough', time: 0, desc: 'Complete quick tour: Dashboard, Forms, Workflows & Users' },
+  { id: 'workflows', label: '01. Build Workflow', time: 8, desc: 'Visual Workflow Builder, Node Connectors & Conditional Triggers' },
+  { id: 'forms', label: '02. Create Form', time: 24, desc: 'Dynamic Form Studio, Field Configuration & Validation' },
+  { id: 'users', label: '03. Add Users & Roles', time: 45, desc: 'User Provisioning, Roles, Permissions & Department Setup' },
+];
 
-  const currentScreenMeta = screens.find(s => s.id === activeScreen) || screens[0]
+function HeroWorkflowPreview() {
+  const videoRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [isMuted, setIsMuted] = useState(true);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [activeChapter, setActiveChapter] = useState('full');
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [isHovered, setIsHovered] = useState(false);
+  const [videoError, setVideoError] = useState(false);
 
-  return (
-    <div className="w-full bg-[#08182b] rounded-3xl p-3 sm:p-4 border border-blue-500/30 shadow-2xl shadow-blue-950/80 backdrop-blur-xl relative group">
-      {/* Glow highlight */}
-      <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-600 to-indigo-500 rounded-3xl blur opacity-20 group-hover:opacity-30 transition duration-500 pointer-events-none" />
+  const handleTimeUpdate = () => {
+    if (videoRef.current) {
+      setCurrentTime(videoRef.current.currentTime);
+    }
+  };
 
-      {/* Browser / Laptop Top Bar Window Chrome */}
-      <div className="relative bg-[#0c2340] rounded-2xl border border-blue-900/60 p-2.5 sm:p-3 mb-3 flex items-center justify-between gap-2">
-        {/* Window Controls */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          <span className="w-3 h-3 rounded-full bg-rose-500/90 shadow-2xs" />
-          <span className="w-3 h-3 rounded-full bg-amber-500/90 shadow-2xs" />
-          <span className="w-3 h-3 rounded-full bg-emerald-500/90 shadow-2xs" />
-        </div>
+  const handleLoadedMetadata = () => {
+    if (videoRef.current) {
+      setDuration(videoRef.current.duration);
+    }
+  };
 
-        {/* URL Pill */}
-        <div className="flex-1 max-w-xs mx-auto bg-[#071526] px-3 py-1 rounded-xl border border-blue-800/40 text-[11px] font-mono text-blue-200/80 flex items-center justify-center gap-2 truncate">
-          <Lock className="w-3 h-3 text-emerald-400 shrink-0" />
-          <span className="truncate">{currentScreenMeta.path}</span>
-        </div>
+  const togglePlay = (e) => {
+    e?.stopPropagation();
+    if (!videoRef.current) return;
+    if (isPlaying) {
+      videoRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      videoRef.current.play();
+      setIsPlaying(true);
+    }
+  };
 
-        {/* Live indicator / Pause toggle */}
-        <button
-          type="button"
-          onClick={() => setIsPlaying(!isPlaying)}
-          className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-blue-950/60 hover:bg-blue-900/60 text-blue-300 text-[10px] font-bold border border-blue-800/50 transition cursor-pointer"
-          title={isPlaying ? 'Pause Auto-cycle' : 'Play Auto-cycle'}
-        >
-          {isPlaying ? (
-            <>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="hidden sm:inline">LIVE</span>
-              <Pause className="w-2.5 h-2.5 ml-0.5 text-blue-300" />
-            </>
-          ) : (
-            <>
-              <Play className="w-2.5 h-2.5 text-amber-400" />
-              <span className="hidden sm:inline text-amber-300">PAUSED</span>
-            </>
-          )}
-        </button>
-      </div>
+  const toggleMute = (e) => {
+    e?.stopPropagation();
+    if (!videoRef.current) return;
+    videoRef.current.muted = !isMuted;
+    setIsMuted(!isMuted);
+  };
 
-      {/* Interactive Navigation Tabs for Demo Screens */}
-      <div className="relative flex items-center gap-1.5 p-1 bg-[#091b30] rounded-xl border border-blue-900/50 mb-3 overflow-x-auto no-scrollbar">
-        {screens.map(s => {
-          const Icon = s.icon
-          const active = activeScreen === s.id
-          return (
-            <button
-              key={s.id}
-              onClick={() => {
-                setActiveScreen(s.id)
-                setIsPlaying(false)
-              }}
-              className={`flex-1 min-w-[90px] py-1.5 px-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
-                active
-                  ? 'bg-[#134287] text-white shadow-md shadow-blue-900/50 border border-blue-400/40'
-                  : 'text-blue-200/70 hover:text-white hover:bg-blue-950/40'
-              }`}
-            >
-              <Icon className={`w-3.5 h-3.5 ${active ? 'text-white' : 'text-blue-400'}`} />
-              <span className="text-[11px]">{s.label}</span>
-            </button>
+  const handleSeek = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pos = (e.clientX - rect.left) / rect.width;
+    if (videoRef.current && duration > 0) {
+      videoRef.current.currentTime = pos * duration;
+      setCurrentTime(pos * duration);
+    }
+  };
+
+  const jumpToChapter = (chapter) => {
+    setActiveChapter(chapter.id);
+    if (videoRef.current && duration > 0) {
+      const targetTime = Math.min(chapter.time, duration - 1);
+      videoRef.current.currentTime = targetTime;
+      if (!isPlaying) {
+        videoRef.current.play();
+        setIsPlaying(true);
+      }
+    }
+  };
+
+  const toggleSpeed = (e) => {
+    e?.stopPropagation();
+    const speeds = [1, 1.25, 1.5, 2];
+    const nextSpeed = speeds[(speeds.indexOf(playbackRate) + 1) % speeds.length];
+    if (videoRef.current) {
+      videoRef.current.playbackRate = nextSpeed;
+      setPlaybackRate(nextSpeed);
+    }
+  };
+
+  const handleFullscreen = (e) => {
+    e?.stopPropagation();
+    if (videoRef.current) {
+      if (videoRef.current.requestFullscreen) {
+        videoRef.current.requestFullscreen();
+      } else if (videoRef.current.webkitRequestFullscreen) {
+        videoRef.current.webkitRequestFullscreen();
+      }
+    }
+  };
+
+  const formatTime = (seconds) => {
+    if (!seconds || isNaN(seconds)) return '0:00';
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  return React.createElement(
+    'figure',
+    {
+      className: 'w-full min-w-0 flex flex-col rounded-xl overflow-hidden border border-white/10 shadow-2xl bg-[var(--landing-surface)] select-none group',
+      'aria-label': 'NetFlow Fast Video Walkthrough',
+      onMouseEnter: () => setIsHovered(true),
+      onMouseLeave: () => setIsHovered(false),
+    },
+    // Top Navigation / Chapters Bar
+    React.createElement(
+      'div',
+      {
+        className: 'flex items-center justify-between border-b border-white/10 bg-[var(--landing-input)] px-2 sm:px-4 py-2 overflow-x-auto scrollbar-none gap-2',
+      },
+      React.createElement(
+        'div',
+        { className: 'flex items-center gap-1.5 sm:gap-2 min-w-max' },
+        CHAPTERS.map((ch) => {
+          const isActive = activeChapter === ch.id;
+          return React.createElement(
+            'button',
+            {
+              key: ch.id,
+              type: 'button',
+              onClick: () => jumpToChapter(ch),
+              className: `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                isActive
+                  ? 'bg-[var(--landing-accent)] text-white shadow-md ring-1 ring-[var(--landing-accent)]'
+                  : 'text-[var(--landing-muted)] hover:text-[var(--landing-label)] hover:bg-white/5'
+              }`,
+            },
+            React.createElement('span', null, ch.label)
+          );
+        })
+      ),
+      // Live Video Badge
+      React.createElement(
+        'div',
+        { className: 'flex items-center gap-2 pl-2 border-l border-white/10 ml-auto' },
+        React.createElement(
+          'span',
+          { className: 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20' },
+          React.createElement('span', { className: 'size-2 rounded-full bg-emerald-400 animate-pulse' }),
+          'QUICK DEMO'
+        )
+      )
+    ),
+    // Video Container
+    React.createElement(
+      'div',
+      {
+        className: 'relative aspect-[16/9] sm:aspect-[1080/540] w-full overflow-hidden bg-black flex items-center justify-center cursor-pointer',
+        onClick: togglePlay,
+      },
+      !videoError ? (
+        React.createElement('video', {
+          ref: videoRef,
+          src: '/assets/netflow-demo.mp4?v=perfect_crop',
+          autoPlay: true,
+          loop: true,
+          muted: isMuted,
+          playsInline: true,
+          onTimeUpdate: handleTimeUpdate,
+          onLoadedMetadata: handleLoadedMetadata,
+          onError: () => setVideoError(true),
+          className: 'w-full h-full object-contain block bg-slate-950',
+        })
+      ) : (
+        React.createElement('img', {
+          src: '/assets/demo-clips/clip-workflows.png',
+          alt: 'NetFlow Walkthrough',
+          className: 'w-full h-full object-cover',
+        })
+      ),
+      // Big Center Play Button Overlay when paused
+      !isPlaying && React.createElement(
+        'div',
+        {
+          className: 'absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[2px] transition-all',
+        },
+        React.createElement(
+          'div',
+          {
+            className: 'size-16 sm:size-20 rounded-full bg-[var(--landing-accent)]/90 text-white flex items-center justify-center shadow-2xl ring-4 ring-white/20 transform hover:scale-110 transition cursor-pointer',
+          },
+          React.createElement(Icon_Play, { className: 'size-8 ml-1' })
+        )
+      ),
+      // Floating Bottom Controls Bar
+      React.createElement(
+        'div',
+        {
+          className: `absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/75 to-transparent px-3 sm:px-5 py-3 transition-opacity duration-300 flex flex-col gap-2 ${
+            isHovered || !isPlaying ? 'opacity-100' : 'opacity-0 sm:opacity-90'
+          }`,
+          onClick: (e) => e.stopPropagation(),
+        },
+        // Seek Bar
+        React.createElement(
+          'div',
+          {
+            className: 'w-full h-2 bg-white/20 hover:h-2.5 rounded-full relative cursor-pointer group/seek transition-all overflow-hidden',
+            onClick: handleSeek,
+          },
+          React.createElement('div', {
+            className: 'h-full bg-[var(--landing-accent)] rounded-full relative',
+            style: { width: `${progressPercent}%` },
+          })
+        ),
+        // Controls Row
+        React.createElement(
+          'div',
+          { className: 'flex items-center justify-between gap-2 text-white' },
+          React.createElement(
+            'div',
+            { className: 'flex items-center gap-2 sm:gap-3' },
+            // Play / Pause
+            React.createElement(
+              'button',
+              {
+                type: 'button',
+                onClick: togglePlay,
+                title: isPlaying ? 'Pause (Space)' : 'Play (Space)',
+                className: 'p-1.5 rounded-lg hover:bg-white/10 transition cursor-pointer',
+              },
+              React.createElement(isPlaying ? Icon_CirclePause : Icon_Play, { className: 'size-4 sm:size-5' })
+            ),
+            // Mute / Unmute
+            React.createElement(
+              'button',
+              {
+                type: 'button',
+                onClick: toggleMute,
+                title: isMuted ? 'Unmute Audio' : 'Mute Audio',
+                className: 'p-1.5 rounded-lg hover:bg-white/10 transition cursor-pointer flex items-center gap-1 text-xs',
+              },
+              React.createElement(isMuted ? Icon_EyeOff : Icon_Eye, { className: 'size-4 sm:size-5' }),
+              React.createElement('span', { className: 'text-[11px] opacity-80 hidden sm:inline' }, isMuted ? 'Muted' : 'Sound On')
+            ),
+            // Time display
+            React.createElement(
+              'span',
+              { className: 'text-xs text-white/80 font-mono tracking-wide' },
+              `${formatTime(currentTime)} / ${formatTime(duration)}`
+            )
+          ),
+          React.createElement(
+            'div',
+            { className: 'flex items-center gap-1.5 sm:gap-2' },
+            // Speed toggle
+            React.createElement(
+              'button',
+              {
+                type: 'button',
+                onClick: toggleSpeed,
+                title: 'Playback Speed',
+                className: 'px-2 py-1 rounded-md text-[11px] font-bold font-mono bg-white/10 hover:bg-white/20 transition cursor-pointer',
+              },
+              `${playbackRate}x`
+            ),
+            // Fullscreen
+            React.createElement(
+              'button',
+              {
+                type: 'button',
+                onClick: handleFullscreen,
+                title: 'Full Screen',
+                className: 'p-1.5 rounded-lg hover:bg-white/10 transition cursor-pointer',
+              },
+              React.createElement(Icon_Maximize2, { className: 'size-4' })
+            )
           )
-        })}
-      </div>
-
-      {/* Live Application Screen Preview Area */}
-      <div className="relative bg-[#0b1c33] rounded-2xl border border-blue-900/60 p-4 min-h-[300px] flex flex-col justify-between overflow-hidden">
-        
-        {/* SCREEN 1: DASHBOARD */}
-        {activeScreen === 'dashboard' && (
-          <div className="space-y-3 animate-in fade-in duration-300">
-            {/* Header */}
-            <div className="flex items-center justify-between bg-[#0e2444] p-3 rounded-xl border border-blue-800/40">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-[#134287] text-white text-[10px] font-black flex items-center justify-center">
-                  YA
-                </div>
-                <div>
-                  <div className="text-xs font-bold text-white leading-tight">Welcome back, Yash</div>
-                  <div className="text-[9.5px] text-blue-300/80">Organization Overview · All Departments</div>
-                </div>
-              </div>
-              <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-[#134287] text-blue-100 border border-blue-400/40">
-                Workflow Admin
-              </span>
-            </div>
-
-            {/* KPI Stat Cards Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <div className="bg-[#091b32] p-2.5 rounded-xl border border-blue-800/30">
-                <div className="text-[9.5px] font-bold text-blue-300/80 uppercase">Submissions</div>
-                <div className="text-base font-black text-white mt-0.5">3</div>
-                <div className="w-full h-1 bg-blue-950 rounded-full mt-1.5 overflow-hidden">
-                  <div className="w-3/4 h-full bg-blue-500 rounded-full" />
-                </div>
-              </div>
-              <div className="bg-[#091b32] p-2.5 rounded-xl border border-blue-800/30">
-                <div className="text-[9.5px] font-bold text-emerald-400 uppercase">Completed</div>
-                <div className="text-base font-black text-white mt-0.5">3</div>
-                <div className="w-full h-1 bg-blue-950 rounded-full mt-1.5 overflow-hidden">
-                  <div className="w-full h-full bg-emerald-500 rounded-full" />
-                </div>
-              </div>
-              <div className="bg-[#091b32] p-2.5 rounded-xl border border-blue-800/30">
-                <div className="text-[9.5px] font-bold text-amber-400 uppercase">Active Flows</div>
-                <div className="text-base font-black text-white mt-0.5">1</div>
-                <div className="w-full h-1 bg-blue-950 rounded-full mt-1.5 overflow-hidden">
-                  <div className="w-1/2 h-full bg-amber-500 rounded-full" />
-                </div>
-              </div>
-              <div className="bg-[#091b32] p-2.5 rounded-xl border border-blue-800/30">
-                <div className="text-[9.5px] font-bold text-blue-200 uppercase">Success Rate</div>
-                <div className="text-base font-black text-emerald-400 mt-0.5">100%</div>
-                <div className="w-full h-1 bg-blue-950 rounded-full mt-1.5 overflow-hidden">
-                  <div className="w-full h-full bg-emerald-400 rounded-full" />
-                </div>
-              </div>
-            </div>
-
-            {/* Performance mini chart visual */}
-            <div className="bg-[#091b32] p-3 rounded-xl border border-blue-800/30 space-y-2">
-              <div className="flex items-center justify-between text-[11px] font-bold text-white">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-[#134287]" />
-                  Workflow Performance
-                </span>
-                <span className="text-emerald-400 text-[10px]">99.8% On-Time SLA</span>
-              </div>
-              <div className="flex items-end gap-1.5 h-12 pt-1">
-                {[40, 65, 30, 85, 55, 95, 75, 100, 80, 90].map((val, i) => (
-                  <div key={i} className="flex-1 bg-blue-950 rounded-t overflow-hidden h-full flex items-end">
-                    <div
-                      style={{ height: `${val}%` }}
-                      className="w-full bg-gradient-to-t from-[#134287] to-blue-400 rounded-t transition-all duration-500"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* SCREEN 2: WORKFLOW BUILDER CANVAS */}
-        {activeScreen === 'workflow' && (
-          <div className="space-y-3 animate-in fade-in duration-300">
-            <div className="flex items-center justify-between bg-[#0e2444] px-3 py-2 rounded-xl border border-blue-800/40 text-xs font-bold text-white">
-              <div className="flex items-center gap-2">
-                <Workflow className="w-4 h-4 text-blue-400" />
-                <span>Vendor Onboarding & Payment Workflow</span>
-              </div>
-              <span className="px-2 py-0.5 rounded-md bg-emerald-950 text-emerald-300 text-[10px] border border-emerald-800">
-                Active Route
-              </span>
-            </div>
-
-            {/* Node flow diagram */}
-            <div className="space-y-2 py-1">
-              {/* Step 1 */}
-              <div className="flex items-center gap-3 bg-[#091b32] p-2.5 rounded-xl border border-emerald-500/40">
-                <div className="w-6 h-6 rounded-lg bg-emerald-600 text-white text-xs font-black flex items-center justify-center shrink-0">
-                  ✓
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-bold text-white truncate">1. Vendor Intake Form</div>
-                  <div className="text-[10px] text-emerald-300/90 font-medium">Submitted by Acme Corp · Attachments verified</div>
-                </div>
-                <span className="text-[10px] font-bold text-emerald-400 shrink-0">Completed</span>
-              </div>
-
-              {/* Step 2 */}
-              <div className="flex items-center gap-3 bg-[#091b32] p-2.5 rounded-xl border border-blue-500/40">
-                <div className="w-6 h-6 rounded-lg bg-[#134287] text-white text-xs font-black flex items-center justify-center shrink-0">
-                  2
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-bold text-white truncate">2. Department Head Review</div>
-                  <div className="text-[10px] text-blue-200/80 font-medium">Assigned to Operations Lead · SLA: 24 hrs</div>
-                </div>
-                <span className="px-2 py-0.5 rounded-full bg-blue-900/60 text-blue-300 text-[9.5px] font-extrabold border border-blue-500/40 shrink-0">
-                  In Review
-                </span>
-              </div>
-
-              {/* Step 3 */}
-              <div className="flex items-center gap-3 bg-[#071526] p-2.5 rounded-xl border border-blue-900/40 opacity-70">
-                <div className="w-6 h-6 rounded-lg bg-slate-800 text-slate-400 text-xs font-black flex items-center justify-center shrink-0">
-                  3
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-bold text-slate-300 truncate">3. Finance & Legal Sign-off</div>
-                  <div className="text-[10px] text-slate-400 font-medium">Auto-trigger on Step 2 approval</div>
-                </div>
-                <span className="text-[10px] font-bold text-slate-400 shrink-0">Queued</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* SCREEN 3: FORM INTAKE STUDIO */}
-        {activeScreen === 'forms' && (
-          <div className="space-y-2.5 animate-in fade-in duration-300">
-            <div className="flex items-center justify-between bg-[#0e2444] px-3 py-2 rounded-xl border border-blue-800/40 text-xs font-bold text-white">
-              <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-blue-400" />
-                <span>Smart Dynamic Request Form</span>
-              </div>
-              <span className="px-2 py-0.5 rounded-md bg-blue-950 text-blue-300 text-[10px] border border-blue-800">
-                Public Link Enabled
-              </span>
-            </div>
-
-            <div className="bg-[#091b32] p-3 rounded-xl border border-blue-800/30 space-y-2">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-blue-200">Request Title</label>
-                <div className="w-full bg-[#071526] px-2.5 py-1.5 rounded-lg border border-blue-900/60 text-xs text-white font-medium">
-                  Cloud Infrastructure Upgrade — Q4 Budget
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-blue-200">Department</label>
-                  <div className="w-full bg-[#071526] px-2.5 py-1.5 rounded-lg border border-blue-900/60 text-xs text-white font-medium">
-                    Engineering & IT
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-blue-200">Estimated Capex</label>
-                  <div className="w-full bg-[#071526] px-2.5 py-1.5 rounded-lg border border-blue-900/60 text-xs text-emerald-400 font-bold">
-                    $14,500.00 USD
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-2 rounded-lg bg-[#071526] border border-dashed border-blue-700/50 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <FileCheck2 className="w-4 h-4 text-blue-400" />
-                  <span className="text-[10px] font-semibold text-white">Vendor_Proposal_v2.pdf</span>
-                </div>
-                <span className="text-[9.5px] font-bold text-emerald-400">Attached ✓</span>
-              </div>
-
-              <button className="w-full py-1.5 rounded-lg bg-[#134287] hover:bg-[#0f346c] text-white text-xs font-bold shadow-sm transition">
-                Submit for Multi-Tier Approval →
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* SCREEN 4: APPROVALS & AUDIT LOG */}
-        {activeScreen === 'approvals' && (
-          <div className="space-y-2.5 animate-in fade-in duration-300">
-            <div className="flex items-center justify-between bg-[#0e2444] px-3 py-2 rounded-xl border border-blue-800/40 text-xs font-bold text-white">
-              <div className="flex items-center gap-2">
-                <CheckSquare className="w-4 h-4 text-emerald-400" />
-                <span>Executive Approval Queue</span>
-              </div>
-              <span className="px-2 py-0.5 rounded-md bg-amber-950 text-amber-300 text-[10px] border border-amber-800">
-                1 Action Required
-              </span>
-            </div>
-
-            {/* Approval Item */}
-            <div className="bg-[#091b32] p-3 rounded-xl border border-blue-800/40 space-y-2">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-xs font-bold text-white">Annual Enterprise Server SLA Contract</div>
-                  <div className="text-[10px] text-blue-300 font-medium">Submitted by Priya · Amount: $24,000</div>
-                </div>
-                <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-blue-900/60 text-blue-200 border border-blue-500/30">
-                  SLA: 3h Left
-                </span>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center gap-2 pt-1">
-                <button className="flex-1 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center justify-center gap-1 shadow-xs">
-                  <span>Approve & Sign</span>
-                  <Check className="w-3.5 h-3.5" />
-                </button>
-                <button className="px-3 py-1.5 rounded-lg bg-[#071526] hover:bg-rose-950/60 text-rose-300 text-xs font-bold border border-rose-900/40 transition">
-                  Reject
-                </button>
-              </div>
-
-              {/* Audit Proof Banner */}
-              <div className="p-2 rounded-lg bg-[#071526] border border-blue-900/50 flex items-center justify-between text-[9.5px]">
-                <span className="text-blue-300/80 font-mono">Immutable Hash: #4021-SHA256</span>
-                <span className="text-emerald-400 font-bold">Anchored ✓</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Footer info strip inside preview */}
-        <div className="mt-2 pt-2 border-t border-blue-900/40 flex items-center justify-between text-[10px] text-blue-300/80">
-          <span className="flex items-center gap-1">
-            <Shield className="w-3 h-3 text-blue-400" />
-            <span>Encrypted with TLS 1.3 · SOC2 Compliant</span>
-          </span>
-          <span className="text-blue-400 font-bold hover:underline cursor-pointer">
-            Interactive Preview
-          </span>
-        </div>
-      </div>
-    </div>
-  )
+        )
+      )
+    )
+  );
 }
 
-export default function SignaLandingPage() {
-  const theme = useTheme()
-  const [activeTab, setActiveTab] = useState('workflows')
-  const [openFaq, setOpenFaq] = useState(0)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
-  const capabilities = [
-    {
-      id: 'workflows',
-      label: 'Workflow Orchestration',
-      icon: Workflow,
-      title: 'Visual Workflow Engine & Multi-Tier Approvals',
-      desc: 'Build sequential, parallel, and conditional approval paths with zero coding. Route requests automatically based on dollar values, department budgets, or executive thresholds.',
-      highlights: [
-        'Multi-stage approvals with conditional branching',
-        'Automatic delegate routing when managers are on leave',
-        'Visual step-by-step canvas with real-time stage tracking',
-        'Parallel sign-off matrix across cross-functional teams'
-      ],
-      previewBadge: 'Workflow Engine',
-      previewTitle: 'Capex Approval > $10,000',
-      previewSteps: [
-        { label: 'Form Submission', actor: 'Department Requester', status: 'Submitted', color: 'emerald' },
-        { label: 'Manager Review', actor: 'Direct Manager', status: 'Approved', color: 'emerald' },
-        { label: 'Finance & Legal SLA', actor: 'Finance Director', status: 'In Review', color: 'blue' },
-        { label: 'Executive Sign-off', actor: 'CFO Office', status: 'Pending', color: 'slate' }
-      ]
-    },
-    {
-      id: 'forms',
-      label: 'No-Code Form Studio',
-      icon: FileText,
-      title: 'Smart Intake Forms with Real-Time Validation',
-      desc: 'Design beautiful, dynamic forms that adapt based on user inputs. Share securely with team members or distribute public links to external vendors and partners.',
-      highlights: [
-        'Drag-and-drop input fields, file uploads, and currency formats',
-        'Dynamic conditional logic that reveals fields based on previous answers',
-        'Public form links for external customer/vendor onboarding',
-        'Automated responses spreadsheet export & CSV downloads'
-      ],
-      previewBadge: 'Form Studio',
-      previewTitle: 'Vendor Onboarding & NDA Request',
-      previewSteps: [
-        { label: 'Vendor Details', actor: 'Entity & Tax ID', status: 'Validated', color: 'emerald' },
-        { label: 'NDA Document', actor: 'Signed PDF Attachment', status: 'Uploaded', color: 'emerald' },
-        { label: 'Security Review', actor: 'IT Compliance Check', status: 'Active', color: 'blue' },
-        { label: 'Contract Execution', actor: 'Procurement Dispatch', status: 'Queued', color: 'slate' }
-      ]
-    },
-    {
-      id: 'sla',
-      label: 'SLA & Escalations',
-      icon: Zap,
-      title: 'Automated Deadlines & Escalation Triggers',
-      desc: 'Never let critical requests sit unattended. Set strict turn-around SLAs per approval step with automated notification nudges, overdue warnings, and auto-escalations.',
-      highlights: [
-        'Configurable SLA targets in hours or days per workflow stage',
-        'Automated email and in-app reminder notifications',
-        'Escalation triggers that reassign tasks when deadlines are breached',
-        'Real-time SLA health dashboard with department bottleneck analysis'
-      ],
-      previewBadge: 'SLA Engine',
-      previewTitle: 'Emergency Server Access SLA',
-      previewSteps: [
-        { label: 'Access Requested', actor: 'DevOps Engineer', status: '00:00 (Logged)', color: 'emerald' },
-        { label: 'Security Lead Nudge', actor: 'Slack & Email Triggered', status: '00:15 (Sent)', color: 'emerald' },
-        { label: 'SLA Warning Stage', actor: 'Automated Escalation', status: '01:30 (Breached)', color: 'amber' },
-        { label: 'Re-routed to VP Eng', actor: 'Executive Fast-Track', status: 'Active SLA', color: 'blue' }
-      ]
-    },
-    {
-      id: 'governance',
-      label: 'Audit & Governance',
-      icon: Shield,
-      title: 'Immutable Cryptographic Audit Trails',
-      desc: 'Achieve effortless audit readiness. Every submission, comment, approval signature, delegation, and status change is logged immutably with timestamped proofs.',
-      highlights: [
-        'Complete chronological audit history with IP and user metadata',
-        'Tamper-evident verification logs ready for compliance audits',
-        'Role-based access control (RBAC) with granular permission sets',
-        'Enterprise data isolation across organizations and departments'
-      ],
-      previewBadge: 'Audit Ledger',
-      previewTitle: 'SOC2 Compliance Trail',
-      previewSteps: [
-        { label: 'Payload Signed', actor: 'AES-256 Verified', status: 'Immutable', color: 'emerald' },
-        { label: 'Identity Auth', actor: 'Microsoft Entra SSO', status: 'Verified', color: 'emerald' },
-        { label: 'Timestamp Lock', actor: 'SHA-256 Ledger Entry', status: 'Anchored', color: 'emerald' },
-        { label: 'Compliance Export', actor: 'One-Click Audit PDF', status: 'Ready', color: 'blue' }
-      ]
-    }
-  ]
+function jB(){let e=useTheme(),[t,n]=useState(!1),[r,i]=useState(!1),[a,o]=useState(!1),[s,c]=useState(`build`),[l,u]=useState(`hr`),[d,f]=useState(!1),p=useNavigate(),m=getStoredUser(),h=getToken(),g=!!(m&&h),_=useRef(new Set),y=e=>{if(e)return _.current.add(e),()=>_.current.delete(e)};
+  useEffect(() => {
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12 });
+    _.current.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
 
-  const activeCapability = capabilities.find(c => c.id === activeTab) || capabilities[0]
+  if (g) return React.createElement(Navigate, { to: '/dashboard', replace: true });
+let b=e=>{if(e.preventDefault(),window.matchMedia(`(prefers-reduced-motion: reduce)`).matches){p(`/login`);return}f(!0),setTimeout(()=>{p(`/login`)},360)},x=e=>{e.preventDefault(),toast.info(`Action coming soon.`)},S={hr:{label:`HR workflows`,title:`Make every employee journey feel organized.`,description:`Create clear, confidential workflows for onboarding, time off, performance reviews, expenses, and every step in between.`,templates:[`Employee onboarding`,`Leave requests`,`Performance reviews`,`Expense reimbursements`],flow:[`New hire form`,`Route by department`,`Onboarding complete`]},it:{label:`IT & operations`,title:`Turn every service request into accountable action.`,description:`Give employees one place to request access, equipment, incident support, and operational help—with ownership and deadlines built in.`,templates:[`Hardware provisioning`,`Software access`,`Incident ticketing`,`Facilities requests`],flow:[`Service request`,`Assign by category`,`Resolve & notify`]},finance:{label:`Finance workflows`,title:`Keep spend controlled without slowing work down.`,description:`Standardize purchasing, budgets, vendors, and exceptions with clear approval limits, supporting documents, and traceable decisions.`,templates:[`Purchase orders`,`Budget requests`,`Vendor onboarding`,`Invoice exceptions`],flow:[`Purchase request`,`Apply approval limit`,`Release order`]}};return React.createElement(`div`,{className:`nf-landing bg-[var(--landing-page)] font-['DM_Sans',sans-serif] text-[var(--landing-ink)] antialiased ${d?`page-exit-active`:``}`,children:[React.createElement(`header`,{className:`sticky top-0 z-40 border-b border-[var(--landing-line)]/80 bg-[var(--landing-page)]/90 backdrop-blur-xl`,children:[React.createElement(`nav`,{className:`mx-auto flex h-[72px] max-w-7xl items-center justify-between px-3 sm:px-6 lg:px-8`,"aria-label":`Primary navigation`,children:[React.createElement(Link,{to:`/`,className:`flex shrink-0 items-center gap-2 sm:gap-2.5`,"aria-label":`NetFlow home`,children:[React.createElement(`img`,{src:`/netflow-icon.png`,alt:`NetFlow`,className:`size-8 rounded-xl shadow-lg shadow-slate-950/15 sm:size-9`}),React.createElement(`span`,{className:`font-['Manrope','DM_Sans',sans-serif] text-lg font-extrabold tracking-[-0.05em] sm:text-xl`,children:`NetFlow`})]}),React.createElement(`div`,{className:`hidden items-center gap-5 xl:flex`,children:[React.createElement(`a`,{href:`#platform`,className:`text-sm font-semibold text-[var(--landing-body)] transition hover:text-[var(--landing-ink)]`,children:`Platform`}),React.createElement(`a`,{href:`#capabilities`,className:`text-sm font-semibold text-[var(--landing-body)] transition hover:text-[var(--landing-ink)]`,children:`Capabilities`}),React.createElement(`a`,{href:`#solutions`,className:`text-sm font-semibold text-[var(--landing-body)] transition hover:text-[var(--landing-ink)]`,children:`Solutions`}),React.createElement(`a`,{href:`#security`,className:`text-sm font-semibold text-[var(--landing-body)] transition hover:text-[var(--landing-ink)]`,children:`Security`}),React.createElement(`a`,{href:`#resources`,className:`text-sm font-semibold text-[var(--landing-body)] transition hover:text-[var(--landing-ink)]`,children:`Resources`}),React.createElement(`a`,{href:`/docs/`,className:`text-sm font-semibold text-[var(--landing-body)] transition hover:text-[var(--landing-accent)]`,children:`Documentation`})]}),React.createElement(`div`,{className:`flex shrink-0 items-center gap-2`,children:[React.createElement(`button`,{type:`button`,onClick:()=>themeStore.toggle(),className:`nf-landing-theme-toggle grid size-11 shrink-0 cursor-pointer place-items-center rounded-xl  text-[var(--landing-ink)] transition-colors hover:bg-[var(--landing-section)]`,"aria-label":e===`dark`?`Switch to light mode`:`Switch to dark mode`,title:e===`dark`?`Switch to light mode`:`Switch to dark mode`,children:e===`dark`?React.createElement(Icon_Sun,{className:`size-5`,"aria-hidden":`true`}):React.createElement(Icon_Moon,{className:`size-5`,"aria-hidden":`true`})}),React.createElement(`a`,{href:`/login`,onClick:b,className:`inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-xl px-2 py-2.5 text-sm font-bold text-[var(--landing-body)] transition hover:bg-[var(--landing-surface)] hover:text-[var(--landing-ink)] md:min-h-0 md:px-4`,children:`Sign in`}),React.createElement(`button`,{onClick:()=>i(!0),className:`hidden items-center gap-2 rounded-xl bg-[#245A9A] cursor-pointer px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-slate-950/15 transition hover:-translate-y-0.5 hover:bg-slate-800 md:inline-flex`,children:[`Book a demo `,React.createElement(Icon_ArrowUpRight,{className:`size-4`})]}),React.createElement(`button`,{onClick:()=>n(!t),className:`grid size-11 place-items-center rounded-xl border border-[var(--landing-line)] bg-[var(--landing-surface)] text-[var(--landing-ink)] xl:hidden`,"aria-label":t?`Close navigation`:`Open navigation`,"aria-expanded":t,children:React.createElement(Icon_Menu,{className:`size-5`})})]})]}),t&&React.createElement(`div`,{className:`border-t border-[var(--landing-line)] bg-[var(--landing-page)] px-4 pb-5 pt-3 xl:hidden`,children:React.createElement(`div`,{className:`mx-auto grid max-w-7xl`,children:[React.createElement(`a`,{href:`#platform`,onClick:()=>n(!1),className:`border-b border-[var(--landing-line)] py-3.5 font-semibold text-[var(--landing-label)]`,children:`Platform`}),React.createElement(`a`,{href:`#capabilities`,onClick:()=>n(!1),className:`border-b border-[var(--landing-line)] py-3.5 font-semibold text-[var(--landing-label)]`,children:`Capabilities`}),React.createElement(`a`,{href:`#solutions`,onClick:()=>n(!1),className:`border-b border-[var(--landing-line)] py-3.5 font-semibold text-[var(--landing-label)]`,children:`Solutions`}),React.createElement(`a`,{href:`#security`,onClick:()=>n(!1),className:`border-b border-[var(--landing-line)] py-3.5 font-semibold text-[var(--landing-label)]`,children:`Security`}),React.createElement(`a`,{href:`#resources`,onClick:()=>n(!1),className:`border-b border-[var(--landing-line)] py-3.5 font-semibold text-[var(--landing-label)]`,children:`Resources`}),React.createElement(`a`,{href:`/docs/`,onClick:()=>n(!1),className:`py-3.5 font-semibold text-[var(--landing-accent)]`,children:`Documentation`}),React.createElement(`button`,{onClick:()=>i(!0),className:`mt-3 flex items-center justify-center gap-2 rounded-xl bg-[#091322] px-5 py-3 text-sm font-bold text-white`,children:[`Book a demo `,React.createElement(Icon_ArrowRight,{className:`size-4`})]})]})})]}),React.createElement(`main`,{id:`top`,children:[React.createElement(`section`,{className:`hero-glow relative overflow-hidden border-b border-[var(--landing-line)]/80 pb-20 pt-8 sm:pt-12 lg:pb-20 lg:pt-8`,children:[React.createElement(`div`,{className:`pointer-events-none absolute left-1/2 top-12 -z-10 h-[620px] w-[620px] -translate-x-1/2 rounded-full border border-[var(--landing-line)]/50`}),React.createElement(`div`,{className:`mx-auto grid max-w-7xl items-center gap-14 px-4 sm:px-6 lg:grid-cols-[0.92fr_1.08fr] lg:gap-10 lg:px-8`,children:[React.createElement(`div`,{className:`relative z-10`,children:[React.createElement(`div`,{className:`mb-6 inline-flex items-center gap-2 rounded-full border border-[var(--landing-line)] bg-[var(--landing-surface)]/80 px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.14em] text-[var(--landing-body)] shadow-sm backdrop-blur`,children:[React.createElement(`span`,{className:`relative flex size-2`,children:[React.createElement(`span`,{className:`absolute inline-flex size-full animate-ping rounded-full bg-[#56DDB7] opacity-70`}),React.createElement(`span`,{className:`relative inline-flex size-2 rounded-full bg-emerald-500`})]}),`AI-Powered Workflow Platform`]}),React.createElement(`h1`,{className:`max-w-3xl font-['Manrope','DM_Sans',sans-serif] text-[3.35rem] font-extrabold leading-[0.99] tracking-[-0.065em] text-[var(--landing-ink)] sm:text-7xl lg:text-[5.3rem]`,children:[`Build every process your way Keep every step `,React.createElement(`span`,{className:`relative inline-block whitespace-nowrap`,children:[React.createElement(`span`,{className:`relative z-10`,children:`moving`}),React.createElement(`span`,{className:`nf-landing-word-mark absolute bottom-1 left-0 z-0 h-[16%] w-full -rotate-1 rounded-full bg-[#C9F55D] sm:bottom-2`})]})]}),React.createElement(`p`,{className:`mt-7 max-w-xl text-base leading-7 text-[var(--landing-body)] sm:text-lg sm:leading-8`,children:`Build processes manually, create faster with AI, automate routine steps, and track every request from start to finish—all in one secure workspace.`}),React.createElement(`div`,{className:`mt-8 flex flex-col gap-3 sm:flex-row`,children:[React.createElement(`button`,{onClick:()=>i(!0),className:`group inline-flex min-h-[52px] items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3.5 text-sm font-bold text-white shadow-xl shadow-blue-900/20 transition hover:-translate-y-0.5 hover:bg-[#0f346c]`,children:[`Book a demo`,React.createElement(Icon_ArrowRight,{className:`size-4 transition group-hover:translate-x-1`})]}),React.createElement(`a`,{href:`#platform`,className:`inline-flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-[var(--landing-line-strong)] bg-[var(--landing-surface)] px-6 py-3.5 text-sm font-bold text-[var(--landing-ink)] transition hover:-translate-y-0.5 hover:border-[var(--landing-subtle)] hover:shadow-lg`,children:[React.createElement(`span`,{className:`grid size-6 place-items-center rounded-full bg-[#091322] text-white`,children:React.createElement(Icon_Play,{className:`ml-0.5 size-3 fill-current`})}),`Explore NetFlow`]})]}),React.createElement(`div`,{className:`mt-6 flex flex-wrap gap-x-5 gap-y-2 text-xs font-semibold text-[var(--landing-muted)]`,children:[React.createElement(`span`,{className:`flex items-center gap-1.5`,children:[React.createElement(Icon_Check,{className:`size-3.5 text-emerald-500`}),`Flexible by design`]}),React.createElement(`span`,{className:`flex items-center gap-1.5`,children:[React.createElement(Icon_Check,{className:`size-3.5 text-emerald-500`}),`Secure by default`]}),React.createElement(`span`,{className:`flex items-center gap-1.5`,children:[React.createElement(Icon_Check,{className:`size-3.5 text-emerald-500`}),`Built to scale`]})]})]}),React.createElement(`div`,{className:`relative mx-auto w-full min-w-0 max-w-[680px]`,children:[React.createElement(`div`,{className:`absolute -inset-5 -z-10 rounded-[2.25rem] bg-gradient-to-br from-primary/20 via-transparent to-[#56DDB7]/20 blur-2xl`}),React.createElement(`div`,{className:`overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#091322] shadow-[0_32px_100px_rgba(9,19,34,0.18)] ring-1 ring-slate-950/5`,children:[React.createElement(`div`,{className:`flex h-12 items-center justify-between border-b border-white/10 px-4`,children:[React.createElement(`div`,{className:`flex gap-1.5`,children:[React.createElement(`span`,{className:`size-2 rounded-full bg-white/20`}),React.createElement(`span`,{className:`size-2 rounded-full bg-white/20`}),React.createElement(`span`,{className:`size-2 rounded-full bg-white/20`})]}),React.createElement(`div`,{className:`flex items-center gap-2 text-[9px] font-semibold text-white/45`,children:[React.createElement(Icon_Lock,{className:`size-3`}),`app.netflow.io / workspace`]}),React.createElement(`div`,{className:`flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-[#56DDB7]`,children:[React.createElement(`span`,{className:`size-1.5 rounded-full bg-[#56DDB7] shadow-[0_0_0_4px_rgba(86,221,183,.12)]`}),`Live`]})]}),React.createElement(`div`,{className:`grid grid-cols-[44px_minmax(0,1fr)] sm:min-h-[510px] sm:grid-cols-[64px_minmax(0,1fr)]`,children:[React.createElement(`aside`,{className:`border-r border-white/10 bg-[#0d1829] px-1 py-4 sm:px-2`,children:[React.createElement(`div`,{className:`mb-5 grid place-items-center`,children:React.createElement(`span`,{className:`grid size-8 place-items-center rounded-xl bg-[var(--landing-surface)] text-[var(--landing-ink)]`,children:React.createElement(Icon_Waves,{className:`size-4`})})}),React.createElement(`div`,{className:`space-y-2`,children:[React.createElement(`span`,{className:`grid h-10 place-items-center rounded-xl bg-primary text-white`,children:React.createElement(Icon_PanelsTopLeft,{className:`size-4`})}),React.createElement(`span`,{className:`grid h-10 place-items-center rounded-xl text-white/35`,children:React.createElement(Icon_Inbox,{className:`size-4`})}),React.createElement(`span`,{className:`grid h-10 place-items-center rounded-xl text-white/35`,children:React.createElement(Icon_FileText,{className:`size-4`})}),React.createElement(`span`,{className:`grid h-10 place-items-center rounded-xl text-white/35`,children:React.createElement(Icon_Workflow,{className:`size-4`})}),React.createElement(`span`,{className:`grid h-10 place-items-center rounded-xl text-white/35`,children:React.createElement(Icon_ChartNoAxesColumnIncreasing,{className:`size-4`})})]})]}),React.createElement(`div`,{className:`relative min-w-0 bg-[#101d30] p-2 sm:p-4 sm:pb-40`,children:[React.createElement(`div`,{className:`mb-3 flex flex-wrap items-center justify-between gap-2`,children:[React.createElement(`div`,{children:[React.createElement(`p`,{className:`mb-0.5 text-[8px] font-bold uppercase tracking-[0.15em] text-white/35`,children:`Process canvas`}),React.createElement(`h3`,{className:`font-['Manrope','DM_Sans',sans-serif] text-xs font-bold text-white sm:text-sm`,children:`Purchase request approval`})]}),React.createElement(`div`,{className:`flex gap-1.5`,children:[React.createElement(`button`,{className:`rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[8px] font-bold text-white/60`,children:`Test run`}),React.createElement(`button`,{className:`rounded-lg bg-[#C9F55D] px-2.5 py-1.5 text-[8px] font-extrabold text-[#091322]`,children:`Publish`})]})]}),React.createElement(HeroWorkflowPreview,{})]})]})]}),React.createElement(`div`,{className:`absolute -bottom-9 left-3 hidden w-[240px] animate-float-soft overflow-hidden rounded-2xl border border-[var(--landing-line)] bg-[var(--landing-surface)] shadow-[0_18px_45px_rgba(9,19,34,0.16)] sm:block lg:-left-6`,children:[React.createElement(`div`,{className:`flex items-center justify-between border-b border-[var(--landing-divider)] px-4 py-3`,children:[React.createElement(`span`,{className:`flex items-center gap-2 text-[9px] font-extrabold`,children:[React.createElement(`span`,{className:`grid size-6 place-items-center rounded-lg bg-[var(--landing-info-bg)] text-[var(--landing-accent)]`,children:React.createElement(Icon_ClipboardList,{className:`size-3`})}),`Purchase request`]}),React.createElement(`span`,{className:`rounded-md bg-[var(--landing-success-bg)] px-1.5 py-0.5 text-[7px] font-extrabold text-[var(--landing-success)]`,children:`LIVE`})]}),React.createElement(`div`,{className:`space-y-2.5 p-4`,children:[React.createElement(`div`,{children:[React.createElement(`span`,{className:`mb-1 block text-[7px] font-bold text-[var(--landing-muted)]`,children:`Item category`}),React.createElement(`div`,{className:`flex h-7 items-center justify-between rounded-md border border-[var(--landing-line)] px-2 text-[7px] text-[var(--landing-muted)]`,children:[`Software `,React.createElement(Icon_ChevronDown,{className:`size-2.5`})]})]}),React.createElement(`div`,{children:[React.createElement(`span`,{className:`mb-1 block text-[7px] font-bold text-[var(--landing-muted)]`,children:`Estimated value`}),React.createElement(`div`,{className:`flex h-7 items-center rounded-md border border-[var(--landing-line)] px-2 text-[7px] text-[var(--landing-muted)]`,children:`₹ 6,75,000`})]}),React.createElement(`div`,{className:`rounded-lg border border-[var(--landing-info-line)] bg-[var(--landing-info-bg)]/70 p-2 text-[7px] font-bold text-[var(--landing-info)]`,children:[React.createElement(Icon_Sparkles,{className:`mr-1 inline size-2.5`}),`Executive approval added automatically`]})]})]})]})]}),React.createElement(`div`,{className:`mx-auto mt-20 max-w-7xl px-4 sm:px-6 lg:mt-28 lg:px-8`,children:React.createElement(`div`,{className:`grid gap-3 rounded-2xl border border-[var(--landing-line)] bg-[var(--landing-surface)] p-3 shadow-sm sm:grid-cols-3`,children:[React.createElement(`div`,{className:`flex items-center gap-3 rounded-xl px-4 py-3`,children:[React.createElement(`span`,{className:`grid size-9 shrink-0 place-items-center rounded-xl bg-[var(--landing-success-bg)] text-[var(--landing-success)]`,children:React.createElement(Icon_ShieldCheck,{className:`size-4`})}),React.createElement(`div`,{children:[React.createElement(`strong`,{className:`block text-xs`,children:`Secure workspaces`}),React.createElement(`span`,{className:`text-[10px] text-[var(--landing-muted)]`,children:`Company data stays protected`})]})]}),React.createElement(`div`,{className:`flex items-center gap-3 rounded-xl border-y border-[var(--landing-divider)] px-4 py-3 sm:border-x sm:border-y-0`,children:[React.createElement(`span`,{className:`grid size-9 shrink-0 place-items-center rounded-xl bg-[var(--landing-info-bg)] text-[var(--landing-accent)]`,children:React.createElement(Icon_Route,{className:`size-4`})}),React.createElement(`div`,{children:[React.createElement(`strong`,{className:`block text-xs`,children:`Manual or AI-assisted`}),React.createElement(`span`,{className:`text-[10px] text-[var(--landing-muted)]`,children:`Build your way from day one`})]})]}),React.createElement(`div`,{className:`flex items-center gap-3 rounded-xl px-4 py-3`,children:[React.createElement(`span`,{className:`grid size-9 shrink-0 place-items-center rounded-xl bg-[var(--landing-warning-bg)] text-[var(--landing-warning)]`,children:React.createElement(Icon_History,{className:`size-4`})}),React.createElement(`div`,{children:[React.createElement(`strong`,{className:`block text-xs`,children:`Complete activity history`}),React.createElement(`span`,{className:`text-[10px] text-[var(--landing-muted)]`,children:`Every decision stays traceable`})]})]})]})})]}),React.createElement(`section`,{className:`py-20 sm:py-28`,children:React.createElement(`div`,{className:`mx-auto max-w-7xl px-4 sm:px-6 lg:px-8`,children:React.createElement(`div`,{className:`grid items-start gap-12 lg:grid-cols-[0.92fr_1.08fr] lg:gap-20`,children:[React.createElement(`div`,{className:`reveal lg:sticky lg:top-32`,ref:y,children:[React.createElement(`span`,{className:`mb-5 inline-flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.16em] text-[var(--landing-accent)]`,children:[React.createElement(`span`,{className:`h-px w-6 bg-primary`}),`When work lives everywhere`]}),React.createElement(`h2`,{className:`font-['Manrope','DM_Sans',sans-serif] text-4xl font-extrabold leading-[1.04] tracking-[-0.055em] sm:text-6xl`,children:`Your process deserves more than a spreadsheet.`}),React.createElement(`p`,{className:`mt-6 max-w-lg text-base leading-7 text-[var(--landing-body)] sm:text-lg`,children:`Spreadsheets store information, but they cannot manage the decisions, owners, documents, and deadlines around it. NetFlow turns that scattered work into a process everyone can follow.`})]}),React.createElement(`div`,{className:`grid gap-4`,children:[React.createElement(`article`,{className:`reveal group rounded-3xl border border-[var(--landing-line)] bg-[var(--landing-surface)] p-6 transition hover:-translate-y-1 hover:border-[var(--landing-line-strong)] hover:shadow-[0_20px_70px_rgba(9,19,34,0.10)] sm:p-8`,ref:y,children:React.createElement(`div`,{className:`flex items-start gap-5`,children:[React.createElement(`span`,{className:`grid size-12 shrink-0 place-items-center rounded-2xl bg-[var(--landing-danger-bg)] text-[var(--landing-danger)]`,children:React.createElement(Icon_MailWarning,{className:`size-5`})}),React.createElement(`div`,{children:[React.createElement(`span`,{className:`text-[10px] font-extrabold uppercase tracking-[0.14em] text-[var(--landing-danger)]`,children:`Before NetFlow`}),React.createElement(`h3`,{className:`mt-2 font-['Manrope','DM_Sans',sans-serif] text-xl font-bold tracking-tight sm:text-2xl`,children:`Requests lose their context.`}),React.createElement(`p`,{className:`mt-2 text-sm leading-6 text-[var(--landing-muted)]`,children:`Details get buried across inboxes, files, and follow-ups, making every handoff slower.`})]})]})}),React.createElement(`article`,{className:`reveal group rounded-3xl border border-[var(--landing-line)] bg-[var(--landing-surface)] p-6 transition hover:-translate-y-1 hover:border-[var(--landing-line-strong)] hover:shadow-[0_20px_70px_rgba(9,19,34,0.10)] sm:p-8`,ref:y,children:React.createElement(`div`,{className:`flex items-start gap-5`,children:[React.createElement(`span`,{className:`grid size-12 shrink-0 place-items-center rounded-2xl bg-[var(--landing-warning-bg)] text-[var(--landing-warning)]`,children:React.createElement(Icon_Shuffle,{className:`size-5`})}),React.createElement(`div`,{children:[React.createElement(`span`,{className:`text-[10px] font-extrabold uppercase tracking-[0.14em] text-[var(--landing-warning)]`,children:`Before NetFlow`}),React.createElement(`h3`,{className:`mt-2 font-['Manrope','DM_Sans',sans-serif] text-xl font-bold tracking-tight sm:text-2xl`,children:`Exceptions create more manual work.`}),React.createElement(`p`,{className:`mt-2 text-sm leading-6 text-[var(--landing-muted)]`,children:`Approval limits, department rules, and special cases depend on memory instead of a repeatable process.`})]})]})}),React.createElement(`article`,{className:`reveal group rounded-3xl border border-[var(--landing-success-border)] bg-[var(--landing-success-bg)]/50 p-6 transition hover:-translate-y-1 hover:shadow-[0_20px_70px_rgba(9,19,34,0.10)] sm:p-8`,ref:y,children:React.createElement(`div`,{className:`flex items-start gap-5`,children:[React.createElement(`span`,{className:`grid size-12 shrink-0 place-items-center rounded-2xl bg-[#091322] text-[#C9F55D]`,children:React.createElement(Icon_Network,{className:`size-5`})}),React.createElement(`div`,{children:[React.createElement(`span`,{className:`text-[10px] font-extrabold uppercase tracking-[0.14em] text-[var(--landing-success-strong)]`,children:`With NetFlow`}),React.createElement(`h3`,{className:`mt-2 font-['Manrope','DM_Sans',sans-serif] text-xl font-bold tracking-tight sm:text-2xl`,children:`Every process becomes clear and connected.`}),React.createElement(`p`,{className:`mt-2 text-sm leading-6 text-[var(--landing-body)]`,children:`Start with a form or a standalone workflow, assign ownership, and keep every step visible from request to outcome.`})]})]})})]})]})})}),React.createElement(`section`,{id:`platform`,className:`relative overflow-hidden bg-[#091322] py-20 text-white sm:py-28`,children:[React.createElement(`div`,{className:`grid-dark absolute inset-0 opacity-60`}),React.createElement(`div`,{className:`relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8`,children:[React.createElement(`div`,{className:`grid gap-8 lg:grid-cols-[0.76fr_1.24fr] lg:items-end`,children:[React.createElement(`div`,{children:[React.createElement(`span`,{className:`mb-5 inline-flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#56DDB7]`,children:[React.createElement(`span`,{className:`h-px w-6 bg-[#56DDB7]`}),`Manual control • AI assistance`]}),React.createElement(`h2`,{className:`max-w-2xl font-['Manrope','DM_Sans',sans-serif] text-4xl font-extrabold leading-[1.04] tracking-[-0.055em] sm:text-6xl`,children:`Start manually. Start with AI. Stay in control.`})]}),React.createElement(`p`,{className:`max-w-xl text-base leading-7 text-[var(--landing-subtle)] lg:justify-self-end`,children:`Create forms and workflows from scratch, or let AI generate a structured first draft. Then add approvals, rules, deadlines, documents, and notifications exactly where you need them.`})]}),React.createElement(`div`,{className:`mt-12 overflow-x-auto pb-2 scrollbar-hide`,children:React.createElement(`div`,{className:`inline-flex min-w-full gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-1.5 sm:min-w-0`,children:[React.createElement(`button`,{"aria-pressed":s===`build`,onClick:()=>c(`build`),className:`nf-landing-platform-tab flex min-w-[170px] flex-1 items-center gap-3 rounded-xl px-4 py-3 text-left transition ${s===`build`?`bg-[var(--landing-surface)] text-[var(--landing-ink)] shadow-lg`:`bg-transparent text-white/60 hover:bg-white/5 hover:text-white`}`,children:[React.createElement(`span`,{className:`grid size-8 place-items-center rounded-lg ${s===`build`?`bg-[var(--landing-info-bg)] text-[var(--landing-accent)]`:`bg-white/10 text-white`}`,children:React.createElement(Icon_LayoutTemplate,{className:`size-4`})}),React.createElement(`span`,{children:[React.createElement(`small`,{className:`block text-[8px] font-extrabold uppercase tracking-wider ${s===`build`?`text-[var(--landing-subtle)]`:`text-white/30`}`,children:`01`}),React.createElement(`strong`,{className:`text-xs`,children:`Design forms`})]})]}),React.createElement(`button`,{"aria-pressed":s===`route`,onClick:()=>c(`route`),className:`nf-landing-platform-tab flex min-w-[170px] flex-1 items-center gap-3 rounded-xl px-4 py-3 text-left transition ${s===`route`?`bg-[var(--landing-surface)] text-[var(--landing-ink)] shadow-lg`:`bg-transparent text-white/60 hover:bg-white/5 hover:text-white`}`,children:[React.createElement(`span`,{className:`grid size-8 place-items-center rounded-lg ${s===`route`?`bg-[var(--landing-info-bg)] text-[var(--landing-accent)]`:`bg-white/10 text-white`}`,children:React.createElement(Icon_Workflow,{className:`size-4`})}),React.createElement(`span`,{children:[React.createElement(`small`,{className:`block text-[8px] font-extrabold uppercase tracking-wider ${s===`route`?`text-[var(--landing-subtle)]`:`text-white/30`}`,children:`02`}),React.createElement(`strong`,{className:`text-xs`,children:`Build workflows`})]})]}),React.createElement(`button`,{"aria-pressed":s===`measure`,onClick:()=>c(`measure`),className:`nf-landing-platform-tab flex min-w-[170px] flex-1 items-center gap-3 rounded-xl px-4 py-3 text-left transition ${s===`measure`?`bg-[var(--landing-surface)] text-[var(--landing-ink)] shadow-lg`:`bg-transparent text-white/60 hover:bg-white/5 hover:text-white`}`,children:[React.createElement(`span`,{className:`grid size-8 place-items-center rounded-lg ${s===`measure`?`bg-[var(--landing-info-bg)] text-[var(--landing-accent)]`:`bg-white/10 text-white`}`,children:React.createElement(Icon_Activity,{className:`size-4`})}),React.createElement(`span`,{children:[React.createElement(`small`,{className:`block text-[8px] font-extrabold uppercase tracking-wider ${s===`measure`?`text-[var(--landing-subtle)]`:`text-white/30`}`,children:`03`}),React.createElement(`strong`,{className:`text-xs`,children:`Track performance`})]})]})]})}),React.createElement(`div`,{className:`mt-6 overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#101d30] shadow-2xl`,children:[React.createElement(`div`,{className:s===`build`?`grid min-h-[600px] lg:grid-cols-[220px_1fr_260px]`:`hidden`,children:[React.createElement(`aside`,{className:`hidden border-r border-white/10 bg-[#0d1829] p-4 lg:block`,children:[React.createElement(`div`,{className:`mb-5 flex items-center justify-between`,children:[React.createElement(`span`,{className:`text-[9px] font-extrabold uppercase tracking-[0.14em] text-white/40`,children:`Form fields`}),React.createElement(Icon_Search,{className:`size-3.5 text-white/30`})]}),React.createElement(`div`,{className:`space-y-2`,children:[React.createElement(`div`,{className:`flex h-10 items-center gap-2.5 rounded-xl border border-white/10 bg-white/5 px-3 text-[10px] font-semibold text-white/60`,children:[React.createElement(Icon_Type,{className:`size-3.5`}),`Short text`]}),React.createElement(`div`,{className:`flex h-10 items-center gap-2.5 rounded-xl border border-white/10 bg-white/5 px-3 text-[10px] font-semibold text-white/60`,children:[React.createElement(Icon_ListFilter,{className:`size-3.5`}),`Dropdown`]}),React.createElement(`div`,{className:`flex h-10 items-center gap-2.5 rounded-xl border border-white/10 bg-white/5 px-3 text-[10px] font-semibold text-white/60`,children:[React.createElement(Icon_Table2,{className:`size-3.5`}),`Data grid`]}),React.createElement(`div`,{className:`flex h-10 items-center gap-2.5 rounded-xl border border-[#56DDB7]/20 bg-[#56DDB7]/10 px-3 text-[10px] font-semibold text-[#56DDB7]`,children:[React.createElement(Icon_Upload,{className:`size-3.5`}),`File upload`]}),React.createElement(`div`,{className:`flex h-10 items-center gap-2.5 rounded-xl border border-white/10 bg-white/5 px-3 text-[10px] font-semibold text-white/60`,children:[React.createElement(Icon_PenLine,{className:`size-3.5`}),`Signature`]}),React.createElement(`div`,{className:`flex h-10 items-center gap-2.5 rounded-xl border border-white/10 bg-white/5 px-3 text-[10px] font-semibold text-white/60`,children:[React.createElement(Icon_CalendarDays,{className:`size-3.5`}),`Date`]})]})]}),React.createElement(`div`,{className:`grid-paper bg-[var(--landing-section)] p-4 sm:p-8`,children:React.createElement(`div`,{className:`mx-auto max-w-[540px] rounded-2xl border border-[var(--landing-line)] bg-[var(--landing-surface)] p-5 shadow-xl sm:p-7`,children:[React.createElement(`div`,{className:`mb-6 flex items-start justify-between`,children:[React.createElement(`div`,{children:[React.createElement(`span`,{className:`mb-2 inline-flex rounded-md bg-[var(--landing-info-bg)] px-2 py-1 text-[8px] font-extrabold uppercase tracking-wider text-[var(--landing-accent)]`,children:`Page 2 of 3`}),React.createElement(`h3`,{className:`font-['Manrope','DM_Sans',sans-serif] text-xl font-extrabold tracking-tight text-[var(--landing-ink)]`,children:`Business travel request`}),React.createElement(`p`,{className:`mt-1 text-[10px] text-[var(--landing-muted)]`,children:`Add trip details and expected cost.`})]}),React.createElement(`button`,{className:`grid size-8 place-items-center rounded-lg border border-[var(--landing-line)] text-[var(--landing-subtle)]`,children:React.createElement(Icon_Ellipsis,{className:`size-4`})})]}),React.createElement(`div`,{className:`space-y-4`,children:[React.createElement(`div`,{className:`grid gap-3 sm:grid-cols-2`,children:[React.createElement(`label`,{className:`block text-[9px] font-bold text-[var(--landing-body)]`,children:[`Destination`,React.createElement(`div`,{className:`mt-1.5 flex h-10 items-center rounded-lg border border-[var(--landing-line)] bg-[var(--landing-input)] px-3 text-[10px] font-medium text-[var(--landing-muted)]`,children:`Mumbai, India`})]}),React.createElement(`label`,{className:`block text-[9px] font-bold text-[var(--landing-body)]`,children:[`Estimated total`,React.createElement(`div`,{className:`mt-1.5 flex h-10 items-center rounded-lg border border-[var(--landing-line)] bg-[var(--landing-input)] px-3 text-[10px] font-medium text-[var(--landing-muted)]`,children:`₹ 68,000`})]})]}),React.createElement(`label`,{className:`block text-[9px] font-bold text-[var(--landing-body)]`,children:[`Business purpose`,React.createElement(`div`,{className:`mt-1.5 flex min-h-16 items-start rounded-lg border border-[var(--landing-line)] bg-[var(--landing-input)] p-3 text-[10px] font-medium text-[var(--landing-muted)]`,children:`Client implementation workshop and project kickoff.`})]}),React.createElement(`div`,{className:`rounded-xl border border-[var(--landing-info-border)] bg-[var(--landing-info-bg)]/60 p-4`,children:[React.createElement(`div`,{className:`mb-3 flex items-center justify-between text-[8px] font-extrabold uppercase tracking-wider text-[var(--landing-info)]`,children:[React.createElement(`span`,{className:`flex items-center gap-1.5`,children:[React.createElement(Icon_Split,{className:`size-3`}),`Conditional section`]}),React.createElement(`span`,{children:`Travel = Yes`})]}),React.createElement(`div`,{className:`rounded-lg border border-[var(--landing-info-line)] bg-[var(--landing-surface)] px-3 py-2.5 text-[9px] text-[var(--landing-muted)]`,children:[React.createElement(Icon_Paperclip,{className:`mr-1.5 inline size-3`}),`Upload quotation or itinerary`]})]})]}),React.createElement(`div`,{className:`mt-6 flex items-center justify-between border-t border-[var(--landing-divider)] pt-4`,children:[React.createElement(`span`,{className:`text-[8px] font-bold text-[var(--landing-subtle)]`,children:`6 required fields completed`}),React.createElement(`button`,{className:`rounded-lg bg-primary px-4 py-2 text-[9px] font-extrabold text-white`,children:`Save & continue`})]})]})}),React.createElement(`aside`,{className:`hidden border-l border-white/10 bg-[#0d1829] p-4 lg:block`,children:[React.createElement(`span`,{className:`text-[9px] font-extrabold uppercase tracking-[0.14em] text-white/40`,children:`Field settings`}),React.createElement(`div`,{className:`mt-5 space-y-4`,children:[React.createElement(`div`,{children:[React.createElement(`span`,{className:`mb-1.5 block text-[8px] font-bold text-white/40`,children:`LABEL`}),React.createElement(`div`,{className:`flex h-9 items-center rounded-lg border border-white/10 bg-white/5 px-3 text-[9px] text-white/70`,children:`Travel documents`})]}),React.createElement(`div`,{children:[React.createElement(`span`,{className:`mb-1.5 block text-[8px] font-bold text-white/40`,children:`ALLOWED FILES`}),React.createElement(`div`,{className:`flex h-9 items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 text-[9px] text-white/70`,children:[`PDF, JPG, PNG `,React.createElement(Icon_ChevronDown,{className:`size-3`})]})]}),React.createElement(`div`,{className:`flex items-center justify-between border-t border-white/10 pt-4`,children:[React.createElement(`span`,{className:`text-[9px] font-semibold text-white/60`,children:`Required field`}),React.createElement(`span`,{className:`flex h-5 w-9 items-center justify-end rounded-full bg-primary p-0.5`,children:React.createElement(`span`,{className:`size-4 rounded-full bg-white`})})]}),React.createElement(`div`,{className:`rounded-xl border border-[#56DDB7]/20 bg-[#56DDB7]/10 p-3 text-[8px] leading-5 text-[#56DDB7]`,children:[React.createElement(`strong`,{className:`block`,children:`Smart logic active`}),`Visible only when travel is required.`]})]})]})]}),React.createElement(`div`,{className:s===`route`?`min-h-[600px]`:`hidden`,children:[React.createElement(`div`,{className:`flex h-14 items-center justify-between border-b border-white/10 px-4 sm:px-6`,children:[React.createElement(`div`,{children:[React.createElement(`span`,{className:`text-[8px] font-extrabold uppercase tracking-wider text-white/30`,children:`Workflow canvas`}),React.createElement(`strong`,{className:`ml-2 text-xs text-white`,children:`Travel approval · v7`})]}),React.createElement(`div`,{className:`flex items-center gap-2`,children:[React.createElement(`span`,{className:`hidden text-[8px] font-bold text-white/30 sm:inline`,children:`Last saved now`}),React.createElement(`button`,{className:`rounded-lg bg-[#C9F55D] px-3 py-2 text-[9px] font-extrabold text-[#091322]`,children:`Publish changes`})]})]}),React.createElement(`div`,{className:`grid-paper relative h-[546px] overflow-hidden bg-[var(--landing-canvas)]`,children:[React.createElement(`div`,{className:`flow-port no-left-port absolute left-[4%] top-[205px] w-[105px] rounded-2xl border border-[var(--landing-info-border)] bg-[var(--landing-surface)] p-3 shadow-lg sm:w-[150px] sm:p-4`,children:[React.createElement(`span`,{className:`mb-3 grid size-8 place-items-center rounded-lg bg-[var(--landing-info-bg)] text-[var(--landing-accent)]`,children:React.createElement(Icon_FileInput,{className:`size-4`})}),React.createElement(`strong`,{className:`block text-xs text-[var(--landing-ink)]`,children:`Travel form submitted`}),React.createElement(`small`,{className:`mt-1 block text-[8px] text-[var(--landing-subtle)]`,children:`Starts this workflow`})]}),React.createElement(`div`,{className:`flow-port absolute left-[35%] top-[205px] w-[105px] rounded-2xl border border-[var(--landing-warning-border)] bg-[var(--landing-surface)] p-3 shadow-lg sm:w-[150px] sm:p-4`,children:[React.createElement(`span`,{className:`mb-3 grid size-8 place-items-center rounded-lg bg-[var(--landing-warning-bg)] text-[var(--landing-warning)]`,children:React.createElement(Icon_GitBranch,{className:`size-4`})}),React.createElement(`strong`,{className:`block text-xs text-[var(--landing-ink)]`,children:`Cost above ₹50K?`}),React.createElement(`small`,{className:`mt-1 block text-[8px] text-[var(--landing-subtle)]`,children:`Split by submitted value`})]}),React.createElement(`div`,{className:`flow-port absolute right-[5%] top-[100px] w-[105px] rounded-2xl border border-[var(--landing-violet-border)] bg-[var(--landing-surface)] p-3 shadow-lg sm:w-[150px] sm:p-4`,children:[React.createElement(`span`,{className:`mb-3 grid size-8 place-items-center rounded-lg bg-[var(--landing-violet-bg)] text-[var(--landing-violet)]`,children:React.createElement(Icon_UserCheck,{className:`size-4`})}),React.createElement(`strong`,{className:`block text-xs text-[var(--landing-ink)]`,children:`Finance approval`}),React.createElement(`small`,{className:`mt-1 block text-[8px] text-[var(--landing-subtle)]`,children:`2 day decision SLA`})]}),React.createElement(`div`,{className:`flow-port absolute right-[5%] top-[310px] w-[105px] rounded-2xl border border-[var(--landing-success-border)] bg-[var(--landing-surface)] p-3 shadow-lg sm:w-[150px] sm:p-4`,children:[React.createElement(`span`,{className:`mb-3 grid size-8 place-items-center rounded-lg bg-[var(--landing-success-bg)] text-[var(--landing-success)]`,children:React.createElement(Icon_BadgeCheck,{className:`size-4`})}),React.createElement(`strong`,{className:`block text-xs text-[var(--landing-ink)]`,children:`Manager approval`}),React.createElement(`small`,{className:`mt-1 block text-[8px] text-[var(--landing-subtle)]`,children:`1 day decision SLA`})]}),React.createElement(`svg`,{className:`pointer-events-none absolute inset-0 h-full w-full`,viewBox:`0 0 1000 546`,preserveAspectRatio:`none`,fill:`none`,children:[React.createElement(`path`,{d:`M190 255 C260 255 275 255 350 255`,stroke:`#9ba7b8`,strokeWidth:`2`,strokeDasharray:`7 7`}),React.createElement(`path`,{d:`M500 255 C610 255 650 155 800 155`,stroke:`var(--landing-accent)`,strokeWidth:`2`}),React.createElement(`path`,{d:`M500 255 C610 255 650 365 800 365`,stroke:`var(--landing-accent)`,strokeWidth:`2`}),React.createElement(`circle`,{cx:`190`,cy:`255`,r:`5`,fill:`var(--landing-accent)`}),React.createElement(`circle`,{cx:`500`,cy:`255`,r:`5`,fill:`var(--landing-accent)`})]}),React.createElement(`span`,{className:`absolute left-[64%] top-[156px] rounded-md border border-[var(--landing-line)] bg-[var(--landing-surface)] px-2 py-1 text-[7px] font-extrabold text-[var(--landing-success)] shadow-sm`,children:`YES`}),React.createElement(`span`,{className:`absolute left-[64%] top-[349px] rounded-md border border-[var(--landing-line)] bg-[var(--landing-surface)] px-2 py-1 text-[7px] font-extrabold text-[var(--landing-muted)] shadow-sm`,children:`NO`})]})]}),React.createElement(`div`,{className:s===`measure`?`min-h-[600px] bg-[var(--landing-section)] p-4 text-[var(--landing-ink)] sm:p-8`:`hidden`,children:React.createElement(`div`,{className:`mx-auto max-w-5xl`,children:[React.createElement(`div`,{className:`mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-center`,children:[React.createElement(`div`,{children:[React.createElement(`span`,{className:`text-[8px] font-extrabold uppercase tracking-wider text-[var(--landing-subtle)]`,children:`Workspace analytics`}),React.createElement(`h3`,{className:`mt-1 font-['Manrope','DM_Sans',sans-serif] text-xl font-extrabold`,children:`Operational performance`})]}),React.createElement(`button`,{className:`flex items-center gap-2 self-start rounded-lg border border-[var(--landing-line)] bg-[var(--landing-surface)] px-3 py-2 text-[9px] font-bold text-[var(--landing-body)]`,children:[React.createElement(Icon_CalendarRange,{className:`size-3.5`}),`Last 30 days`]})]}),React.createElement(`div`,{className:`grid gap-3 sm:grid-cols-3`,children:[React.createElement(`div`,{className:`rounded-2xl border border-[var(--landing-line)] bg-[var(--landing-surface)] p-5`,children:[React.createElement(`span`,{className:`text-[8px] font-extrabold uppercase tracking-wider text-[var(--landing-subtle)]`,children:`On-time completion`}),React.createElement(`div`,{className:`mt-3 flex items-end justify-between`,children:[React.createElement(`strong`,{className:`font-['Manrope','DM_Sans',sans-serif] text-3xl font-extrabold`,children:`96.4%`}),React.createElement(`span`,{className:`text-[9px] font-bold text-[var(--landing-success)]`,children:`+4.8%`})]})]}),React.createElement(`div`,{className:`rounded-2xl border border-[var(--landing-line)] bg-[var(--landing-surface)] p-5`,children:[React.createElement(`span`,{className:`text-[8px] font-extrabold uppercase tracking-wider text-[var(--landing-subtle)]`,children:`Median cycle time`}),React.createElement(`div`,{className:`mt-3 flex items-end justify-between`,children:[React.createElement(`strong`,{className:`font-['Manrope','DM_Sans',sans-serif] text-3xl font-extrabold`,children:`2.8d`}),React.createElement(`span`,{className:`text-[9px] font-bold text-[var(--landing-success)]`,children:`-0.6d`})]})]}),React.createElement(`div`,{className:`rounded-2xl border border-[var(--landing-line)] bg-[var(--landing-surface)] p-5`,children:[React.createElement(`span`,{className:`text-[8px] font-extrabold uppercase tracking-wider text-[var(--landing-subtle)]`,children:`Requests processed`}),React.createElement(`div`,{className:`mt-3 flex items-end justify-between`,children:[React.createElement(`strong`,{className:`font-['Manrope','DM_Sans',sans-serif] text-3xl font-extrabold`,children:`1,284`}),React.createElement(`span`,{className:`text-[9px] font-bold text-[var(--landing-accent)]`,children:`This month`})]})]})]}),React.createElement(`div`,{className:`mt-3 grid gap-3 lg:grid-cols-[1fr_280px]`,children:[React.createElement(`div`,{className:`rounded-2xl border border-[var(--landing-line)] bg-[var(--landing-surface)] p-5`,children:[React.createElement(`div`,{className:`mb-6 flex items-center justify-between`,children:[React.createElement(`strong`,{className:`text-xs`,children:`Cycle time trend`}),React.createElement(`span`,{className:`text-[8px] text-[var(--landing-subtle)]`,children:`Days`})]}),React.createElement(`div`,{className:`chart-wrap flex h-48 items-end gap-2`,children:React.createElement(ResponsiveContainer,{width:`100%`,height:`100%`,children:React.createElement(AreaChart,{data:[{name:`W1`,value:84},{name:`W2`,value:86},{name:`W3`,value:85},{name:`W4`,value:88},{name:`W5`,value:89},{name:`W6`,value:88},{name:`W7`,value:91},{name:`W8`,value:92},{name:`W9`,value:91},{name:`W10`,value:94},{name:`W11`,value:95},{name:`W12`,value:96.4}],margin:{top:0,right:0,left:0,bottom:0},children:[React.createElement(`defs`,{children:React.createElement(`linearGradient`,{id:`colorSla`,x1:`0`,y1:`0`,x2:`0`,y2:`1`,children:[React.createElement(`stop`,{offset:`0%`,stopColor:`var(--landing-accent)`,stopOpacity:.28}),React.createElement(`stop`,{offset:`100%`,stopColor:`var(--landing-accent)`,stopOpacity:0})]})}),React.createElement(Area,{type:`monotone`,dataKey:`value`,stroke:`var(--landing-accent)`,strokeWidth:2.5,fillOpacity:1,fill:`url(#colorSla)`})]})})})]}),React.createElement(`div`,{className:`rounded-2xl bg-[#091322] p-5 text-white`,children:[React.createElement(`span`,{className:`text-[8px] font-extrabold uppercase tracking-wider text-white/40`,children:`Attention needed`}),React.createElement(`strong`,{className:`mt-4 block font-['Manrope','DM_Sans',sans-serif] text-4xl font-extrabold text-[#C9F55D]`,children:`07`}),React.createElement(`p`,{className:`mt-2 text-[10px] leading-5 text-white/50`,children:`Active requests are at risk of missing an SLA.`}),React.createElement(`button`,{className:`mt-8 flex w-full items-center justify-between rounded-lg bg-white/10 px-3 py-2.5 text-[9px] font-bold`,children:[`View at-risk work `,React.createElement(Icon_ArrowRight,{className:`size-3.5`})]})]})]})]})})]})]})]}),React.createElement(`section`,{id:`capabilities`,className:`bg-[var(--landing-section)] py-20 sm:py-28`,children:React.createElement(`div`,{className:`mx-auto max-w-7xl px-4 sm:px-6 lg:px-8`,children:[React.createElement(`div`,{className:`mx-auto max-w-3xl text-center reveal`,ref:y,children:[React.createElement(`span`,{className:`mb-5 inline-flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.16em] text-[var(--landing-accent)]`,children:[React.createElement(`span`,{className:`h-px w-6 bg-primary`}),`Everything your process needs`,React.createElement(`span`,{className:`h-px w-6 bg-primary`})]}),React.createElement(`h2`,{className:`font-['Manrope','DM_Sans',sans-serif] text-4xl font-extrabold leading-[1.04] tracking-[-0.055em] sm:text-6xl`,children:`Easy to start. Powerful enough to scale.`}),React.createElement(`p`,{className:`mx-auto mt-6 max-w-2xl text-base leading-7 text-[var(--landing-body)]`,children:`From flexible forms and AI-assisted building to secure approvals and reporting, NetFlow gives every team the tools to create dependable processes.`})]}),React.createElement(`div`,{className:`mt-12 grid auto-rows-[minmax(280px,auto)] gap-4 md:grid-cols-2 lg:grid-cols-12`,children:[React.createElement(`article`,{className:`reveal group relative overflow-hidden rounded-3xl border border-[var(--landing-line)] bg-[var(--landing-surface)] p-7 transition hover:-translate-y-1 hover:shadow-[0_20px_70px_rgba(9,19,34,0.10)] lg:col-span-7 lg:row-span-2`,ref:y,children:[React.createElement(`div`,{className:`relative z-10 max-w-md`,children:[React.createElement(`span`,{className:`mb-6 grid size-11 place-items-center rounded-2xl bg-[var(--landing-info-bg)] text-[var(--landing-accent)]`,children:React.createElement(Icon_Sparkles,{className:`size-5`})}),React.createElement(`h3`,{className:`font-['Manrope','DM_Sans',sans-serif] text-2xl font-extrabold tracking-tight`,children:`Forms and workflows, built your way.`}),React.createElement(`p`,{className:`mt-3 text-sm leading-6 text-[var(--landing-muted)]`,children:`Start from scratch or use AI to create a structured draft. Then customize fields, steps, files, signatures, and logic without writing code.`})]}),React.createElement(`div`,{className:`absolute -bottom-8 -right-10 w-[72%] rotate-[-2deg] rounded-2xl border border-[var(--landing-line)] bg-[var(--landing-input)] p-4 shadow-2xl transition duration-500 group-hover:-translate-y-2 group-hover:rotate-0 sm:w-[58%]`,children:[React.createElement(`div`,{className:`mb-4 flex items-center justify-between`,children:[React.createElement(`span`,{className:`h-2 w-24 rounded bg-[var(--landing-body)]`}),React.createElement(`span`,{className:`rounded-md bg-[var(--landing-info-badge)] px-2 py-1 text-[6px] font-extrabold text-[var(--landing-info)]`,children:`PAGE 1 / 3`})]}),React.createElement(`div`,{className:`space-y-3`,children:[React.createElement(`div`,{children:[React.createElement(`span`,{className:`mb-1 block h-1 w-14 rounded bg-[var(--landing-line-strong)]`}),React.createElement(`span`,{className:`block h-8 rounded-lg border border-[var(--landing-line)] bg-[var(--landing-surface)]`})]}),React.createElement(`div`,{className:`grid grid-cols-2 gap-2`,children:[React.createElement(`div`,{children:[React.createElement(`span`,{className:`mb-1 block h-1 w-10 rounded bg-[var(--landing-line-strong)]`}),React.createElement(`span`,{className:`block h-8 rounded-lg border border-[var(--landing-line)] bg-[var(--landing-surface)]`})]}),React.createElement(`div`,{children:[React.createElement(`span`,{className:`mb-1 block h-1 w-12 rounded bg-[var(--landing-line-strong)]`}),React.createElement(`span`,{className:`block h-8 rounded-lg border border-[var(--landing-line)] bg-[var(--landing-surface)]`})]})]}),React.createElement(`div`,{className:`rounded-lg border border-[var(--landing-info-line)] bg-[var(--landing-info-bg)] p-2 text-[6px] font-bold text-[var(--landing-info)]`,children:`IF department = Finance, show cost center`})]})]})]}),React.createElement(`article`,{className:`reveal relative overflow-hidden rounded-3xl bg-primary p-7 text-white lg:col-span-5`,ref:y,children:[React.createElement(`span`,{className:`mb-6 grid size-11 place-items-center rounded-2xl bg-white/15`,children:React.createElement(Icon_GitBranch,{className:`size-5`})}),React.createElement(`h3`,{className:`font-['Manrope','DM_Sans',sans-serif] text-2xl font-extrabold tracking-tight`,children:`Conditional routing`}),React.createElement(`p`,{className:`mt-3 max-w-sm text-sm leading-6 text-indigo-100`,children:`Send work to the right person or team using request details, roles, and business rules.`}),React.createElement(`div`,{className:`absolute -bottom-5 right-5 flex items-center gap-2`,children:[React.createElement(`span`,{className:`grid size-11 place-items-center rounded-xl bg-[var(--landing-surface)] text-[var(--landing-accent)] shadow-xl`,children:React.createElement(Icon_FileInput,{className:`size-4`})}),React.createElement(`span`,{className:`h-px w-8 bg-white/40`}),React.createElement(`span`,{className:`grid size-11 place-items-center rounded-xl bg-[#C9F55D] text-[#091322] shadow-xl`,children:React.createElement(Icon_GitBranch,{className:`size-4`})}),React.createElement(`span`,{className:`h-px w-8 bg-white/40`}),React.createElement(`span`,{className:`grid size-11 place-items-center rounded-xl bg-[var(--landing-surface)] text-[var(--landing-success)] shadow-xl`,children:React.createElement(Icon_BadgeCheck,{className:`size-4`})})]})]}),React.createElement(`article`,{className:`reveal relative overflow-hidden rounded-3xl border border-[var(--landing-line)] bg-[var(--landing-surface)] p-7 lg:col-span-5`,ref:y,children:[React.createElement(`span`,{className:`mb-6 grid size-11 place-items-center rounded-2xl bg-[var(--landing-success-bg)] text-[var(--landing-success)]`,children:React.createElement(Icon_Gauge,{className:`size-5`})}),React.createElement(`h3`,{className:`font-['Manrope','DM_Sans',sans-serif] text-2xl font-extrabold tracking-tight`,children:`SLA monitoring`}),React.createElement(`p`,{className:`mt-3 max-w-sm text-sm leading-6 text-[var(--landing-muted)]`,children:`Track deadlines, notify owners, and escalate work before a service commitment is missed.`}),React.createElement(`div`,{className:`absolute bottom-6 right-7 grid size-24 place-items-center rounded-full bg-[conic-gradient(#56DDB7_0_86%,#E8EDF1_86%)]`,children:React.createElement(`span`,{className:`grid size-20 place-items-center rounded-full bg-[var(--landing-surface)] text-center`,children:React.createElement(`span`,{children:[React.createElement(`strong`,{className:`block font-['Manrope','DM_Sans',sans-serif] text-xl font-extrabold`,children:`96%`}),React.createElement(`small`,{className:`text-[6px] font-extrabold uppercase tracking-wider text-[var(--landing-subtle)]`,children:`On time`})]})})})]}),React.createElement(`article`,{className:`reveal relative overflow-hidden rounded-3xl border border-[var(--landing-line)] bg-[var(--landing-surface)] p-7 lg:col-span-4`,ref:y,children:[React.createElement(`span`,{className:`mb-6 grid size-11 place-items-center rounded-2xl bg-[var(--landing-violet-bg)] text-[var(--landing-violet)]`,children:React.createElement(Icon_UsersRound,{className:`size-5`})}),React.createElement(`h3`,{className:`font-['Manrope','DM_Sans',sans-serif] text-xl font-extrabold tracking-tight`,children:`Role-based access`}),React.createElement(`p`,{className:`mt-3 text-sm leading-6 text-[var(--landing-muted)]`,children:`Control access by workspace, role, department, and record ownership.`}),React.createElement(`div`,{className:`mt-8 flex -space-x-2`,children:[React.createElement(`span`,{className:`grid size-9 place-items-center rounded-full border-2 border-white bg-indigo-500 text-[8px] font-extrabold text-white`,children:`AD`}),React.createElement(`span`,{className:`grid size-9 place-items-center rounded-full border-2 border-white bg-emerald-500 text-[8px] font-extrabold text-white`,children:`VP`}),React.createElement(`span`,{className:`grid size-9 place-items-center rounded-full border-2 border-white bg-amber-500 text-[8px] font-extrabold text-white`,children:`HR`}),React.createElement(`span`,{className:`grid size-9 place-items-center rounded-full border-2 border-white bg-[var(--landing-line)] text-[8px] font-extrabold text-[var(--landing-body)]`,children:`+8`})]})]}),React.createElement(`article`,{className:`reveal relative overflow-hidden rounded-3xl border border-[var(--landing-line)] bg-[var(--landing-surface)] p-7 lg:col-span-4`,ref:y,children:[React.createElement(`span`,{className:`mb-6 grid size-11 place-items-center rounded-2xl bg-[var(--landing-warning-bg)] text-[var(--landing-warning)]`,children:React.createElement(Icon_FolderLock,{className:`size-5`})}),React.createElement(`h3`,{className:`font-['Manrope','DM_Sans',sans-serif] text-xl font-extrabold tracking-tight`,children:`Secure document management`}),React.createElement(`p`,{className:`mt-3 text-sm leading-6 text-[var(--landing-muted)]`,children:`Keep files, previews, and signatures connected to the right request.`}),React.createElement(`div`,{className:`mt-7 flex items-center gap-2 rounded-xl border border-[var(--landing-line)] bg-[var(--landing-input)] p-3`,children:[React.createElement(`span`,{className:`grid size-8 place-items-center rounded-lg bg-[var(--landing-danger-bg)] text-[7px] font-extrabold text-[var(--landing-danger)]`,children:`PDF`}),React.createElement(`span`,{children:[React.createElement(`strong`,{className:`block text-[8px]`,children:`vendor-agreement.pdf`}),React.createElement(`small`,{className:`text-[7px] text-[var(--landing-subtle)]`,children:`2.4 MB · Verified`})]})]})]}),React.createElement(`article`,{className:`reveal relative overflow-hidden rounded-3xl bg-[#091322] p-7 text-white lg:col-span-4`,ref:y,children:[React.createElement(`span`,{className:`mb-6 grid size-11 place-items-center rounded-2xl bg-white/10 text-[#C9F55D]`,children:React.createElement(Icon_ScrollText,{className:`size-5`})}),React.createElement(`h3`,{className:`font-['Manrope','DM_Sans',sans-serif] text-xl font-extrabold tracking-tight`,children:`Complete activity history`}),React.createElement(`p`,{className:`mt-3 text-sm leading-6 text-[var(--landing-subtle)]`,children:`Keep important edits, approvals, rejections, and access changes traceable.`}),React.createElement(`div`,{className:`mt-7 space-y-2`,children:[React.createElement(`div`,{className:`flex items-center justify-between border-b border-white/10 pb-2 text-[8px]`,children:[React.createElement(`span`,{className:`flex items-center gap-2`,children:[React.createElement(Icon_CircleCheck,{className:`size-3 text-[#56DDB7]`}),`Request approved`]}),React.createElement(`span`,{className:`text-white/30`,children:`10:42`})]}),React.createElement(`div`,{className:`flex items-center justify-between text-[8px]`,children:[React.createElement(`span`,{className:`flex items-center gap-2`,children:[React.createElement(Icon_CircleCheck,{className:`size-3 text-[#56DDB7]`}),`Role permission changed`]}),React.createElement(`span`,{className:`text-white/30`,children:`09:18`})]})]})]})]})]})}),React.createElement(`section`,{id:`solutions`,className:`py-20 sm:py-28`,children:React.createElement(`div`,{className:`mx-auto max-w-7xl px-4 sm:px-6 lg:px-8`,children:React.createElement(`div`,{className:`grid grid-cols-1 gap-10 lg:grid-cols-[0.76fr_1.24fr]`,children:[React.createElement(`div`,{className:`reveal`,ref:y,children:[React.createElement(`span`,{className:`mb-5 inline-flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.16em] text-[var(--landing-accent)]`,children:[React.createElement(`span`,{className:`h-px w-6 bg-primary`}),`Built for every team`]}),React.createElement(`h2`,{className:`font-['Manrope','DM_Sans',sans-serif] text-4xl font-extrabold leading-[1.04] tracking-[-0.055em] sm:text-6xl`,children:`One platform for the work every team runs.`}),React.createElement(`p`,{className:`mt-6 max-w-lg text-base leading-7 text-[var(--landing-body)]`,children:`Use a proven template, build manually, or start with AI—then adapt every field, owner, rule, and deadline to the way your organization works.`}),React.createElement(`div`,{className:`mt-8 flex gap-2 overflow-x-auto pb-2 scrollbar-hide lg:grid`,children:[React.createElement(`button`,{onClick:()=>u(`hr`),className:`flex min-w-[190px] items-center justify-between rounded-2xl border px-4 py-3.5 text-left transition ${l===`hr`?`bg-[#091322] border-[#091322] text-white`:`bg-[var(--landing-surface)] border-[var(--landing-line)] text-[var(--landing-body)]`}`,children:[React.createElement(`span`,{className:`flex items-center gap-3`,children:[React.createElement(`span`,{className:`grid size-9 place-items-center rounded-xl ${l===`hr`?`bg-white/10 text-[#C9F55D]`:`bg-[#C9F55D]/20 text-[var(--landing-ink)]`}`,children:React.createElement(Icon_Users,{className:`size-4`})}),React.createElement(`span`,{children:[React.createElement(`strong`,{className:`block text-sm`,children:`Human Resources`}),React.createElement(`small`,{className:`text-[9px] ${l===`hr`?`text-white/45`:`text-[var(--landing-subtle)]`}`,children:`People operations`})]})]}),React.createElement(Icon_ArrowRight,{className:`size-4`})]}),React.createElement(`button`,{onClick:()=>u(`it`),className:`flex min-w-[190px] items-center justify-between rounded-2xl border px-4 py-3.5 text-left transition ${l===`it`?`bg-[#091322] border-[#091322] text-white`:`bg-[var(--landing-surface)] border-[var(--landing-line)] text-[var(--landing-body)]`}`,children:[React.createElement(`span`,{className:`flex items-center gap-3`,children:[React.createElement(`span`,{className:`grid size-9 place-items-center rounded-xl ${l===`it`?`bg-white/10 text-[#C9F55D]`:`bg-[var(--landing-success-bg)] text-[var(--landing-success)]`}`,children:React.createElement(Icon_MonitorCog,{className:`size-4`})}),React.createElement(`span`,{children:[React.createElement(`strong`,{className:`block text-sm`,children:`IT & Operations`}),React.createElement(`small`,{className:`text-[9px] ${l===`it`?`text-white/45`:`text-[var(--landing-subtle)]`}`,children:`Service delivery`})]})]}),React.createElement(Icon_ArrowRight,{className:`size-4`})]}),React.createElement(`button`,{onClick:()=>u(`finance`),className:`flex min-w-[190px] items-center justify-between rounded-2xl border px-4 py-3.5 text-left transition ${l===`finance`?`bg-[#091322] border-[#091322] text-white`:`bg-[var(--landing-surface)] border-[var(--landing-line)] text-[var(--landing-body)]`}`,children:[React.createElement(`span`,{className:`flex items-center gap-3`,children:[React.createElement(`span`,{className:`grid size-9 place-items-center rounded-xl ${l===`finance`?`bg-white/10 text-[#C9F55D]`:`bg-[var(--landing-warning-bg)] text-[var(--landing-warning)]`}`,children:React.createElement(Icon_Landmark,{className:`size-4`})}),React.createElement(`span`,{children:[React.createElement(`strong`,{className:`block text-sm`,children:`Finance`}),React.createElement(`small`,{className:`text-[9px] ${l===`finance`?`text-white/45`:`text-[var(--landing-subtle)]`}`,children:`Spend control`})]})]}),React.createElement(Icon_ArrowRight,{className:`size-4`})]})]})]}),React.createElement(`div`,{className:`reveal relative min-h-[570px] overflow-hidden rounded-[2rem] bg-[#091322] p-6 text-white shadow-[0_32px_100px_rgba(9,19,34,0.18)] sm:p-9`,ref:y,children:[React.createElement(`div`,{className:`absolute -right-32 -top-32 size-[380px] rounded-full bg-primary/20 blur-2xl`}),React.createElement(`div`,{className:`relative z-10 max-w-xl`,children:[React.createElement(`span`,{className:`inline-flex rounded-md border border-[#56DDB7]/20 bg-[#56DDB7]/10 px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-[0.14em] text-[#56DDB7]`,children:S[l].label}),React.createElement(`h3`,{className:`mt-5 font-['Manrope','DM_Sans',sans-serif] text-3xl font-extrabold leading-tight tracking-[-0.04em] sm:text-4xl`,children:S[l].title}),React.createElement(`p`,{className:`mt-4 max-w-lg text-sm leading-6 text-[var(--landing-subtle)]`,children:S[l].description}),React.createElement(`div`,{className:`mt-7 grid gap-2 sm:grid-cols-2`,children:S[l].templates.map(e=>React.createElement(`span`,{className:`flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-[10px] font-semibold`,children:[React.createElement(Icon_Check,{className:`size-3.5 text-[#56DDB7]`}),e]},e))})]}),React.createElement(`div`,{className:`absolute bottom-7 left-6 right-6 z-10 rounded-2xl border border-white/10 bg-[#14243a] p-4 sm:left-9 sm:right-9`,children:React.createElement(`div`,{className:`flex items-center justify-between gap-2`,children:[React.createElement(`div`,{className:`min-w-0 flex-1 rounded-xl border border-white/10 bg-white/5 p-3`,children:[React.createElement(`span`,{className:`mb-2 grid size-6 place-items-center rounded-lg bg-indigo-500/20 text-indigo-300`,children:React.createElement(Icon_FileInput,{className:`size-3`})}),React.createElement(`strong`,{className:`block truncate text-[9px]`,children:S[l].flow[0]}),React.createElement(`small`,{className:`text-[7px] text-white/35`,children:`Request received`})]}),React.createElement(Icon_ChevronRight,{className:`size-4 shrink-0 text-white/25`}),React.createElement(`div`,{className:`min-w-0 flex-1 rounded-xl border border-white/10 bg-white/5 p-3`,children:[React.createElement(`span`,{className:`mb-2 grid size-6 place-items-center rounded-lg bg-amber-500/20 text-amber-300`,children:React.createElement(Icon_Route,{className:`size-3`})}),React.createElement(`strong`,{className:`block truncate text-[9px]`,children:S[l].flow[1]}),React.createElement(`small`,{className:`text-[7px] text-white/35`,children:`Owners assigned`})]}),React.createElement(Icon_ChevronRight,{className:`size-4 shrink-0 text-white/25`}),React.createElement(`div`,{className:`min-w-0 flex-1 rounded-xl border border-[#56DDB7]/20 bg-[#56DDB7]/10 p-3`,children:[React.createElement(`span`,{className:`mb-2 grid size-6 place-items-center rounded-lg bg-[#56DDB7]/20 text-[#56DDB7]`,children:React.createElement(Icon_BadgeCheck,{className:`size-3`})}),React.createElement(`strong`,{className:`block truncate text-[9px]`,children:S[l].flow[2]}),React.createElement(`small`,{className:`text-[7px] text-white/35`,children:`Record archived`})]})]})})]})]})})}),React.createElement(`section`,{id:`analytics`,className:`border-y border-[var(--landing-line)] bg-[var(--landing-surface)] py-20 sm:py-28`,children:React.createElement(`div`,{className:`mx-auto max-w-7xl px-4 sm:px-6 lg:px-8`,children:React.createElement(`div`,{className:`grid items-center gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16`,children:[React.createElement(`div`,{className:`reveal`,ref:y,children:[React.createElement(`span`,{className:`mb-5 inline-flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.16em] text-[var(--landing-accent)]`,children:[React.createElement(`span`,{className:`h-px w-6 bg-primary`}),`Workflow intelligence`]}),React.createElement(`h2`,{className:`font-['Manrope','DM_Sans',sans-serif] text-4xl font-extrabold leading-[1.04] tracking-[-0.055em] sm:text-6xl`,children:`See where work slows down—before deadlines slip.`}),React.createElement(`p`,{className:`mt-6 max-w-lg text-base leading-7 text-[var(--landing-body)]`,children:`Track active requests, completion times, approval rates, bottlenecks, and SLA risk from one live view.`}),React.createElement(`div`,{className:`mt-8 grid gap-3 sm:grid-cols-2`,children:[React.createElement(`div`,{className:`rounded-2xl border border-[var(--landing-line)] bg-[var(--landing-section)] p-4`,children:[React.createElement(Icon_Radar,{className:`size-4 text-[var(--landing-accent)]`}),React.createElement(`strong`,{className:`mt-3 block text-sm`,children:`Early risk signals`}),React.createElement(`p`,{className:`mt-1 text-xs leading-5 text-[var(--landing-muted)]`,children:`Focus on requests most likely to miss a deadline.`})]}),React.createElement(`div`,{className:`rounded-2xl border border-[var(--landing-line)] bg-[var(--landing-section)] p-4`,children:[React.createElement(Icon_Gauge,{className:`size-4 text-[var(--landing-success)]`}),React.createElement(`strong`,{className:`mt-3 block text-sm`,children:`Team and process benchmarks`}),React.createElement(`p`,{className:`mt-1 text-xs leading-5 text-[var(--landing-muted)]`,children:`Compare turnaround times across workflows and teams.`})]})]})]}),React.createElement(`div`,{className:`reveal overflow-hidden rounded-[1.75rem] border border-[var(--landing-line)] bg-[var(--landing-section)] p-4 shadow-[0_20px_70px_rgba(9,19,34,0.10)] sm:p-6`,ref:y,children:[React.createElement(`div`,{className:`rounded-2xl border border-[var(--landing-line)] bg-[var(--landing-surface)] p-5`,children:[React.createElement(`div`,{className:`flex items-center justify-between`,children:[React.createElement(`div`,{children:[React.createElement(`span`,{className:`text-[8px] font-extrabold uppercase tracking-[0.14em] text-[var(--landing-subtle)]`,children:`SLA performance`}),React.createElement(`h3`,{className:`mt-1 font-['Manrope','DM_Sans',sans-serif] text-lg font-extrabold`,children:`Completion trend`})]}),React.createElement(`span`,{className:`flex items-center gap-1.5 rounded-lg border border-[var(--landing-line)] px-2.5 py-1.5 text-[8px] font-bold text-[var(--landing-muted)]`,children:[React.createElement(Icon_CalendarDays,{className:`size-3`}),`12 weeks`]})]}),React.createElement(`div`,{className:`chart-wrap mt-6 h-64`,children:React.createElement(`img`,{src:`/sla-completion-trend.png`,alt:`SLA Completion Trend`,className:`h-full w-full object-cover rounded-xl`})})]}),React.createElement(`div`,{className:`mt-3 grid grid-cols-3 gap-3`,children:[React.createElement(`div`,{className:`rounded-xl border border-[var(--landing-line)] bg-[var(--landing-surface)] p-3`,children:[React.createElement(`span`,{className:`text-[7px] font-extrabold uppercase tracking-wider text-[var(--landing-subtle)]`,children:`On time`}),React.createElement(`strong`,{className:`mt-1 block text-lg font-extrabold`,children:`96.4%`})]}),React.createElement(`div`,{className:`rounded-xl border border-[var(--landing-line)] bg-[var(--landing-surface)] p-3`,children:[React.createElement(`span`,{className:`text-[7px] font-extrabold uppercase tracking-wider text-[var(--landing-subtle)]`,children:`At risk`}),React.createElement(`strong`,{className:`mt-1 block text-lg font-extrabold text-[var(--landing-warning-bright)]`,children:`07`})]}),React.createElement(`div`,{className:`rounded-xl border border-[var(--landing-line)] bg-[var(--landing-surface)] p-3`,children:[React.createElement(`span`,{className:`text-[7px] font-extrabold uppercase tracking-wider text-[var(--landing-subtle)]`,children:`Breached`}),React.createElement(`strong`,{className:`mt-1 block text-lg font-extrabold text-[var(--landing-danger)]`,children:`02`})]})]})]})]})})}),React.createElement(`section`,{id:`security`,className:`relative overflow-hidden bg-[#091322] py-20 text-white sm:py-28`,children:[React.createElement(`div`,{className:`grid-dark absolute inset-0`}),React.createElement(`div`,{className:`absolute -right-48 top-20 size-[500px] rounded-full bg-primary/15 blur-3xl`}),React.createElement(`div`,{className:`relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8`,children:[React.createElement(`div`,{className:`grid gap-8 lg:grid-cols-[1.12fr_0.88fr] lg:items-end`,children:[React.createElement(`div`,{className:`reveal`,ref:y,children:[React.createElement(`span`,{className:`mb-5 inline-flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#56DDB7]`,children:[React.createElement(`span`,{className:`h-px w-6 bg-[#56DDB7]`}),`Secure by design`]}),React.createElement(`h2`,{className:`max-w-3xl font-['Manrope','DM_Sans',sans-serif] text-4xl font-extrabold leading-[1.04] tracking-[-0.055em] sm:text-6xl`,children:`Your workspace stays private, controlled, and accountable.`})]}),React.createElement(`p`,{className:`reveal max-w-xl text-base leading-7 text-[var(--landing-subtle)]`,ref:y,children:`NetFlow separates organization data, limits access by role, and records important actions—so teams can automate work without giving up control.`})]}),React.createElement(`div`,{className:`mt-12 grid gap-4 lg:grid-cols-3`,children:[React.createElement(`article`,{className:`reveal rounded-3xl border border-white/10 bg-white/[0.045] p-7 backdrop-blur`,ref:y,children:[React.createElement(`span`,{className:`grid size-12 place-items-center rounded-2xl border border-[#56DDB7]/20 bg-[#56DDB7]/10 text-[#56DDB7]`,children:React.createElement(Icon_ShieldCheck,{className:`size-5`})}),React.createElement(`span`,{className:`mt-10 block text-[9px] font-extrabold uppercase tracking-[0.14em] text-white/30`,children:`Workspace security`}),React.createElement(`h3`,{className:`mt-2 font-['Manrope','DM_Sans',sans-serif] text-2xl font-extrabold`,children:`Isolated workspaces`}),React.createElement(`p`,{className:`mt-3 text-sm leading-6 text-[var(--landing-subtle)]`,children:`Users, records, documents, and analytics stay separated across organizations.`})]}),React.createElement(`article`,{className:`reveal rounded-3xl border border-white/10 bg-white/[0.045] p-7 backdrop-blur`,ref:y,children:[React.createElement(`span`,{className:`grid size-12 place-items-center rounded-2xl border border-indigo-400/20 bg-indigo-400/10 text-indigo-300`,children:React.createElement(Icon_KeyRound,{className:`size-5`})}),React.createElement(`span`,{className:`mt-10 block text-[9px] font-extrabold uppercase tracking-[0.14em] text-white/30`,children:`Access control`}),React.createElement(`h3`,{className:`mt-2 font-['Manrope','DM_Sans',sans-serif] text-2xl font-extrabold`,children:`Role-based access`}),React.createElement(`p`,{className:`mt-3 text-sm leading-6 text-[var(--landing-subtle)]`,children:`Control visibility and actions by role, department, workspace, and record ownership.`})]}),React.createElement(`article`,{className:`reveal rounded-3xl border border-white/10 bg-white/[0.045] p-7 backdrop-blur`,ref:y,children:[React.createElement(`span`,{className:`grid size-12 place-items-center rounded-2xl border border-amber-400/20 bg-amber-400/10 text-amber-300`,children:React.createElement(Icon_Fingerprint,{className:`size-5`})}),React.createElement(`span`,{className:`mt-10 block text-[9px] font-extrabold uppercase tracking-[0.14em] text-white/30`,children:`Accountability`}),React.createElement(`h3`,{className:`mt-2 font-['Manrope','DM_Sans',sans-serif] text-2xl font-extrabold`,children:`Complete audit history`}),React.createElement(`p`,{className:`mt-3 text-sm leading-6 text-[var(--landing-subtle)]`,children:`Authorized teams can trace important edits, approvals, rejections, and access changes.`})]})]}),React.createElement(`div`,{className:`mt-8 flex flex-col justify-between gap-5 border-t border-white/10 pt-8 sm:flex-row sm:items-center`,children:[React.createElement(`span`,{className:`text-[9px] font-extrabold uppercase tracking-[0.18em] text-white/35`,children:`Built-in safeguards`}),React.createElement(`div`,{className:`flex flex-wrap gap-2`,children:[React.createElement(`span`,{className:`rounded-lg border border-white/10 px-3 py-2 text-[9px] font-bold text-white/55`,children:`Encryption in transit`}),React.createElement(`span`,{className:`rounded-lg border border-white/10 px-3 py-2 text-[9px] font-bold text-white/55`,children:`Encryption at rest`}),React.createElement(`span`,{className:`rounded-lg border border-white/10 px-3 py-2 text-[9px] font-bold text-white/55`,children:`S3-backed storage`}),React.createElement(`span`,{className:`rounded-lg border border-white/10 px-3 py-2 text-[9px] font-bold text-white/55`,children:`Full audit history`})]})]})]})]}),React.createElement(`section`,{className:`py-20 sm:py-28`,children:React.createElement(`div`,{className:`mx-auto max-w-7xl px-4 sm:px-6 lg:px-8`,children:[React.createElement(`div`,{className:`mx-auto max-w-3xl text-center reveal`,ref:y,children:[React.createElement(`span`,{className:`mb-5 inline-flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.16em] text-[var(--landing-accent)]`,children:[React.createElement(`span`,{className:`h-px w-6 bg-primary`}),`From idea to live workflow`,React.createElement(`span`,{className:`h-px w-6 bg-primary`})]}),React.createElement(`h2`,{className:`font-['Manrope','DM_Sans',sans-serif] text-4xl font-extrabold leading-[1.04] tracking-[-0.055em] sm:text-6xl`,children:`Build and launch in three clear steps.`})]}),React.createElement(`div`,{className:`relative mt-14 grid gap-4 lg:grid-cols-3`,children:[React.createElement(`div`,{className:`absolute left-[16%] right-[16%] top-8 hidden border-t border-dashed border-[var(--landing-line-strong)] lg:block`}),React.createElement(`article`,{className:`reveal relative rounded-3xl border border-[var(--landing-line)] bg-[var(--landing-surface)] p-7`,ref:y,children:[React.createElement(`span`,{className:`relative z-10 grid size-16 place-items-center rounded-2xl border-8 border-[var(--landing-page)] bg-[var(--landing-info-bg)] font-['Manrope','DM_Sans',sans-serif] text-sm font-extrabold text-[var(--landing-accent)]`,children:`01`}),React.createElement(`h3`,{className:`mt-8 font-['Manrope','DM_Sans',sans-serif] text-2xl font-extrabold`,children:`Describe or design`}),React.createElement(`p`,{className:`mt-3 text-sm leading-6 text-[var(--landing-muted)]`,children:`Build manually or ask AI to create a structured starting point for your form or workflow.`}),React.createElement(`span`,{className:`mt-7 inline-flex items-center gap-2 text-[10px] font-extrabold text-[var(--landing-accent)]`,children:[`Manual + AI builder `,React.createElement(Icon_ArrowRight,{className:`size-3.5`})]})]}),React.createElement(`article`,{className:`reveal relative rounded-3xl border border-[var(--landing-line)] bg-[var(--landing-surface)] p-7`,ref:y,children:[React.createElement(`span`,{className:`relative z-10 grid size-16 place-items-center rounded-2xl border-8 border-[var(--landing-page)] bg-[var(--landing-warning-bg)] font-['Manrope','DM_Sans',sans-serif] text-sm font-extrabold text-[var(--landing-warning)]`,children:`02`}),React.createElement(`h3`,{className:`mt-8 font-['Manrope','DM_Sans',sans-serif] text-2xl font-extrabold`,children:`Connect the decisions`}),React.createElement(`p`,{className:`mt-3 text-sm leading-6 text-[var(--landing-muted)]`,children:`Add owners, rules, approvals, deadlines, notifications, and integrations on the canvas.`}),React.createElement(`span`,{className:`mt-7 inline-flex items-center gap-2 text-[10px] font-extrabold text-[var(--landing-warning)]`,children:[`Visual workflow builder `,React.createElement(Icon_ArrowRight,{className:`size-3.5`})]})]}),React.createElement(`article`,{className:`reveal relative rounded-3xl border border-[var(--landing-line)] bg-[var(--landing-surface)] p-7`,ref:y,children:[React.createElement(`span`,{className:`relative z-10 grid size-16 place-items-center rounded-2xl border-8 border-[var(--landing-page)] bg-[var(--landing-success-bg)] font-['Manrope','DM_Sans',sans-serif] text-sm font-extrabold text-[var(--landing-success)]`,children:`03`}),React.createElement(`h3`,{className:`mt-8 font-['Manrope','DM_Sans',sans-serif] text-2xl font-extrabold`,children:`Publish and improve`}),React.createElement(`p`,{className:`mt-3 text-sm leading-6 text-[var(--landing-muted)]`,children:`Launch with clear ownership, then use live data to improve turnaround time and remove friction.`}),React.createElement(`span`,{className:`mt-7 inline-flex items-center gap-2 text-[10px] font-extrabold text-[var(--landing-success)]`,children:[`Analytics & SLA insights `,React.createElement(Icon_ArrowRight,{className:`size-3.5`})]})]})]})]})}),React.createElement(`section`,{id:`resources`,className:`border-t border-[var(--landing-line)] bg-[var(--landing-section)] py-20 sm:py-28`,children:React.createElement(`div`,{className:`mx-auto grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-[0.7fr_1.3fr] lg:gap-20 lg:px-8`,children:[React.createElement(`div`,{className:`reveal`,ref:y,children:[React.createElement(`span`,{className:`mb-5 inline-flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.16em] text-[var(--landing-accent)]`,children:[React.createElement(`span`,{className:`h-px w-6 bg-primary`}),`Questions, answered`]}),React.createElement(`h2`,{className:`font-['Manrope','DM_Sans',sans-serif] text-4xl font-extrabold leading-[1.04] tracking-[-0.055em] sm:text-6xl`,children:`Everything you need to build with confidence.`}),React.createElement(`p`,{className:`mt-5 max-w-md text-sm leading-6 text-[var(--landing-body)]`,children:`Learn how manual and AI-assisted building, approvals, security, and reporting work together in NetFlow.`})]}),React.createElement(`div`,{className:`reveal overflow-hidden rounded-3xl border border-[var(--landing-line)] bg-[var(--landing-surface)] px-5 sm:px-7`,ref:y,children:[React.createElement(`details`,{className:`group border-b border-[var(--landing-line)]`,open:!0,children:[React.createElement(`summary`,{className:`flex cursor-pointer list-none items-center justify-between gap-4 py-6 text-sm font-bold sm:text-base`,children:[`Can I build workflows manually or with AI?`,React.createElement(`span`,{className:`faq-plus grid size-8 shrink-0 place-items-center rounded-full border border-[var(--landing-line)] text-lg font-normal transition`,children:`+`})]}),React.createElement(`p`,{className:`max-w-2xl pb-6 pr-8 text-sm leading-6 text-[var(--landing-muted)]`,children:`Both. Build forms and workflows step by step, use AI to create a structured first draft, or combine the two. Every AI-generated draft stays editable before you publish.`})]}),React.createElement(`details`,{className:`group border-b border-[var(--landing-line)]`,children:[React.createElement(`summary`,{className:`flex cursor-pointer list-none items-center justify-between gap-4 py-6 text-sm font-bold sm:text-base`,children:[`Do workflows have to start with a form?`,React.createElement(`span`,{className:`faq-plus grid size-8 shrink-0 place-items-center rounded-full border border-[var(--landing-line)] text-lg font-normal transition`,children:`+`})]}),React.createElement(`p`,{className:`max-w-2xl pb-6 pr-8 text-sm leading-6 text-[var(--landing-muted)]`,children:`No. A form can trigger a workflow, but you can also create a standalone workflow manually or with AI, then add steps, conditions, approvals, notifications, and actions.`})]}),React.createElement(`details`,{className:`group border-b border-[var(--landing-line)]`,children:[React.createElement(`summary`,{className:`flex cursor-pointer list-none items-center justify-between gap-4 py-6 text-sm font-bold sm:text-base`,children:[`Can approvals change based on request details?`,React.createElement(`span`,{className:`faq-plus grid size-8 shrink-0 place-items-center rounded-full border border-[var(--landing-line)] text-lg font-normal transition`,children:`+`})]}),React.createElement(`p`,{className:`max-w-2xl pb-6 pr-8 text-sm leading-6 text-[var(--landing-muted)]`,children:`Yes. Route work by amount, department, category, requester role, or any submitted value, including multi-level approval paths.`})]}),React.createElement(`details`,{className:`group border-b border-[var(--landing-line)]`,children:[React.createElement(`summary`,{className:`flex cursor-pointer list-none items-center justify-between gap-4 py-6 text-sm font-bold sm:text-base`,children:[`How is each company’s data protected?`,React.createElement(`span`,{className:`faq-plus grid size-8 shrink-0 place-items-center rounded-full border border-[var(--landing-line)] text-lg font-normal transition`,children:`+`})]}),React.createElement(`p`,{className:`max-w-2xl pb-6 pr-8 text-sm leading-6 text-[var(--landing-muted)]`,children:`NetFlow separates users, records, files, workflow definitions, and analytics by workspace. Role and department policies add another layer of controlled access.`})]}),React.createElement(`details`,{className:`group`,children:[React.createElement(`summary`,{className:`flex cursor-pointer list-none items-center justify-between gap-4 py-6 text-sm font-bold sm:text-base`,children:[`Can NetFlow track deadlines and performance?`,React.createElement(`span`,{className:`faq-plus grid size-8 shrink-0 place-items-center rounded-full border border-[var(--landing-line)] text-lg font-normal transition`,children:`+`})]}),React.createElement(`p`,{className:`max-w-2xl pb-6 pr-8 text-sm leading-6 text-[var(--landing-muted)]`,children:`Yes. Define SLAs by workflow or step, monitor active requests, notify owners, trigger escalations, and compare turnaround times across teams.`})]})]})]})}),React.createElement(`section`,{className:`bg-[var(--landing-section)] pb-6 sm:pb-10`,children:React.createElement(`div`,{className:`mx-auto max-w-7xl px-4 sm:px-6 lg:px-8`,children:React.createElement(`div`,{className:`relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#134287] via-[#103668] to-[#0c2340] border border-blue-900/30 px-5 py-16 text-center text-white shadow-[0_32px_100px_rgba(9,19,34,0.28)] sm:px-12 sm:py-20`,children:[React.createElement(`div`,{className:`absolute -left-40 -top-40 size-96 rounded-full border border-white/15 shadow-[0_0_0_70px_rgba(255,255,255,.035),0_0_0_140px_rgba(255,255,255,.02)]`}),React.createElement(`div`,{className:`absolute -bottom-48 -right-36 size-96 rounded-full border border-white/15 shadow-[0_0_0_70px_rgba(255,255,255,.035),0_0_0_140px_rgba(255,255,255,.02)]`}),React.createElement(`div`,{className:`relative mx-auto max-w-3xl`,children:[React.createElement(`span`,{className:`mb-5 inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.16em]`,children:`Your next workflow starts here`}),React.createElement(`h2`,{className:`font-['Manrope','DM_Sans',sans-serif] text-4xl font-extrabold leading-[1.03] tracking-[-0.055em] sm:text-6xl`,children:`Turn your next process into a workflow that works.`}),React.createElement(`p`,{className:`mx-auto mt-5 max-w-xl text-base leading-7 text-indigo-100`,children:`Build it manually, ask AI for a structured first draft, or combine both approaches. NetFlow keeps every form, decision, approval, and outcome connected.`}),React.createElement(`div`,{className:`mt-8 flex flex-col justify-center gap-3 sm:flex-row`,children:[React.createElement(`button`,{onClick:()=>i(!0),className:`nf-landing-inverse-button group inline-flex min-h-[52px] items-center justify-center gap-2 rounded-xl bg-[var(--landing-surface)] px-6 py-3.5 text-sm font-extrabold text-[var(--landing-ink)] shadow-xl transition hover:-translate-y-0.5`,children:[`Book a tailored demo `,React.createElement(Icon_ArrowUpRight,{className:`size-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5`})]}),React.createElement(`a`,{href:`#platform`,className:`inline-flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/10 px-6 py-3.5 text-sm font-bold text-white transition hover:bg-white/15`,children:`Explore NetFlow`})]})]})]})})})]}),React.createElement(`footer`,{className:`bg-[#091322] pb-7 pt-16 text-white`,children:React.createElement(`div`,{className:`mx-auto max-w-7xl px-4 sm:px-6 lg:px-8`,children:[React.createElement(`div`,{className:`grid gap-10 border-b border-white/10 pb-12 sm:grid-cols-2 lg:grid-cols-[1.5fr_repeat(4,1fr)]`,children:[React.createElement(`div`,{className:`sm:col-span-2 lg:col-span-1`,children:[React.createElement(Link,{to:`/dashboard`,className:`flex items-center gap-2.5`,children:[React.createElement(`img`,{src:`/netflow-icon.png`,alt:`NetFlow`,className:`size-9 rounded-xl shadow-lg`}),React.createElement(`span`,{className:`font-['Manrope','DM_Sans',sans-serif] text-xl font-extrabold tracking-[-0.05em]`,children:`NetFlow`})]}),React.createElement(`p`,{className:`mt-5 max-w-xs text-xs leading-6 text-[var(--landing-muted)]`,children:`Build forms and workflows manually or with AI, automate approvals, track progress, and keep every important action visible.`})]}),React.createElement(`div`,{children:[React.createElement(`h3`,{className:`mb-4 text-[9px] font-extrabold uppercase tracking-[0.15em] text-white/35`,children:`Product`}),React.createElement(`div`,{className:`space-y-3 text-xs text-[var(--landing-subtle)]`,children:[React.createElement(`a`,{className:`block hover:text-white`,href:`#platform`,children:`Form builder`}),React.createElement(`a`,{className:`block hover:text-white`,href:`#platform`,children:`Workflow engine`}),React.createElement(`a`,{className:`block hover:text-white`,href:`#analytics`,children:`Analytics & SLAs`}),React.createElement(`a`,{className:`block hover:text-white`,href:`#capabilities`,children:`Document management`})]})]}),React.createElement(`div`,{children:[React.createElement(`h3`,{className:`mb-4 text-[9px] font-extrabold uppercase tracking-[0.15em] text-white/35`,children:`Solutions`}),React.createElement(`div`,{className:`space-y-3 text-xs text-[var(--landing-subtle)]`,children:[React.createElement(`a`,{className:`block hover:text-white`,href:`#solutions`,children:`Human Resources`}),React.createElement(`a`,{className:`block hover:text-white`,href:`#solutions`,children:`IT & Operations`}),React.createElement(`a`,{className:`block hover:text-white`,href:`#solutions`,children:`Finance`}),React.createElement(`a`,{className:`block hover:text-white`,href:`#security`,children:`Enterprise`})]})]}),React.createElement(`div`,{children:[React.createElement(`h3`,{className:`mb-4 text-[9px] font-extrabold uppercase tracking-[0.15em] text-white/35`,children:`Resources`}),React.createElement(`div`,{className:`space-y-3 text-xs text-[var(--landing-subtle)]`,children:[React.createElement(`a`,{className:`block hover:text-white`,href:`#resources`,children:`Help center`}),React.createElement(`a`,{className:`block hover:text-white`,href:`#resources`,children:`API docs`}),React.createElement(`a`,{className:`block hover:text-white`,href:`#resources`,children:`Workflow library`}),React.createElement(`a`,{className:`block hover:text-white`,href:`#analytics`,children:`Product updates`})]})]}),React.createElement(`div`,{children:[React.createElement(`h3`,{className:`mb-4 text-[9px] font-extrabold uppercase tracking-[0.15em] text-white/35`,children:`Company`}),React.createElement(`div`,{className:`space-y-3 text-xs text-[var(--landing-subtle)]`,children:[React.createElement(`a`,{className:`block hover:text-white`,href:`#top`,children:`About`}),React.createElement(`a`,{className:`block hover:text-white`,href:`#security`,children:`Security`}),React.createElement(`a`,{className:`block hover:text-white`,href:`#top`,children:`Contact`}),React.createElement(`a`,{className:`block hover:text-white`,href:`#top`,children:`Careers`})]})]})]}),React.createElement(`div`,{className:`flex flex-col gap-4 pt-6 text-[10px] text-[var(--landing-muted)] sm:flex-row sm:items-center sm:justify-between`,children:[React.createElement(`span`,{children:`© 2026 NetFlow, Inc. All rights reserved.`}),React.createElement(`div`,{className:`flex flex-wrap items-center gap-5`,children:[React.createElement(`a`,{href:`#top`,className:`hover:text-white`,children:`Privacy`}),React.createElement(`a`,{href:`#top`,className:`hover:text-white`,children:`Terms`}),React.createElement(`span`,{className:`flex items-center gap-2`,children:[React.createElement(`span`,{className:`size-1.5 rounded-full bg-[#56DDB7]`}),`All systems operational`]})]})]})]})}),r&&React.createElement(`div`,{className:`fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md`,role:`dialog`,"aria-modal":`true`,onClick:e=>{e.target===e.currentTarget&&i(!1)},children:React.createElement(`div`,{className:`max-h-[calc(100vh-2rem)] w-full max-w-xl overflow-auto rounded-[1.75rem] bg-[var(--landing-surface)] shadow-2xl`,children:[React.createElement(`div`,{className:`flex items-start justify-between border-b border-[var(--landing-line)] px-5 py-5 sm:px-7`,children:[React.createElement(`div`,{children:[React.createElement(`span`,{className:`mb-2 inline-flex rounded-md bg-[var(--landing-info-bg)] px-2 py-1 text-[8px] font-extrabold uppercase tracking-wider text-[var(--landing-accent)]`,children:`Built around your process`}),React.createElement(`h2`,{className:`font-['Manrope','DM_Sans',sans-serif] text-2xl font-extrabold tracking-tight`,children:`See how NetFlow fits your team`}),React.createElement(`p`,{className:`mt-1 text-xs text-[var(--landing-muted)]`,children:`Tell us what you want to build or automate.`})]}),React.createElement(`button`,{onClick:()=>i(!1),className:`grid size-9 shrink-0 place-items-center rounded-xl border border-[var(--landing-line)] text-[var(--landing-muted)] transition hover:bg-[var(--landing-input)]`,"aria-label":`Close dialog`,children:React.createElement(Icon_X,{className:`size-4`})})]}),a?React.createElement(`div`,{className:`px-7 py-12 text-center`,children:[React.createElement(`span`,{className:`mx-auto grid size-16 place-items-center rounded-full bg-emerald-500 text-white shadow-xl shadow-emerald-500/20`,children:React.createElement(Icon_Check,{className:`size-7`})}),React.createElement(`h3`,{className:`mt-5 font-['Manrope','DM_Sans',sans-serif] text-2xl font-extrabold`,children:`Thanks—we’ve got your request.`}),React.createElement(`p`,{className:`mx-auto mt-2 max-w-sm text-sm leading-6 text-[var(--landing-muted)]`,children:`Our team will follow up to learn about your process and prepare a relevant walkthrough.`}),React.createElement(`button`,{onClick:()=>{i(!1),o(!1)},className:`mt-6 rounded-xl bg-[#091322] px-5 py-3 text-sm font-bold text-white`,children:`Back to NetFlow`})]}):React.createElement(`form`,{onSubmit:x,className:`space-y-4 p-5 sm:p-7`,children:[React.createElement(`div`,{className:`grid gap-4 sm:grid-cols-2`,children:[React.createElement(`label`,{className:`text-xs font-bold text-[var(--landing-body)]`,children:[`First name`,React.createElement(`input`,{required:!0,name:`firstName`,className:`mt-1.5 h-11 w-full rounded-xl border border-[var(--landing-line)] bg-[var(--landing-input)] px-3 text-sm font-normal outline-none transition focus:border-[var(--landing-accent)] focus:ring-4 focus:ring-[var(--landing-info-line)]`})]}),React.createElement(`label`,{className:`text-xs font-bold text-[var(--landing-body)]`,children:[`Last name`,React.createElement(`input`,{required:!0,name:`lastName`,className:`mt-1.5 h-11 w-full rounded-xl border border-[var(--landing-line)] bg-[var(--landing-input)] px-3 text-sm font-normal outline-none transition focus:border-[var(--landing-accent)] focus:ring-4 focus:ring-[var(--landing-info-line)]`})]})]}),React.createElement(`label`,{className:`block text-xs font-bold text-[var(--landing-body)]`,children:[`Work email`,React.createElement(`input`,{required:!0,type:`email`,name:`email`,className:`mt-1.5 h-11 w-full rounded-xl border border-[var(--landing-line)] bg-[var(--landing-input)] px-3 text-sm font-normal outline-none transition focus:border-[var(--landing-accent)] focus:ring-4 focus:ring-[var(--landing-info-line)]`,placeholder:`Enter your email`})]}),React.createElement(`div`,{className:`grid gap-4 sm:grid-cols-2`,children:[React.createElement(`label`,{className:`text-xs font-bold text-[var(--landing-body)]`,children:[`Company`,React.createElement(`input`,{required:!0,name:`company`,className:`mt-1.5 h-11 w-full rounded-xl border border-[var(--landing-line)] bg-[var(--landing-input)] px-3 text-sm font-normal outline-none transition focus:border-[var(--landing-accent)] focus:ring-4 focus:ring-[var(--landing-info-line)]`,placeholder:`Your company`})]}),React.createElement(`label`,{className:`text-xs font-bold text-[var(--landing-body)]`,children:[`Team size`,React.createElement(`select`,{required:!0,name:`size`,className:`mt-1.5 h-11 w-full rounded-xl border border-[var(--landing-line)] bg-[var(--landing-input)] px-3 text-sm font-normal outline-none transition focus:border-[var(--landing-accent)] focus:ring-4 focus:ring-[var(--landing-info-line)]`,children:[React.createElement(`option`,{value:``,children:`Select size`}),React.createElement(`option`,{children:`1–50`}),React.createElement(`option`,{children:`51–250`}),React.createElement(`option`,{children:`251–1,000`}),React.createElement(`option`,{children:`1,000+`})]})]})]}),React.createElement(`label`,{className:`block text-xs font-bold text-[var(--landing-body)]`,children:[`What process would you like to improve?`,React.createElement(`textarea`,{name:`process`,rows:3,className:`mt-1.5 w-full rounded-xl border border-[var(--landing-line)] bg-[var(--landing-input)] p-3 text-sm font-normal outline-none transition focus:border-[var(--landing-accent)] focus:ring-4 focus:ring-[var(--landing-info-line)]`,placeholder:`Purchase approvals, employee onboarding, IT access requests...`})]}),React.createElement(`button`,{type:`submit`,className:`flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-extrabold text-white shadow-lg shadow-blue-900/20 transition hover:bg-[#0f346c]`,children:[`Request a demo `,React.createElement(Icon_ArrowRight,{className:`size-4`})]})]})]})})]})}
 
-  const faqs = [
-    {
-      q: 'How does NetFlow handle multi-stage approvals across different departments?',
-      a: 'NetFlow allows you to define sequential, parallel, or conditional approval steps. When a form is submitted, requests automatically route to designated department managers, finance heads, or executives based on rules you define.'
-    },
-    {
-      q: 'Can external vendors or clients submit forms without having an account?',
-      a: 'Yes! NetFlow supports Public Forms with shareable secure links. External respondents can fill out forms and attach documents without requiring a user seat, while submissions feed directly into your private approval pipeline.'
-    },
-    {
-      q: 'How do SLAs and automated escalations prevent approval bottlenecks?',
-      a: 'Each stage in a workflow can have a target completion SLA (e.g., 24 hours). If an approver does not respond within the timeframe, NetFlow triggers automated email reminders and can automatically escalate or reassign the request to a deputy.'
-    },
-    {
-      q: 'Does NetFlow support Single Sign-On (SSO) and enterprise security?',
-      a: 'Yes. NetFlow includes Microsoft Entra ID (Azure AD) SSO, multi-factor authentication (MFA/TOTP), granular role-based permissions (RBAC), and immutable audit logs with timestamped signature tracking.'
-    }
-  ]
-
-  return (
-    <div className="min-h-screen bg-[#071526] text-white font-sans selection:bg-blue-900 selection:text-white overflow-x-hidden">
-      
-      {/* ── HEADER / TOP BAR (Dark Blue Theme Matching Login) ── */}
-      <header className="sticky top-0 z-50 bg-[#0c2340]/95 backdrop-blur-md border-b border-blue-900/60 shadow-lg shadow-blue-950/40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
-          {/* NetFlow Brand Logo */}
-          <Link to="/" className="flex items-center gap-3 hover:opacity-90 transition group cursor-pointer shrink-0">
-            <NetFlowLogo size={38} className="w-[38px] h-[38px] shrink-0" />
-            <span className="text-2xl font-black tracking-tight text-white">
-              NetFlow
-            </span>
-          </Link>
-
-          {/* Central Enterprise Navigation Links */}
-          <nav className="hidden md:flex items-center gap-6 lg:gap-8">
-            <a
-              href="#workflows"
-              onClick={() => setActiveTab('workflows')}
-              className="text-xs lg:text-[13.5px] font-bold text-blue-100 hover:text-white hover:underline transition-colors"
-            >
-              Workflows
-            </a>
-            <a
-              href="#forms"
-              onClick={() => setActiveTab('forms')}
-              className="text-xs lg:text-[13.5px] font-bold text-blue-100 hover:text-white hover:underline transition-colors"
-            >
-              Forms
-            </a>
-            <a
-              href="#sla"
-              onClick={() => setActiveTab('sla')}
-              className="text-xs lg:text-[13.5px] font-bold text-blue-100 hover:text-white hover:underline transition-colors"
-            >
-              SLA & Approvals
-            </a>
-            <a
-              href="#compliance"
-              onClick={() => setActiveTab('governance')}
-              className="text-xs lg:text-[13.5px] font-bold text-blue-100 hover:text-white hover:underline transition-colors"
-            >
-              Audit & Compliance
-            </a>
-            <a
-              href="#faq"
-              className="text-xs lg:text-[13.5px] font-bold text-blue-100 hover:text-white hover:underline transition-colors"
-            >
-              FAQ
-            </a>
-          </nav>
-
-          {/* Right Action: Theme Toggle & Login Option */}
-          <div className="flex items-center gap-3">
-            {/* Theme toggle */}
-            <button
-              type="button"
-              onClick={() => themeStore.toggle()}
-              aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-              className="w-10 h-10 rounded-2xl bg-[#102c52] hover:bg-[#163b6d] text-blue-200 hover:text-white flex items-center justify-center transition-all border border-blue-700/40 shadow-xs cursor-pointer"
-              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            >
-              {theme === 'dark' ? (
-                <Sun className="w-4 h-4 text-amber-400 animate-in fade-in zoom-in-75 duration-200" />
-              ) : (
-                <Moon className="w-4 h-4 text-blue-200 animate-in fade-in zoom-in-75 duration-200" />
-              )}
-            </button>
-
-            {/* Login Button in Dark Blue Theme */}
-            <Link
-              to="/login"
-              className="px-6 py-2.5 rounded-2xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white font-bold text-xs shadow-md shadow-blue-950/50 border border-blue-400/40 transition-all hover:scale-[1.02] flex items-center gap-2"
-            >
-              <span>Login</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-
-            {/* Mobile Menu Button */}
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 rounded-xl text-blue-200 hover:bg-blue-900/60"
-              aria-label="Toggle navigation menu"
-            >
-              <div className="w-5 h-4 flex flex-col justify-between">
-                <span className={`h-0.5 w-full bg-current rounded-full transition-all ${mobileMenuOpen ? 'rotate-45 translate-y-1.5' : ''}`} />
-                <span className={`h-0.5 w-full bg-current rounded-full transition-all ${mobileMenuOpen ? 'opacity-0' : ''}`} />
-                <span className={`h-0.5 w-full bg-current rounded-full transition-all ${mobileMenuOpen ? '-rotate-45 -translate-y-1.5' : ''}`} />
-              </div>
-            </button>
-          </div>
-        </div>
-
-        {/* Mobile menu dropdown */}
-        {mobileMenuOpen && (
-          <div className="md:hidden bg-[#0c2340] border-b border-blue-900/60 px-6 py-4 space-y-3">
-            <a
-              href="#workflows"
-              onClick={() => { setActiveTab('workflows'); setMobileMenuOpen(false) }}
-              className="block py-2 text-sm font-bold text-blue-100 hover:text-white"
-            >
-              Workflows
-            </a>
-            <a
-              href="#forms"
-              onClick={() => { setActiveTab('forms'); setMobileMenuOpen(false) }}
-              className="block py-2 text-sm font-bold text-blue-100 hover:text-white"
-            >
-              Forms
-            </a>
-            <a
-              href="#sla"
-              onClick={() => { setActiveTab('sla'); setMobileMenuOpen(false) }}
-              className="block py-2 text-sm font-bold text-blue-100 hover:text-white"
-            >
-              SLA & Approvals
-            </a>
-            <a
-              href="#compliance"
-              onClick={() => { setActiveTab('governance'); setMobileMenuOpen(false) }}
-              className="block py-2 text-sm font-bold text-blue-100 hover:text-white"
-            >
-              Audit & Compliance
-            </a>
-            <a
-              href="#faq"
-              onClick={() => setMobileMenuOpen(false)}
-              className="block py-2 text-sm font-bold text-blue-100 hover:text-white"
-            >
-              FAQ
-            </a>
-          </div>
-        )}
-      </header>
-
-      {/* ── HERO SECTION (Dark Blue Gradient Matching Login Page) ── */}
-      <section className="relative pt-12 pb-20 lg:pt-20 lg:pb-28 overflow-hidden bg-gradient-to-b from-[#0c2340] via-[#0f2d57] to-[#071526]">
-        
-        {/* Subtle Ambient Glows */}
-        <div className="absolute top-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[380px] bg-blue-500/15 blur-[120px] pointer-events-none rounded-full" />
-        <div className="absolute top-1/3 right-1/4 translate-x-1/2 -translate-y-1/2 w-[500px] h-[350px] bg-indigo-500/15 blur-[120px] pointer-events-none rounded-full" />
-
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="grid lg:grid-cols-12 gap-12 lg:gap-8 items-center">
-            
-            {/* Left Content Column */}
-            <div className="lg:col-span-6 space-y-6">
-              
-              {/* Pill Badge */}
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#102d54] border border-blue-400/40 text-blue-200 text-xs font-extrabold tracking-wide shadow-md">
-                <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-                <span>ENTERPRISE WORKFLOW AUTOMATION</span>
-              </div>
-
-              {/* Main Heading */}
-              <h1 className="text-4xl sm:text-5xl lg:text-[54px] font-black tracking-tight leading-[1.12] text-white">
-                Every document, workflow, and approval — <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-300 via-blue-200 to-indigo-200">in one place</span>
-              </h1>
-
-              {/* Description */}
-              <p className="text-base sm:text-lg text-blue-100/90 leading-relaxed max-w-xl font-medium">
-                NetFlow is an enterprise workflow orchestration and document governance platform that eliminates manual approval chains and operational bottlenecks. Design, route, approve, and audit every process seamlessly.
-              </p>
-
-              {/* CTA Buttons */}
-              <div className="flex flex-wrap items-center gap-3.5 pt-2">
-                <Link
-                  to="/login"
-                  className="px-7 py-3.5 rounded-2xl bg-[#134287] hover:bg-[#0f346c] active:bg-[#0c2340] text-white font-bold text-sm shadow-xl shadow-blue-950/60 border border-blue-400/40 transition-all hover:scale-[1.02] flex items-center gap-2"
-                >
-                  <span>Get started</span>
-                  <ArrowRight className="w-4 h-4" />
-                </Link>
-                <Link
-                  to="/login"
-                  className="px-6 py-3.5 rounded-2xl border border-blue-700/60 bg-[#102a4e]/80 hover:bg-[#163a69] text-white font-bold text-sm shadow-md transition"
-                >
-                  Sign in to workspace
-                </Link>
-              </div>
-
-              {/* Trust Badges Strip */}
-              <div className="pt-3 flex flex-wrap items-center gap-4 text-xs font-semibold text-blue-200/80">
-                <div className="flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  <span>SOC 2 Type II Certified</span>
-                </div>
-                <span className="text-blue-700">•</span>
-                <div className="flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  <span>Microsoft Entra SSO</span>
-                </div>
-                <span className="text-blue-700">•</span>
-                <div className="flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  <span>Immutable Audit Ledger</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Right Column: Live Interactive Application Screen Mockup */}
-            <div className="lg:col-span-6 relative">
-              <AppLiveDemoScreen />
-            </div>
-
-          </div>
-        </div>
-      </section>
-
-      {/* ── ENTERPRISE PERFORMANCE KPI STATS STRIP ── */}
-      <section className="py-12 bg-[#0a1e36] border-y border-blue-900/60">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 text-center divide-y lg:divide-y-0 lg:divide-x divide-blue-900/60">
-            <div className="pt-4 lg:pt-0">
-              <div className="text-3xl sm:text-4xl font-black text-white tracking-tight">
-                85%
-              </div>
-              <div className="text-xs font-bold text-blue-300 uppercase tracking-wider mt-1">
-                Faster Turnaround
-              </div>
-            </div>
-            <div className="pt-4 lg:pt-0">
-              <div className="text-3xl sm:text-4xl font-black text-blue-300 tracking-tight">
-                &lt; 15 min
-              </div>
-              <div className="text-xs font-bold text-blue-300 uppercase tracking-wider mt-1">
-                Median Approval Time
-              </div>
-            </div>
-            <div className="pt-4 lg:pt-0">
-              <div className="text-3xl sm:text-4xl font-black text-white tracking-tight">
-                99.98%
-              </div>
-              <div className="text-xs font-bold text-blue-300 uppercase tracking-wider mt-1">
-                Uptime SLA
-              </div>
-            </div>
-            <div className="pt-4 lg:pt-0">
-              <div className="text-3xl sm:text-4xl font-black text-emerald-400 tracking-tight">
-                100%
-              </div>
-              <div className="text-xs font-bold text-blue-300 uppercase tracking-wider mt-1">
-                Audit Trail Coverage
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── SHIFTED SECTION: REAL-TIME OPERATIONAL SIGNALS & KPI SHOWCASE ── */}
-      <section className="py-20 bg-[#071526] border-b border-blue-900/60">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          
-          <div className="text-center max-w-3xl mx-auto mb-14">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#102d54] border border-blue-500/40 text-blue-200 text-[11px] font-extrabold tracking-wide uppercase mb-3">
-              Real-Time Governance Modules
-            </div>
-            <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight mb-4">
-              Live Visibility Across Every Department
-            </h2>
-            <p className="text-blue-100/80 text-base sm:text-lg font-medium">
-              Every request, signature, review queue, and analytics metric monitored with zero guesswork.
-            </p>
-          </div>
-
-          {/* Clean Modern 5-Card Operational Grid (Shifted from Hero) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            
-            {/* Card 1: Audit Log */}
-            <div className="bg-[#0b1f38] rounded-3xl p-6 border border-blue-800/50 shadow-xl shadow-blue-950/50 hover:border-blue-500/50 transition-all duration-300 space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-[#134287] text-white flex items-center justify-center font-bold text-sm shadow-sm">
-                  <Clock className="w-5 h-5" />
-                </div>
-                <div>
-                  <span className="text-base font-extrabold text-white block">Audit Log & Ledger</span>
-                  <span className="text-[11px] text-blue-300 font-medium">Cryptographic Proofs</span>
-                </div>
-              </div>
-              <div className="space-y-2.5 text-xs font-bold pt-1">
-                <div className="flex items-center gap-2 text-emerald-400 bg-[#071526] p-2 rounded-xl border border-emerald-900/40">
-                  <span className="text-base font-black">✓</span>
-                  <span>Invoice approved · Priya (Finance Lead)</span>
-                </div>
-                <div className="flex items-center gap-2 text-blue-300 bg-[#071526] p-2 rounded-xl border border-blue-900/40">
-                  <span className="text-base font-black">✓</span>
-                  <span>Hash verified · chain #4021-SHA256</span>
-                </div>
-                <div className="text-[11px] font-semibold text-blue-300/70 pt-1">
-                  Immutable retention policy automatically applied
-                </div>
-              </div>
-            </div>
-
-            {/* Card 2: Approvals */}
-            <div className="bg-[#0b1f38] rounded-3xl p-6 border border-blue-800/50 shadow-xl shadow-blue-950/50 hover:border-blue-500/50 transition-all duration-300 flex flex-col justify-between space-y-4">
-              <div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-[#134287] text-white flex items-center justify-center font-bold text-sm shadow-sm">
-                      <FileText className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <span className="text-base font-extrabold text-white block">Multi-Tier Approvals</span>
-                      <span className="text-[11px] text-blue-300 font-medium">Stage Sign-offs</span>
-                    </div>
-                  </div>
-                  <span className="px-3 py-1 rounded-full text-xs font-black bg-emerald-950/80 text-emerald-300 border border-emerald-700/60">
-                    Approved
-                  </span>
-                </div>
-                <p className="text-xs text-blue-100/80 mt-3 font-medium">
-                  Sequential and parallel approval chains with automated threshold escalation.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2 pt-2 border-t border-blue-900/40">
-                <div className="flex -space-x-2.5">
-                  <div className="w-8 h-8 rounded-full bg-[#134287] text-white text-xs font-black flex items-center justify-center border-2 border-[#0b1f38] shadow-xs">P</div>
-                  <div className="w-8 h-8 rounded-full bg-blue-600 text-white text-xs font-black flex items-center justify-center border-2 border-[#0b1f38] shadow-xs">A</div>
-                  <div className="w-8 h-8 rounded-full bg-indigo-600 text-white text-xs font-black flex items-center justify-center border-2 border-[#0b1f38] shadow-xs">S</div>
-                </div>
-                <span className="text-xs font-bold text-blue-200 ml-2">3 executive signers verified</span>
-              </div>
-            </div>
-
-            {/* Card 3: Notifications & Review Queue */}
-            <div className="bg-[#0b1f38] rounded-3xl p-6 border border-blue-800/50 shadow-xl shadow-blue-950/50 hover:border-blue-500/50 transition-all duration-300 flex flex-col justify-between space-y-4">
-              <div>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-[#134287] text-white flex items-center justify-center font-bold text-sm shadow-sm">
-                    <Bell className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <span className="text-base font-extrabold text-white block">SLA & Notifications</span>
-                    <span className="text-[11px] text-blue-300 font-medium">Automated Alerts</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2.5 text-sm font-black text-amber-300 bg-[#071526] p-3 rounded-xl border border-amber-900/40 mt-3">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping shrink-0" />
-                  <span>Review queue · 2 SLA alerts active</span>
-                </div>
-              </div>
-              <p className="text-xs text-blue-200/70 font-medium">
-                Instant email, in-app notifications and delegate fallback.
-              </p>
-            </div>
-
-            {/* Card 4: Analytics Chart */}
-            <div className="bg-[#0b1f38] rounded-3xl p-6 border border-blue-800/50 shadow-xl shadow-blue-950/50 hover:border-blue-500/50 transition-all duration-300 space-y-3 lg:col-span-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-[#134287] text-white flex items-center justify-center font-bold text-sm shadow-sm">
-                    <TrendingUp className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <span className="text-base font-extrabold text-white block">Performance Analytics</span>
-                    <span className="text-[11px] text-blue-300 font-medium">Weekly Throughput Breakdown</span>
-                  </div>
-                </div>
-                <span className="text-xs font-black text-emerald-300 bg-emerald-950/80 px-3 py-1 rounded-full border border-emerald-800/60">
-                  +14.2% Growth
-                </span>
-              </div>
-              {/* Blue Bar Chart Visual */}
-              <div className="flex items-end gap-3 h-20 pt-2">
-                {[35, 65, 45, 80, 55, 90, 70, 100, 85, 95].map((val, idx) => (
-                  <div key={idx} className="flex-1 bg-[#071526] rounded-t-lg h-full flex items-end overflow-hidden">
-                    <div
-                      style={{ height: `${val}%` }}
-                      className="w-full bg-gradient-to-t from-[#134287] via-blue-500 to-blue-300 rounded-t-md transition-all duration-300"
-                    />
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs font-bold text-blue-300/80 pt-1">
-                3,420 total workflow executions processed this billing cycle across all departments.
-              </p>
-            </div>
-
-            {/* Card 5: Workflow & Document Capture Card */}
-            <div className="bg-[#0b1f38] rounded-3xl p-6 border border-blue-800/50 shadow-xl shadow-blue-950/50 hover:border-blue-500/50 transition-all duration-300 flex flex-col justify-between space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-[#134287] text-white flex items-center justify-center font-bold text-sm shadow-sm">
-                  <Inbox className="w-5 h-5" />
-                </div>
-                <div>
-                  <span className="text-base font-extrabold text-white block">Intake Channels</span>
-                  <span className="text-[11px] text-blue-300 font-medium">Forms · API · Webhooks</span>
-                </div>
-              </div>
-              <div className="p-3 rounded-xl bg-[#071526] border border-blue-900/50 space-y-1.5">
-                <div className="text-xs font-bold text-white flex items-center justify-between">
-                  <span>Active Integrations</span>
-                  <span className="text-emerald-400 font-mono">6 Connected</span>
-                </div>
-                <div className="text-[11px] text-blue-300/80">
-                  Direct ingestion via S3, Webhooks, Form Studio, & REST APIs
-                </div>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      </section>
-
-      {/* ── INTERACTIVE ENTERPRISE PLATFORM SHOWCASE (TABBED VIEW) ── */}
-      <section id="workflows" className="py-20 lg:py-28 bg-[#0a1e36] border-b border-blue-900/60 scroll-mt-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          
-          <div className="text-center max-w-3xl mx-auto mb-14">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#102d54] border border-blue-500/40 text-blue-200 text-[11px] font-extrabold tracking-wide uppercase mb-3">
-              Comprehensive Platform Architecture
-            </div>
-            <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight mb-4">
-              Everything your enterprise needs to automate governance
-            </h2>
-            <p className="text-blue-100/80 text-base sm:text-lg font-medium">
-              Explore how NetFlow coordinates forms, workflows, SLAs, and cryptographic logs in real-time.
-            </p>
-          </div>
-
-          {/* Tab Selector Buttons */}
-          <div className="flex flex-wrap items-center justify-center gap-2.5 mb-10 max-w-4xl mx-auto">
-            {capabilities.map((tab) => {
-              const Icon = tab.icon
-              const isActive = activeTab === tab.id
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2.5 px-5 py-3 rounded-2xl text-xs font-bold transition-all duration-200 cursor-pointer ${
-                    isActive
-                      ? 'bg-[#134287] text-white shadow-lg shadow-blue-950/80 border border-blue-400/50 scale-[1.02]'
-                      : 'bg-[#0b1f38] border border-blue-900/60 text-blue-200 hover:bg-[#102c52] hover:text-white shadow-xs'
-                  }`}
-                >
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-blue-400'}`} />
-                  <span>{tab.label}</span>
-                </button>
-              )
-            })}
-          </div>
-
-          {/* Active Tab Card Preview Display */}
-          <div className="bg-[#0b1f38] rounded-3xl p-8 sm:p-10 border border-blue-800/50 shadow-2xl shadow-blue-950/70">
-            <div className="grid lg:grid-cols-12 gap-10 items-center">
-              
-              {/* Tab Left Info */}
-              <div className="lg:col-span-6 space-y-6">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-[#102d54] text-blue-200 text-xs font-bold border border-blue-700/50">
-                  {activeCapability.label}
-                </div>
-                <h3 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                  {activeCapability.title}
-                </h3>
-                <p className="text-blue-100/90 text-sm sm:text-base leading-relaxed font-medium">
-                  {activeCapability.desc}
-                </p>
-
-                <div className="space-y-3 pt-2">
-                  {activeCapability.highlights.map((highlight, idx) => (
-                    <div key={idx} className="flex items-center gap-3 text-xs sm:text-sm font-semibold text-blue-100">
-                      <div className="w-5 h-5 rounded-full bg-emerald-950/80 text-emerald-400 border border-emerald-700/60 flex items-center justify-center font-bold text-xs shrink-0">
-                        ✓
-                      </div>
-                      <span>{highlight}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="pt-3">
-                  <Link
-                    to="/login"
-                    className="inline-flex items-center gap-2 text-xs font-bold text-blue-300 hover:text-white hover:underline"
-                  >
-                    <span>Launch in your workspace</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-              </div>
-
-              {/* Tab Right Interactive Mockup Visual */}
-              <div className="lg:col-span-6">
-                <div className="bg-[#071526] rounded-3xl p-6 border border-blue-900/60 space-y-4">
-                  <div className="flex items-center justify-between pb-3 border-b border-blue-900/60">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-                      <span className="text-xs font-bold text-white">{activeCapability.previewTitle}</span>
-                    </div>
-                    <span className="px-2.5 py-0.5 rounded-full bg-[#134287] text-blue-100 text-[10px] font-extrabold border border-blue-400/40">
-                      {activeCapability.previewBadge}
-                    </span>
-                  </div>
-
-                  {/* Step pipeline progression */}
-                  <div className="space-y-3">
-                    {activeCapability.previewSteps.map((step, idx) => (
-                      <div
-                        key={idx}
-                        className="bg-[#0b1f38] rounded-2xl p-4 border border-blue-800/40 shadow-xs flex items-center justify-between gap-4"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-7 h-7 rounded-xl bg-[#134287] text-white font-black text-xs flex items-center justify-center shrink-0">
-                            {idx + 1}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-xs font-bold text-white truncate">{step.label}</div>
-                            <div className="text-[11px] text-blue-300/80 font-medium">{step.actor}</div>
-                          </div>
-                        </div>
-
-                        <span
-                          className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold shrink-0 ${
-                            step.color === 'emerald'
-                              ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/60'
-                              : step.color === 'blue'
-                              ? 'bg-blue-950/80 text-blue-300 border border-blue-700/60'
-                              : step.color === 'amber'
-                              ? 'bg-amber-950/80 text-amber-300 border border-amber-700/60'
-                              : 'bg-slate-900 text-slate-400 border border-slate-700'
-                          }`}
-                        >
-                          {step.status}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="pt-2 text-center">
-                    <span className="text-[11px] font-semibold text-blue-300/70">
-                      Live orchestration stream active · Encrypted TLS 1.3
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-            </div>
-          </div>
-
-        </div>
-      </section>
-
-      {/* ── 6-PILLAR ENTERPRISE CAPABILITIES BENTO GRID ── */}
-      <section id="forms" className="py-20 lg:py-28 bg-[#071526] border-b border-blue-900/60 scroll-mt-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight mb-4">
-              Enterprise-grade from the ground up
-            </h2>
-            <p className="text-blue-100/80 text-base sm:text-lg font-medium">
-              Architected to scale across high-volume departments with zero compromises on security or velocity.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            
-            {/* Bento Card 1 */}
-            <div className="bg-[#0b1f38] hover:bg-[#102d54] rounded-3xl p-7 border border-blue-800/50 shadow-xl shadow-blue-950/50 transition-all duration-300 space-y-3.5">
-              <div className="w-11 h-11 rounded-2xl bg-[#134287] text-white flex items-center justify-center font-bold shadow-xs">
-                <Workflow className="w-5 h-5" />
-              </div>
-              <h3 className="text-lg font-bold text-white">Multi-Tier Approval Chains</h3>
-              <p className="text-xs sm:text-sm text-blue-100/80 leading-relaxed font-medium">
-                Create hierarchical approval matrices with automatic threshold checks and delegate backups during leaves.
-              </p>
-            </div>
-
-            {/* Bento Card 2 */}
-            <div className="bg-[#0b1f38] hover:bg-[#102d54] rounded-3xl p-7 border border-blue-800/50 shadow-xl shadow-blue-950/50 transition-all duration-300 space-y-3.5">
-              <div className="w-11 h-11 rounded-2xl bg-[#134287] text-white flex items-center justify-center font-bold shadow-xs">
-                <FileCheck2 className="w-5 h-5" />
-              </div>
-              <h3 className="text-lg font-bold text-white">Dynamic Intake Forms</h3>
-              <p className="text-xs sm:text-sm text-blue-100/80 leading-relaxed font-medium">
-                Drag-and-drop form builder with calculated fields, file attachments, and public vendor submission links.
-              </p>
-            </div>
-
-            {/* Bento Card 3 */}
-            <div className="bg-[#0b1f38] hover:bg-[#102d54] rounded-3xl p-7 border border-blue-800/50 shadow-xl shadow-blue-950/50 transition-all duration-300 space-y-3.5">
-              <div className="w-11 h-11 rounded-2xl bg-[#134287] text-white flex items-center justify-center font-bold shadow-xs">
-                <Zap className="w-5 h-5" />
-              </div>
-              <h3 className="text-lg font-bold text-white">SLA Escalation Engine</h3>
-              <p className="text-xs sm:text-sm text-blue-100/80 leading-relaxed font-medium">
-                Prevent bottlenecks with automated reminder notifications, overdue alerts, and emergency auto-reassignment.
-              </p>
-            </div>
-
-            {/* Bento Card 4 */}
-            <div className="bg-[#0b1f38] hover:bg-[#102d54] rounded-3xl p-7 border border-blue-800/50 shadow-xl shadow-blue-950/50 transition-all duration-300 space-y-3.5">
-              <div className="w-11 h-11 rounded-2xl bg-[#134287] text-white flex items-center justify-center font-bold shadow-xs">
-                <Shield className="w-5 h-5" />
-              </div>
-              <h3 className="text-lg font-bold text-white">Cryptographic Audit Trail</h3>
-              <p className="text-xs sm:text-sm text-blue-100/80 leading-relaxed font-medium">
-                Every action, decision, comment, and document version is permanently logged with tamper-evident audit proofs.
-              </p>
-            </div>
-
-            {/* Bento Card 5 */}
-            <div className="bg-[#0b1f38] hover:bg-[#102d54] rounded-3xl p-7 border border-blue-800/50 shadow-xl shadow-blue-950/50 transition-all duration-300 space-y-3.5">
-              <div className="w-11 h-11 rounded-2xl bg-[#134287] text-white flex items-center justify-center font-bold shadow-xs">
-                <KeyRound className="w-5 h-5" />
-              </div>
-              <h3 className="text-lg font-bold text-white">Enterprise SSO & RBAC</h3>
-              <p className="text-xs sm:text-sm text-blue-100/80 leading-relaxed font-medium">
-                Seamless Microsoft Entra ID SSO, MFA authenticator support, and granular department-level permission boundaries.
-              </p>
-            </div>
-
-            {/* Bento Card 6 */}
-            <div className="bg-[#0b1f38] hover:bg-[#102d54] rounded-3xl p-7 border border-blue-800/50 shadow-xl shadow-blue-950/50 transition-all duration-300 space-y-3.5">
-              <div className="w-11 h-11 rounded-2xl bg-[#134287] text-white flex items-center justify-center font-bold shadow-xs">
-                <TrendingUp className="w-5 h-5" />
-              </div>
-              <h3 className="text-lg font-bold text-white">Live Analytics & Exports</h3>
-              <p className="text-xs sm:text-sm text-blue-100/80 leading-relaxed font-medium">
-                Real-time operational dashboards, approval cycle duration metrics, and automated one-click CSV/Excel exports.
-              </p>
-            </div>
-
-          </div>
-        </div>
-      </section>
-
-      {/* ── SECURITY & COMPLIANCE BADGES SECTION ── */}
-      <section id="compliance" className="py-14 bg-[#0a1e36] border-y border-blue-900/60 scroll-mt-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-            <div className="p-5 rounded-2xl bg-[#0b1f38] border border-blue-800/40 shadow-sm space-y-1.5">
-              <div className="text-sm font-extrabold text-white">SOC 2 Type II</div>
-              <div className="text-xs text-blue-300 font-medium">Certified compliance standards</div>
-            </div>
-            <div className="p-5 rounded-2xl bg-[#0b1f38] border border-blue-800/40 shadow-sm space-y-1.5">
-              <div className="text-sm font-extrabold text-white">AES-256 Encryption</div>
-              <div className="text-xs text-blue-300 font-medium">In-transit & at-rest security</div>
-            </div>
-            <div className="p-5 rounded-2xl bg-[#0b1f38] border border-blue-800/40 shadow-sm space-y-1.5">
-              <div className="text-sm font-extrabold text-white">GDPR & CCPA</div>
-              <div className="text-xs text-blue-300 font-medium">Data privacy governance</div>
-            </div>
-            <div className="p-5 rounded-2xl bg-[#0b1f38] border border-blue-800/40 shadow-sm space-y-1.5">
-              <div className="text-sm font-extrabold text-white">Multi-Tenant Isolation</div>
-              <div className="text-xs text-blue-300 font-medium">Dedicated tenancy models</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── FREQUENTLY ASKED QUESTIONS (ENTERPRISE ACCORDION) ── */}
-      <section id="faq" className="py-20 lg:py-28 bg-[#071526] scroll-mt-16">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          
-          <div className="text-center mb-14">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#102d54] border border-blue-500/40 text-blue-200 text-[11px] font-extrabold tracking-wide uppercase mb-3">
-              Got Questions?
-            </div>
-            <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
-              Frequently asked questions
-            </h2>
-          </div>
-
-          <div className="space-y-4">
-            {faqs.map((faq, idx) => {
-              const isOpen = openFaq === idx
-              return (
-                <div
-                  key={idx}
-                  className="rounded-2xl border border-blue-900/60 bg-[#0b1f38] overflow-hidden transition-all"
-                >
-                  <button
-                    type="button"
-                    onClick={() => setOpenFaq(isOpen ? -1 : idx)}
-                    className="w-full px-6 py-5 text-left flex items-center justify-between gap-4 font-bold text-white text-sm sm:text-base cursor-pointer hover:bg-[#102d54] transition"
-                  >
-                    <span>{faq.q}</span>
-                    <ChevronDown
-                      className={`w-4 h-4 text-blue-300 transition-transform shrink-0 ${
-                        isOpen ? 'rotate-180 text-white' : ''
-                      }`}
-                    />
-                  </button>
-                  {isOpen && (
-                    <div className="px-6 pb-5 pt-1 text-xs sm:text-sm text-blue-100/90 leading-relaxed font-medium bg-[#08182b] border-t border-blue-900/50">
-                      {faq.a}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-
-        </div>
-      </section>
-
-      {/* ── BOTTOM CALL TO ACTION BANNER (Dark Blue Gradient) ── */}
-      <section className="py-20 bg-gradient-to-br from-[#0c2340] via-[#103668] to-[#134287] border-t border-blue-900/60 text-white">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-6">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/10 backdrop-blur-md text-blue-200 text-xs font-bold uppercase tracking-wider border border-white/10">
-            Ready to accelerate operations?
-          </div>
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white leading-tight">
-            Streamline your organization's workflows today
-          </h2>
-          <p className="text-blue-100 text-base sm:text-lg max-w-xl mx-auto font-medium leading-relaxed">
-            Join modern enterprises eliminating manual email chains and approval delays with NetFlow.
-          </p>
-          <div className="pt-3">
-            <Link
-              to="/login"
-              className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-white text-[#0c2340] hover:bg-blue-50 active:bg-blue-100 font-extrabold text-sm shadow-2xl transition-all hover:scale-[1.03]"
-            >
-              <span>Access NetFlow Workspace</span>
-              <ArrowRight className="w-4 h-4" />
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* ── PROFESSIONAL MULTI-COLUMN ENTERPRISE DARK FOOTER ── */}
-      <footer className="pt-16 pb-12 bg-[#050e1a] text-blue-200/70 text-xs font-medium border-t border-blue-900/60">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          
-          {/* Main Footer Links Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-10 pb-12 border-b border-blue-900/50">
-            
-            {/* Column 1: Brand & Mission (Spans 2 cols) */}
-            <div className="lg:col-span-2 space-y-4">
-              <Link to="/" className="flex items-center gap-3 hover:opacity-90 transition group cursor-pointer inline-flex">
-                <NetFlowLogo size={36} className="w-9 h-9 shrink-0" />
-                <span className="text-xl font-black tracking-tight text-white">
-                  NetFlow
-                </span>
-              </Link>
-              
-              <p className="text-xs text-blue-200/80 leading-relaxed font-medium max-w-sm">
-                Enterprise workflow orchestration, automated multi-tier approval routing, and cryptographic compliance governance. Built for high-velocity organizations.
-              </p>
-
-              {/* Status Indicator */}
-              <div className="pt-1 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-[11.5px] font-bold text-blue-200">
-                  All Systems Operational · 99.98% SLA
-                </span>
-              </div>
-            </div>
-
-            {/* Column 2: Platform */}
-            <div className="space-y-3.5">
-              <div className="text-[11px] font-extrabold text-white uppercase tracking-wider">
-                Platform
-              </div>
-              <ul className="space-y-2.5 text-xs font-semibold">
-                <li>
-                  <a href="#workflows" className="hover:text-white transition-colors">
-                    Workflow Engine
-                  </a>
-                </li>
-                <li>
-                  <a href="#forms" className="hover:text-white transition-colors">
-                    Smart Form Studio
-                  </a>
-                </li>
-                <li>
-                  <a href="#sla" className="hover:text-white transition-colors">
-                    SLA & Escalations
-                  </a>
-                </li>
-                <li>
-                  <a href="#compliance" className="hover:text-white transition-colors">
-                    Audit Ledger
-                  </a>
-                </li>
-                <li>
-                  <a href="#forms" className="hover:text-white transition-colors">
-                    Public Intake Links
-                  </a>
-                </li>
-              </ul>
-            </div>
-
-            {/* Column 3: Security & Governance */}
-            <div className="space-y-3.5">
-              <div className="text-[11px] font-extrabold text-white uppercase tracking-wider">
-                Governance
-              </div>
-              <ul className="space-y-2.5 text-xs font-semibold">
-                <li>
-                  <a href="#compliance" className="hover:text-white transition-colors">
-                    SOC 2 Type II
-                  </a>
-                </li>
-                <li>
-                  <a href="#compliance" className="hover:text-white transition-colors">
-                    Microsoft Entra SSO
-                  </a>
-                </li>
-                <li>
-                  <a href="#compliance" className="hover:text-white transition-colors">
-                    Role-Based Access (RBAC)
-                  </a>
-                </li>
-                <li>
-                  <a href="#compliance" className="hover:text-white transition-colors">
-                    256-Bit Data Encryption
-                  </a>
-                </li>
-                <li>
-                  <a href="#compliance" className="hover:text-white transition-colors">
-                    Multi-Tenant Isolation
-                  </a>
-                </li>
-              </ul>
-            </div>
-
-            {/* Column 4: Access & Support */}
-            <div className="space-y-3.5">
-              <div className="text-[11px] font-extrabold text-white uppercase tracking-wider">
-                Workspace
-              </div>
-              <ul className="space-y-2.5 text-xs font-semibold">
-                <li>
-                  <Link to="/login" className="hover:text-white transition-colors flex items-center gap-1">
-                    <span>Sign In to Workspace</span>
-                    <ArrowRight className="w-3 h-3" />
-                  </Link>
-                </li>
-                <li>
-                  <a href="#faq" className="hover:text-white transition-colors">
-                    Frequently Asked Questions
-                  </a>
-                </li>
-                <li>
-                  <Link to="/login" className="hover:text-white transition-colors">
-                    Enterprise Portal
-                  </Link>
-                </li>
-                <li>
-                  <Link to="/login" className="hover:text-white transition-colors">
-                    Administrator Console
-                  </Link>
-                </li>
-                <li>
-                  <Link to="/login" className="hover:text-white transition-colors">
-                    System Analytics
-                  </Link>
-                </li>
-              </ul>
-            </div>
-
-          </div>
-
-          {/* Sub-Footer Row */}
-          <div className="pt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-[11px] text-blue-300/70 font-semibold">
-            <p>© {new Date().getFullYear()} NetFlow Inc. All rights reserved. Enterprise Workflow & Governance Platform.</p>
-            <div className="flex flex-wrap items-center gap-4 text-blue-300/80">
-              <span>SOC 2 Type II Certified</span>
-              <span>•</span>
-              <span>GDPR Compliant</span>
-              <span>•</span>
-              <span>TLS 1.3 Encryption</span>
-            </div>
-          </div>
-
-        </div>
-      </footer>
-
-    </div>
-  )
-}
+export default jB
