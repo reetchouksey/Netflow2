@@ -319,7 +319,7 @@ function HeroWorkflowPreview() {
               React.createElement(isPlaying ? Icon_CirclePause : Icon_Play, { className: 'size-4' })
             )
           ),
-          // Right Group: Speed toggle & Fullscreen
+          // Right Group: Speed toggle
           React.createElement(
             'div',
             { className: 'flex items-center gap-1.5 sm:gap-2' },
@@ -334,17 +334,6 @@ function HeroWorkflowPreview() {
               },
               React.createElement('span', { className: 'text-[10px] text-blue-300 uppercase tracking-wider font-semibold' }, 'Speed'),
               React.createElement('span', { className: 'text-white font-extrabold' }, `${playbackRate}x`)
-            ),
-            // Fullscreen
-            React.createElement(
-              'button',
-              {
-                type: 'button',
-                onClick: handleFullscreen,
-                title: 'Full Screen',
-                className: 'size-7 sm:size-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition cursor-pointer text-white',
-              },
-              React.createElement(Icon_Maximize2, { className: 'size-3.5 sm:size-4' })
             )
           )
         )
